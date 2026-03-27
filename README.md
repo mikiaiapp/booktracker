@@ -1,2 +1,2 @@
 # booktracker
-Catalogador de libros con IA 
+Catalogador de libros por Inteligencia artificial

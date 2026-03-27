@@ -1,0 +1,28 @@
+{
+  "name": "booktracker-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "zustand": "^5.0.0",
+    "axios": "^1.7.7",
+    "framer-motion": "^11.9.0",
+    "react-dropzone": "^14.2.9",
+    "react-hot-toast": "^2.4.1",
+    "lucide-react": "^0.447.0",
+    "d3": "^7.9.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "vite": "^5.4.8"
+  }
+}

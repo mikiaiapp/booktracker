@@ -1,0 +1,242 @@
+.library-page {
+  padding: 2.5rem;
+  max-width: 1200px;
+}
+
+.library-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+}
+
+.library-sub {
+  color: var(--slate);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.btn-upload {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  transition: background var(--transition), transform var(--transition);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-upload:hover {
+  background: #1a1a1a;
+  transform: translateY(-1px);
+}
+
+.library-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-wrap svg {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mist);
+  pointer-events: none;
+}
+
+.search-wrap input {
+  width: 100%;
+  padding: 0.6rem 0.85rem 0.6rem 2.4rem;
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius);
+  background: var(--white);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.search-wrap input:focus { border-color: var(--gold); }
+
+.filter-tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--paper-dark);
+  padding: 0.25rem;
+  border-radius: var(--radius);
+}
+
+.filter-tab {
+  padding: 0.4rem 0.85rem;
+  border: none;
+  background: none;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--slate);
+  transition: all var(--transition);
+}
+
+.filter-tab.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Book grid */
+.books-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.5rem;
+}
+
+.book-card-skeleton {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem;
+  border: 1px solid var(--paper-dark);
+}
+
+.book-card {
+  display: block;
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1.5px solid var(--paper-dark);
+  transition: all var(--transition);
+  box-shadow: var(--shadow);
+}
+
+.book-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--gold-light);
+}
+
+.book-cover {
+  position: relative;
+  height: 220px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cover-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--mist);
+  background: linear-gradient(135deg, var(--paper) 0%, var(--paper-dark) 100%);
+}
+
+.cover-placeholder span {
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+}
+
+.cover-overlay {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.book-info {
+  padding: 0.875rem;
+}
+
+.book-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-author {
+  font-size: 0.75rem;
+  color: var(--slate);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.book-rating {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--gold);
+  font-weight: 500;
+}
+
+.read-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: auto;
+}
+
+.read-dot.to_read { background: var(--mist); }
+.read-dot.reading { background: var(--gold); }
+.read-dot.read { background: var(--forest); }
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 1rem;
+  color: var(--mist);
+  text-align: center;
+}
+
+.empty-state h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  color: var(--slate);
+}
+
+.empty-state p {
+  font-size: 0.875rem;
+}
