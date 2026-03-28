@@ -195,7 +195,8 @@ async def list_authors(
     """Devuelve todos los autores únicos con sus libros."""
     result = await db.execute(
         select(Book.author, Book.author_bio, Book.author_bibliography,
-               Book.id, Book.title, Book.cover_local, Book.year, Book.status)
+               Book.id, Book.title, Book.cover_local, Book.year, Book.status,
+               Book.phase3_done, Book.isbn)
         .where(Book.author.isnot(None))
         .order_by(Book.author)
     )
@@ -208,10 +209,18 @@ async def list_authors(
         if not author:
             continue
         if author not in authors:
+            # Normalizar bibliografía: acepta tanto strings como {title, isbn}
+            raw_biblio = row.author_bibliography or []
+            biblio = []
+            for item in raw_biblio:
+                if isinstance(item, str):
+                    biblio.append({"title": item, "isbn": None})
+                elif isinstance(item, dict):
+                    biblio.append({"title": item.get("title", ""), "isbn": item.get("isbn")})
             authors[author] = {
                 "name": author,
                 "bio": row.author_bio,
-                "bibliography": row.author_bibliography or [],
+                "bibliography": biblio,
                 "books": [],
             }
         authors[author]["books"].append({
@@ -220,6 +229,8 @@ async def list_authors(
             "cover_local": row.cover_local,
             "year": row.year,
             "status": row.status,
+            "phase3_done": row.phase3_done,
+            "isbn": row.isbn,
         })
 
     return list(authors.values())

@@ -132,7 +132,7 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
 
 
 async def get_author_bibliography(author_name: str) -> list:
-    """Obtiene bibliografía del autor via Google Books (siempre accesible)."""
+    """Obtiene bibliografía del autor via Google Books, deduplicada por ISBN."""
     url = f"https://www.googleapis.com/books/v1/volumes?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=relevance"
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
@@ -140,19 +140,37 @@ async def get_author_bibliography(author_name: str) -> list:
         if r.status_code != 200:
             return []
         items = r.json().get("items", [])
-        seen = set()
-        titles = []
+        seen_isbn = set()
+        seen_title = set()
+        results = []
         for item in items:
             info = item.get("volumeInfo", {})
-            title = info.get("title", "")
+            title = info.get("title", "").strip()
             authors = info.get("authors", [])
+            if not title or not authors:
+                continue
             # Solo libros donde el autor es el principal
-            if title and authors and author_name.lower() in " ".join(authors).lower():
-                if title not in seen:
-                    seen.add(title)
-                    titles.append(title)
-        print(f"Google Books bibliography: {len(titles)} titles for {author_name}")
-        return titles[:20]
+            if author_name.lower() not in " ".join(authors).lower():
+                continue
+            # Extraer ISBN
+            isbn = None
+            for ident in info.get("industryIdentifiers", []):
+                if ident.get("type") in ("ISBN_13", "ISBN_10"):
+                    isbn = ident.get("identifier")
+                    break
+            # Deduplicar por ISBN primero, luego por título normalizado
+            title_key = title.lower()
+            if isbn:
+                if isbn in seen_isbn:
+                    continue
+                seen_isbn.add(isbn)
+            else:
+                if title_key in seen_title:
+                    continue
+            seen_title.add(title_key)
+            results.append({"title": title, "isbn": isbn})
+        print(f"Google Books bibliography: {len(results)} titles for {author_name}")
+        return results[:20]
     except Exception as e:
         print(f"Google Books bibliography error: {e}")
         return []

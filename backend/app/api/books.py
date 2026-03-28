@@ -170,6 +170,7 @@ async def delete_book(
 class CreateShellRequest(BaseModel):
     title: str
     author: Optional[str] = None
+    isbn: Optional[str] = None
 
 
 @router.post("/shell", status_code=201)
@@ -181,14 +182,16 @@ async def create_shell_book(
     """Crea una ficha de libro sin archivo — busca metadatos automáticamente."""
     import uuid
 
-    # Comprobar si ya existe
-    from sqlalchemy import func as sqlfunc
-    existing = await db.execute(
-        select(Book).where(
-            sqlfunc.lower(Book.title) == req.title.lower(),
-            Book.author == req.author,
-        )
+    # Comprobar duplicados por ISBN (si viene) o por título+autor
+    from sqlalchemy import func as sqlfunc, or_
+    conditions = []
+    if req.isbn:
+        conditions.append(Book.isbn == req.isbn)
+    conditions.append(
+        (sqlfunc.lower(Book.title) == req.title.lower()) &
+        (sqlfunc.lower(Book.author) == req.author.lower() if req.author else True)
     )
+    existing = await db.execute(select(Book).where(or_(*conditions)))
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Este libro ya está en tu biblioteca")
 
@@ -197,6 +200,7 @@ async def create_shell_book(
         id=book_id,
         title=req.title,
         author=req.author,
+        isbn=req.isbn,
         file_type=None,
         file_path=None,
         status="shell",          # sin archivo, solo ficha

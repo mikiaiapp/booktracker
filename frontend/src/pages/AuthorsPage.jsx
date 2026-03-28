@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { authorsAPI, shellAPI } from '../utils/api'
-import { BookOpen, User, CheckCircle, Clock } from 'lucide-react'
+import { BookOpen, User, Clock, ExternalLink } from 'lucide-react'
 import './AuthorsPage.css'
 
 export default function AuthorsPage() {
@@ -30,7 +30,11 @@ export default function AuthorsPage() {
   const handleSelectAuthor = async (author) => {
     setSelected(author)
 
-    const missing = (author.bibliography || []).filter(title => {
+    const missing = (author.bibliography || []).filter(item => {
+      const title = item.title || item
+      const isbn = item.isbn
+      // Comprobar por ISBN primero, luego por título
+      if (isbn && author.books.some(b => b.isbn === isbn)) return false
       const normalized = title.toLowerCase().trim()
       return !author.books.some(b => b.title.toLowerCase().trim() === normalized)
     })
@@ -39,9 +43,11 @@ export default function AuthorsPage() {
 
     setAutoCreating(true)
     let created = 0
-    for (const title of missing) {
+    for (const item of missing) {
+      const title = item.title || item
+      const isbn = item.isbn || null
       try {
-        await shellAPI.create(title, author.name)
+        await shellAPI.create(title, author.name, isbn)
         created++
       } catch {
         // Ya existe o error — ignorar silenciosamente
@@ -135,6 +141,29 @@ export default function AuthorsPage() {
               <div className="author-section">
                 <h3>Biografía</h3>
                 <p>{selected.bio}</p>
+              </div>
+            )}
+
+            {/* Referencias externas del autor */}
+            {selected.name && (
+              <div className="author-section">
+                <h3>Sobre el autor en internet</h3>
+                <div className="author-refs-grid">
+                  {[
+                    { name: 'Wikipedia', icon: '📖', url: `https://es.wikipedia.org/wiki/${encodeURIComponent(selected.name).replace(/%20/g, '_')}` },
+                    { name: 'Goodreads', icon: '📚', url: `https://www.goodreads.com/search?q=${encodeURIComponent(selected.name)}&search_type=author` },
+                    { name: 'YouTube', icon: '▶️', url: `https://www.youtube.com/results?search_query=${encodeURIComponent(selected.name)}+escritor+entrevista` },
+                    { name: 'Twitter/X', icon: '🐦', url: `https://x.com/search?q=${encodeURIComponent(selected.name)}&f=user` },
+                    { name: 'Instagram', icon: '📷', url: `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(selected.name)}` },
+                    { name: 'Google', icon: '🔍', url: `https://www.google.com/search?q=${encodeURIComponent(selected.name)}+escritor` },
+                  ].map(link => (
+                    <a key={link.name} href={link.url} target="_blank" rel="noopener noreferrer" className="author-ref-chip">
+                      <span>{link.icon}</span>
+                      <span>{link.name}</span>
+                      <ExternalLink size={11} />
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 

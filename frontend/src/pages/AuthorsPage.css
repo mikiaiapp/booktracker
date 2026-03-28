@@ -186,3 +186,24 @@
   .authors-list { position: static; }
   .biblio-covers-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
 }
+
+/* ── Referencias del autor ───────────────────────────────────── */
+.author-refs-grid {
+  display: flex; flex-wrap: wrap; gap: 0.5rem;
+}
+
+.author-ref-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: #faf7f2;
+  border: 1.5px solid #ede6d6;
+  border-radius: 20px;
+  font-size: 12px; color: #0d0d0d;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+.author-ref-chip:hover {
+  background: #f5f0e8;
+  border-color: #c9a96e;
+  color: #c9a96e;
+}

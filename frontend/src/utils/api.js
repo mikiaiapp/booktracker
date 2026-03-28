@@ -68,5 +68,5 @@ export const chapterAPI = {
 
 // Shell books (ficha sin archivo)
 export const shellAPI = {
-  create: (title, author) => api.post('/books/shell', { title, author }),
+  create: (title, author, isbn = null) => api.post('/books/shell', { title, author, isbn }),
 }

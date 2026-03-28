@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import {
-  BookOpen, User, List, Brain, Map, Mic, Star,
+  BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle
 } from 'lucide-react'
@@ -18,6 +18,7 @@ const TABS = [
   { id: 'summary', label: 'Resumen global', icon: Brain },
   { id: 'mindmap', label: 'Mapa mental', icon: Map },
   { id: 'podcast', label: 'Podcast', icon: Mic },
+  { id: 'refs', label: 'Referencias', icon: ExternalLink },
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -203,7 +204,7 @@ export default function BookPage() {
               className={`tab-btn ${tab === t.id ? 'active' : ''}`}
               onClick={() => setTab(t.id)}
               disabled={
-                isShell ||
+                (isShell && t.id !== 'refs') ||
                 (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
                 (t.id === 'summary' && !status?.phase3_done) ||
@@ -243,6 +244,7 @@ export default function BookPage() {
                 : <p className="empty-tab">Mapa mental no disponible</p>
             )}
 
+            {tab === 'refs' && <RefsTab book={book} />}
             {tab === 'podcast' && (
               <PodcastTab
                 book={book}
@@ -492,6 +494,163 @@ function PodcastTab({ book, playing, onToggle }) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── Referencias externas ──────────────────────────────────────
+function RefsTab({ book }) {
+  const title = encodeURIComponent(book.title || '')
+  const author = encodeURIComponent(book.author || '')
+  const titleRaw = book.title || ''
+  const authorRaw = book.author || ''
+  const isbn = book.isbn || ''
+
+  const bookLinks = [
+    {
+      name: 'Wikipedia',
+      icon: '📖',
+      desc: 'Artículo del libro',
+      url: `https://es.wikipedia.org/wiki/${title.replace(/%20/g, '_')}`,
+      fallback: `https://es.wikipedia.org/w/index.php?search=${title}+${author}`,
+    },
+    {
+      name: 'Goodreads',
+      icon: '📚',
+      desc: 'Reseñas y valoraciones',
+      url: isbn
+        ? `https://www.goodreads.com/search?q=${isbn}`
+        : `https://www.goodreads.com/search?q=${title}+${author}&search_type=books`,
+    },
+    {
+      name: 'Google Books',
+      icon: '🔍',
+      desc: 'Vista previa y detalles',
+      url: isbn
+        ? `https://books.google.com/books?isbn=${isbn}`
+        : `https://books.google.com/books?q=${title}+${author}`,
+    },
+    {
+      name: 'YouTube',
+      icon: '▶️',
+      desc: 'Reseñas en vídeo',
+      url: `https://www.youtube.com/results?search_query=${title}+${author}+resena+libro`,
+    },
+    {
+      name: 'Casa del Libro',
+      icon: '🏠',
+      desc: 'Comprar en España',
+      url: `https://www.casadellibro.com/busqueda-generica?busqueda=${title}`,
+    },
+    {
+      name: 'Amazon',
+      icon: '📦',
+      desc: 'Comprar',
+      url: isbn
+        ? `https://www.amazon.es/s?k=${isbn}`
+        : `https://www.amazon.es/s?k=${title}+${author}&i=stripbooks`,
+    },
+    {
+      name: 'Open Library',
+      icon: '🌐',
+      desc: 'Biblioteca abierta',
+      url: `https://openlibrary.org/search?q=${title}+${author}&mode=books`,
+    },
+    {
+      name: 'LibraryThing',
+      icon: '📋',
+      desc: 'Catálogo y recomendaciones',
+      url: `https://www.librarything.com/search.php?search=${title}&searchtype=work`,
+    },
+  ]
+
+  const authorLinks = authorRaw ? [
+    {
+      name: 'Wikipedia',
+      icon: '📖',
+      desc: 'Biografía del autor',
+      url: `https://es.wikipedia.org/wiki/${author.replace(/%20/g, '_')}`,
+      fallback: `https://es.wikipedia.org/w/index.php?search=${author}`,
+    },
+    {
+      name: 'Goodreads',
+      icon: '📚',
+      desc: 'Perfil del autor',
+      url: `https://www.goodreads.com/search?q=${author}&search_type=author`,
+    },
+    {
+      name: 'YouTube',
+      icon: '▶️',
+      desc: 'Entrevistas y charlas',
+      url: `https://www.youtube.com/results?search_query=${author}+escritor+entrevista`,
+    },
+    {
+      name: 'Twitter/X',
+      icon: '🐦',
+      desc: 'Perfil en X',
+      url: `https://x.com/search?q=${author}&src=typed_query&f=user`,
+    },
+    {
+      name: 'Instagram',
+      icon: '📷',
+      desc: 'Perfil en Instagram',
+      url: `https://www.instagram.com/explore/search/keyword/?q=${author}`,
+    },
+  ] : []
+
+  return (
+    <div className="refs-tab">
+      <div className="refs-section">
+        <h3>Sobre el libro</h3>
+        <div className="refs-grid">
+          {bookLinks.map(link => (
+            <a
+              key={link.name}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ref-card"
+            >
+              <span className="ref-icon">{link.icon}</span>
+              <div className="ref-info">
+                <span className="ref-name">{link.name}</span>
+                <span className="ref-desc">{link.desc}</span>
+              </div>
+              <ExternalLink size={13} className="ref-arrow" />
+            </a>
+          ))}
+        </div>
+      </div>
+
+      {authorLinks.length > 0 && (
+        <div className="refs-section">
+          <h3>Sobre {authorRaw}</h3>
+          <div className="refs-grid">
+            {authorLinks.map(link => (
+              <a
+                key={link.name}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ref-card"
+              >
+                <span className="ref-icon">{link.icon}</span>
+                <div className="ref-info">
+                  <span className="ref-name">{link.name}</span>
+                  <span className="ref-desc">{link.desc}</span>
+                </div>
+                <ExternalLink size={13} className="ref-arrow" />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="refs-note">
+        Los enlaces se generan automáticamente a partir del título y autor.
+        Algunos pueden no encontrar el libro exacto.
+      </p>
     </div>
   )
 }

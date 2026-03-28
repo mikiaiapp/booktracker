@@ -427,3 +427,56 @@
 }
 .summarize-ch-btn:hover { background: #c9a96e; color: #0d0d0d; }
 .summarize-ch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Pestaña Referencias ──────────────────────────────────────── */
+.refs-tab { padding: 0.25rem 0; }
+
+.refs-section { margin-bottom: 2rem; }
+.refs-section h3 {
+  font-size: 11px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: #8a9aaa; margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem; border-bottom: 1px solid #f5f0e8;
+}
+
+.refs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.5rem;
+}
+
+.ref-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background: #faf7f2;
+  border: 1.5px solid #ede6d6;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #0d0d0d;
+  transition: all 0.15s;
+}
+.ref-card:hover {
+  background: #f5f0e8;
+  border-color: #c9a96e;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.ref-icon { font-size: 18px; flex-shrink: 0; }
+
+.ref-info {
+  display: flex; flex-direction: column;
+  flex: 1; min-width: 0;
+}
+.ref-name { font-size: 12px; font-weight: 500; }
+.ref-desc { font-size: 10px; color: #8a9aaa; }
+
+.ref-arrow { color: #c9a96e; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+.ref-card:hover .ref-arrow { opacity: 1; }
+
+.refs-note {
+  font-size: 11px; color: #8a9aaa; font-style: italic;
+  margin-top: 1.5rem;
+}
