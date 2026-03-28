@@ -1,35 +1,28 @@
 """
 Phase 1: Identify book and gather metadata.
 1. Extract text from file to get title/author hints
-2. Search Google/web for book data (Amazon, Wikipedia, Lecturalia, Casa del Libro)
+2. Search Open Library + Google Books + Wikipedia
 3. Download cover image
 """
 import httpx
 import re
 import os
 import asyncio
-from bs4 import BeautifulSoup
+from urllib.parse import quote   # reemplaza httpx.utils.quote eliminado en httpx 0.25+
 from typing import Optional
 import fitz  # PyMuPDF
 from app.core.config import settings
 
 
 async def identify_book(file_path: str, file_type: str, fallback_title: str) -> dict:
-    """Main entry point for Phase 1."""
-    # Step 1: Extract hints from file
     hints = await extract_file_hints(file_path, file_type)
     title = hints.get("title") or fallback_title
     author = hints.get("author")
-
-    # Step 2: Search web for metadata
     metadata = await search_book_metadata(title, author)
-
-    # Step 3: Download cover
     if metadata.get("cover_url"):
         local_cover = await download_cover(metadata["cover_url"], file_path)
         if local_cover:
             metadata["cover_local"] = local_cover
-
     return metadata
 
 
@@ -41,12 +34,12 @@ async def extract_file_hints(file_path: str, file_type: str) -> dict:
             meta = doc.metadata
             hints["title"] = meta.get("title") or ""
             hints["author"] = meta.get("author") or ""
-            # Try to read first page for title
             if not hints["title"] and doc.page_count > 0:
                 text = doc[0].get_text()
                 lines = [l.strip() for l in text.split("\n") if l.strip()]
                 if lines:
                     hints["title"] = lines[0][:100]
+            doc.close()
         elif file_type == "epub":
             import ebooklib
             from ebooklib import epub
@@ -59,12 +52,10 @@ async def extract_file_hints(file_path: str, file_type: str) -> dict:
 
 
 async def search_book_metadata(title: str, author: Optional[str] = None) -> dict:
-    """Try multiple sources for book metadata."""
     query = f"{title} {author or ''}".strip()
     metadata = {"title": title, "author": author}
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        # Try Open Library API (free, no key required)
         try:
             ol_data = await search_open_library(client, query)
             if ol_data:
@@ -72,7 +63,6 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Open Library error: {e}")
 
-        # Try Google Books API
         try:
             gb_data = await search_google_books(client, query)
             if gb_data:
@@ -82,7 +72,6 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Google Books error: {e}")
 
-        # Try Wikipedia for author bio
         if metadata.get("author") and not metadata.get("author_bio"):
             try:
                 author_data = await search_wikipedia_author(client, metadata["author"])
@@ -95,7 +84,7 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
 
 
 async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
-    url = f"https://openlibrary.org/search.json?q={httpx.utils.quote(query)}&limit=1"
+    url = f"https://openlibrary.org/search.json?q={quote(query)}&limit=1"
     r = await client.get(url)
     data = r.json()
     if not data.get("docs"):
@@ -113,30 +102,23 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
         result["pages"] = doc["number_of_pages_median"]
     if doc.get("language"):
         result["language"] = doc["language"][0] if doc["language"] else None
-
-    # Cover
     if doc.get("cover_i"):
         result["cover_url"] = f"https://covers.openlibrary.org/b/id/{doc['cover_i']}-L.jpg"
-
-    # Description
     if doc.get("first_sentence"):
         result["synopsis"] = doc["first_sentence"].get("value", "")
-
-    # Author bibliography
     if doc.get("author_name") and doc.get("author_key"):
         author_key = doc["author_key"][0]
         try:
             ar = await client.get(f"https://openlibrary.org{author_key}/works.json?limit=10")
             works = ar.json().get("entries", [])
             result["author_bibliography"] = [w.get("title") for w in works if w.get("title")][:10]
-        except:
+        except Exception:
             pass
-
     return result
 
 
 async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
-    url = f"https://www.googleapis.com/books/v1/volumes?q={httpx.utils.quote(query)}&maxResults=1"
+    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=1"
     r = await client.get(url)
     data = r.json()
     items = data.get("items", [])
@@ -168,26 +150,30 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
 
 
 async def search_wikipedia_author(client: httpx.AsyncClient, author: str) -> dict:
-    search_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{httpx.utils.quote(author)}"
-    r = await client.get(search_url)
-    if r.status_code != 200:
-        # Try es wikipedia
-        search_url = f"https://es.wikipedia.org/api/rest_v1/page/summary/{httpx.utils.quote(author)}"
-        r = await client.get(search_url)
-    if r.status_code == 200:
-        data = r.json()
-        return {"author_bio": data.get("extract", "")}
+    for lang in ("es", "en"):
+        url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(author)}"
+        try:
+            r = await client.get(url)
+            if r.status_code == 200:
+                data = r.json()
+                bio = data.get("extract", "")
+                if bio:
+                    return {"author_bio": bio}
+        except Exception:
+            pass
     return {}
 
 
 async def download_cover(url: str, file_path: str) -> Optional[str]:
     try:
         book_id = os.path.basename(file_path).rsplit(".", 1)[0]
-        user_dir = os.path.dirname(file_path).replace("uploads", "covers")
-        os.makedirs(user_dir, exist_ok=True)
-        cover_path = os.path.join(user_dir, f"{book_id}.jpg")
+        # Ruta absoluta basada en COVERS_DIR para que nginx la sirva correctamente
+        user_folder = os.path.basename(os.path.dirname(file_path))
+        cover_dir = os.path.join(settings.COVERS_DIR, user_folder)
+        os.makedirs(cover_dir, exist_ok=True)
+        cover_path = os.path.join(cover_dir, f"{book_id}.jpg")
 
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
             r = await client.get(url)
             if r.status_code == 200:
                 with open(cover_path, "wb") as f:
