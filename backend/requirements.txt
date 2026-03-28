@@ -6,8 +6,10 @@ pydantic-settings==2.5.2
 email-validator==2.2.0
 
 # Auth & Security
-python-jose[cryptography]==3.3.0
+# bcrypt fijado a 4.0.1 por incompatibilidad de passlib con versiones superiores
+bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
 pyotp==2.9.0
 qrcode[pil]==7.4.2
 
