@@ -53,3 +53,14 @@ export const analysisAPI = {
   triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
 }
+
+// Authors
+export const authorsAPI = {
+  list: () => api.get('/analysis/authors/list'),
+}
+
+// Chapter individual summary
+export const chapterAPI = {
+  summarize: (bookId, chapterId) =>
+    api.post(`/analysis/${bookId}/chapter/${chapterId}/summarize`),
+}

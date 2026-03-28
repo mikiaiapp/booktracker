@@ -1,12 +1,14 @@
 """
 AI analysis service.
-Soporta tres proveedores configurables via AI_MODEL:
-  - gemini-2.0-flash        → Google Gemini (gratuito, 1500 req/día)
-  - claude-sonnet-4-*       → Anthropic Claude
-  - gpt-4o / gpt-4o-mini    → OpenAI
+Proveedores soportados via AI_MODEL:
+  - gemini-2.0-flash  → Google Gemini via API REST (gratuito)
+  - claude-*          → Anthropic Claude
+  - gpt-4o / gpt-*    → OpenAI
 """
 import json
 import re
+import os
+import httpx
 from typing import Optional
 from app.core.config import settings
 
@@ -30,30 +32,38 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000) -> str:
 
 
 async def _call_gemini(system: str, user: str, max_tokens: int) -> str:
-    import os
-    import asyncio
-    import google.generativeai as genai
-
-    # Acepta GEMINI_API_KEY o GOOGLE_API_KEY (nombre que usa la librería de Google)
+    """Llama a Gemini via API REST (evita problemas de cuota del cliente gRPC)."""
     api_key = (
         settings.GEMINI_API_KEY
-        or os.environ.get("GOOGLE_API_KEY")
         or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
     )
     if not api_key:
         raise ValueError("Configura GEMINI_API_KEY en las variables de entorno de Portainer")
 
-    # configure() debe llamarse ANTES de crear GenerativeModel
-    genai.configure(api_key=api_key)
+    url = f"https://generativelanguage.googleapis.com/v1/models/{settings.AI_MODEL}:generateContent?key={api_key}"
 
-    model = genai.GenerativeModel(
-        model_name=settings.AI_MODEL,
-        system_instruction=system,
-        generation_config={"max_output_tokens": max_tokens, "temperature": 0.3},
-    )
-    loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(None, lambda: model.generate_content(user))
-    return response.text
+    # En API v1, system_instruction no está soportado en todos los modelos.
+    # Lo concatenamos directamente con el contenido del usuario.
+    combined = f"{system}\n\n{user}"
+    payload = {
+        "contents": [{"parts": [{"text": combined}]}],
+        "generationConfig": {
+            "maxOutputTokens": max_tokens,
+            "temperature": 0.3,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        r = await client.post(url, json=payload)
+        if r.status_code != 200:
+            raise ValueError(f"Gemini API error {r.status_code}: {r.text}")
+        data = r.json()
+
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError) as e:
+        raise ValueError(f"Respuesta inesperada de Gemini: {data}") from e
 
 
 async def _call_claude(system: str, user: str, max_tokens: int) -> str:
@@ -82,9 +92,59 @@ async def _call_openai(system: str, user: str, max_tokens: int) -> str:
     return resp.choices[0].message.content
 
 
+def _clean_summary(text: str) -> str:
+    """Limpia un texto de resumen eliminando artefactos comunes de LLMs."""
+    if not text:
+        return text
+    # Quitar bloques markdown
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    # Quitar escapes de comillas tipo \"titulo\"
+    text = re.sub(r'\\"([^"]+)\\"', r'""', text)
+    text = re.sub(r'\"', '"', text)
+    # Normalizar \n y \n\n a saltos de línea reales
+    text = text.replace("\\n\\n", "\n\n")
+    text = text.replace("\\n", "\n")
+    text = text.replace("\n\n", "\n\n")
+    text = text.replace("\n", " ")
+    # Eliminar { "summary": " del inicio si Gemini devuelve JSON incompleto
+    text = re.sub(r'^\{\s*"summary"\s*:\s*"?', "", text)
+    text = re.sub(r'"?\s*,?\s*"key_events".*$', "", text, flags=re.DOTALL)
+    # Limpiar espacios múltiples
+    text = re.sub(r"  +", " ", text)
+    return text.strip().strip('"')
+
+
+def _clean_text(text: str) -> str:
+    """Limpia texto de artefactos JSON, markdown y escapes innecesarios."""
+    # Eliminar bloques de código markdown
+    text = re.sub(r"```json\s*", "", text)
+    text = re.sub(r"```\s*", "", text)
+    # Eliminar escapes de comillas innecesarios fuera de JSON
+    text = text.replace('\"', '"')
+    # Normalizar saltos de línea múltiples
+    text = re.sub(r"\n\n+", "\n\n", text)
+    text = re.sub(r"\n", " ", text)
+    return text.strip()
+
+
 def _parse_json(text: str) -> dict | list:
-    clean = re.sub(r"```json|```", "", text).strip()
-    return json.loads(clean)
+    # Eliminar bloques markdown
+    clean = re.sub(r"```json\s*|```\s*", "", text).strip()
+    # Intentar parsear directamente
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        pass
+    # Intentar extraer el primer objeto o array JSON del texto
+    for pattern in [r'\{[\s\S]*\}', r'\[[\s\S]*\]']:
+        match = re.search(pattern, clean)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                continue
+    raise ValueError(f"No se pudo parsear JSON: {clean[:200]}")
 
 
 # ── Resumen de capítulo ───────────────────────────────────────
@@ -107,9 +167,16 @@ Genera un JSON con esta estructura exacta:
 
     result = await _call_ai(system, user, max_tokens=2500)
     try:
-        return _parse_json(result)
+        data = _parse_json(result)
+        # Limpiar el texto del resumen de artefactos
+        if isinstance(data, dict):
+            if "summary" in data:
+                data["summary"] = _clean_summary(data["summary"])
+            if "key_events" in data:
+                data["key_events"] = [_clean_summary(e) for e in data["key_events"]]
+        return data
     except Exception:
-        return {"summary": result, "key_events": []}
+        return {"summary": _clean_summary(result), "key_events": []}
 
 
 # ── Análisis de personajes ────────────────────────────────────
@@ -177,31 +244,11 @@ Genera un mapa mental en JSON con esta estructura exacta:
 {{
   "center": "{book_title}",
   "branches": [
-    {{
-      "label": "Trama principal",
-      "color": "#6366f1",
-      "children": ["evento clave 1", "evento clave 2"]
-    }},
-    {{
-      "label": "Personajes",
-      "color": "#f59e0b",
-      "children": ["personaje: descripción breve"]
-    }},
-    {{
-      "label": "Temas",
-      "color": "#10b981",
-      "children": ["tema 1", "tema 2"]
-    }},
-    {{
-      "label": "Lugares",
-      "color": "#ef4444",
-      "children": ["lugar 1", "lugar 2"]
-    }},
-    {{
-      "label": "Desenlace",
-      "color": "#8b5cf6",
-      "children": ["punto 1", "punto 2"]
-    }}
+    {{"label": "Trama principal", "color": "#6366f1", "children": ["evento clave 1", "evento clave 2"]}},
+    {{"label": "Personajes", "color": "#f59e0b", "children": ["personaje: descripción breve"]}},
+    {{"label": "Temas", "color": "#10b981", "children": ["tema 1", "tema 2"]}},
+    {{"label": "Lugares", "color": "#ef4444", "children": ["lugar 1", "lugar 2"]}},
+    {{"label": "Desenlace", "color": "#8b5cf6", "children": ["punto 1", "punto 2"]}}
   ]
 }}"""
 
@@ -220,35 +267,18 @@ async def generate_podcast_script(
     characters: list,
 ) -> str:
     system = """Eres un guionista de podcasts literarios en español.
-Creas conversaciones naturales y entretenidas entre dos presentadores:
-ANA (analítica, profunda, le gustan los temas filosóficos) y
-CARLOS (entusiasta, empático, se centra en personajes y emociones).
-El podcast debe sonar natural, con interrupciones, acuerdos y debates."""
+Creas conversaciones naturales entre dos presentadores:
+ANA (analítica, profunda) y CARLOS (entusiasta, empático).
+Formato obligatorio: ANA: [texto] / CARLOS: [texto]"""
 
     chars_text = "\n".join(
         f"- {c['name']}: {c.get('personality', '')[:200]}"
         for c in characters[:8]
     ) if characters else "Sin información de personajes"
 
-    user = f"""Crea el guión completo de un podcast de 8-12 minutos sobre "{book_title}" de {author or "autor desconocido"}.
-
-RESUMEN DEL LIBRO:
-{global_summary[:5000]}
-
-PERSONAJES PRINCIPALES:
-{chars_text}
-
-Formato obligatorio para cada línea de diálogo:
-ANA: [diálogo]
-CARLOS: [diálogo]
-
-El podcast debe cubrir:
-1. Introducción y bienvenida
-2. Sinopsis sin spoilers
-3. Análisis de la trama con spoilers (avisando)
-4. Discusión de personajes y su evolución
-5. Temas y simbolismo
-6. Valoración final y recomendación
-7. Despedida"""
+    user = f"""Podcast 8-12 min sobre "{book_title}" de {author or "autor desconocido"}.
+Resumen: {global_summary[:5000]}
+Personajes: {chars_text}
+Cubre: introducción, sinopsis, trama con spoilers, personajes, temas, valoración, despedida."""
 
     return await _call_ai(system, user, max_tokens=4000)

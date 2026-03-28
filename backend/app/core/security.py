@@ -4,7 +4,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import random
 import string
@@ -13,16 +12,24 @@ from email.mime.text import MIMEText
 
 from app.core.config import settings
 
+# bcrypt 4.x eliminó __about__; este filtro suprime el warning de passlib
+import warnings
+warnings.filterwarnings("ignore", ".*error reading bcrypt version.*")
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
+# bcrypt limita contraseñas a 72 bytes — truncamos antes de hashear
+def _truncate(password: str) -> str:
+    return password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return pwd_context.verify(_truncate(plain), hashed)
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return pwd_context.hash(_truncate(password))
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -45,7 +52,6 @@ def decode_temp_token(token: str) -> Optional[str]:
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
 ):
-    from app.core.database import get_global_db
     from app.models.user import User
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -60,7 +66,6 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    # Inline DB fetch to avoid circular imports
     from app.core.database import _global_session_factory
     async with _global_session_factory() as db:
         result = await db.execute(select(User).where(User.id == user_id))
@@ -77,7 +82,7 @@ def generate_otp(length: int = 6) -> str:
 
 async def send_otp_email(email: str, otp: str):
     if not settings.SMTP_HOST:
-        print(f"[DEV] OTP for {email}: {otp}")
+        print(f"[DEV] OTP para {email}: {otp}")
         return
 
     msg = MIMEText(f"""

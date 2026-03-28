@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { BookOpen, Upload, LogOut, User, Library } from 'lucide-react'
+import { BookOpen, Upload, LogOut, Library, Users } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import './Layout.css'
 
@@ -23,6 +23,10 @@ export default function Layout() {
           <NavLink to="/" end className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
             <Library size={18} strokeWidth={1.5} />
             <span>Biblioteca</span>
+          </NavLink>
+          <NavLink to="/authors" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
+            <Users size={18} strokeWidth={1.5} />
+            <span>Autores</span>
           </NavLink>
           <NavLink to="/upload" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
             <Upload size={18} strokeWidth={1.5} />

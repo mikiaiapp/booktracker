@@ -257,3 +257,45 @@ async def _podcast(user_id: str, book_id: str):
             book.error_msg = traceback.format_exc()
             await db.commit()
             raise
+
+
+# ── Resumen de un capítulo individual ─────────────────────────
+@celery_app.task(bind=True, name="summarize_chapter_task")
+def summarize_chapter_task(self, user_id: str, book_id: str, chapter_id: str):
+    return run_async(_summarize_single(user_id, book_id, chapter_id))
+
+
+async def _summarize_single(user_id: str, book_id: str, chapter_id: str):
+    from app.core.database import get_user_db
+    from app.models.book import Book, Chapter
+    from app.services.ai_analyzer import summarize_chapter
+    from sqlalchemy import select
+    import traceback
+
+    async for db in get_user_db(user_id):
+        try:
+            result = await db.execute(select(Book).where(Book.id == book_id))
+            book = result.scalar_one_or_none()
+            ch_result = await db.execute(
+                select(Chapter).where(Chapter.id == chapter_id)
+            )
+            chapter = ch_result.scalar_one_or_none()
+            if not chapter or not chapter.raw_text:
+                return
+
+            chapter.summary_status = "processing"
+            await db.commit()
+
+            summary_data = await summarize_chapter(
+                chapter.title, chapter.raw_text,
+                book.title if book else "", book.author if book else None
+            )
+            chapter.summary = summary_data.get("summary")
+            chapter.key_events = summary_data.get("key_events", [])
+            chapter.summary_status = "done"
+            await db.commit()
+
+        except Exception as e:
+            chapter.summary_status = "error"
+            await db.commit()
+            raise

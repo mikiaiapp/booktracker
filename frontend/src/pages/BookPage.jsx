@@ -7,7 +7,7 @@ import {
   Play, Pause, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle
 } from 'lucide-react'
-import { booksAPI, analysisAPI } from '../utils/api'
+import { booksAPI, analysisAPI, chapterAPI } from '../utils/api'
 import MindMap from '../components/MindMap'
 import './BookPage.css'
 
@@ -307,7 +307,33 @@ function InfoTab({ book }) {
   )
 }
 
-function ChaptersTab({ chapters, expanded, setExpanded }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized }) {
+  const [summarizing, setSummarizing] = React.useState({})
+
+  const handleSummarize = async (e, chapter) => {
+    e.stopPropagation()
+    setSummarizing(s => ({ ...s, [chapter.id]: true }))
+    try {
+      await chapterAPI.summarize(bookId, chapter.id)
+      toast('Resumiendo capítulo...', { icon: '⏳' })
+      // Poll hasta que termine
+      const poll = setInterval(async () => {
+        const { data } = await import('../utils/api').then(m => m.booksAPI.get(bookId))
+        const ch = data.chapters?.find(c => c.id === chapter.id)
+        if (ch?.summary_status === 'done') {
+          clearInterval(poll)
+          setSummarizing(s => ({ ...s, [chapter.id]: false }))
+          onChapterSummarized?.()
+          toast.success('Capítulo resumido')
+        }
+      }, 3000)
+      setTimeout(() => clearInterval(poll), 120000)
+    } catch {
+      setSummarizing(s => ({ ...s, [chapter.id]: false }))
+      toast.error('Error al resumir el capítulo')
+    }
+  }
+
   if (!chapters.length) return <p className="empty-tab">No se encontraron capítulos</p>
   return (
     <div className="chapters-list">
@@ -317,7 +343,18 @@ function ChaptersTab({ chapters, expanded, setExpanded }) {
             <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
             <span className="ch-title">{ch.title}</span>
             <div className="ch-meta">
-              {ch.summary_status === 'done' && <span className="badge badge-green">Resumido</span>}
+              {ch.summary_status === 'done'
+                ? <span className="badge badge-green">Resumido</span>
+                : ch.summary_status === 'processing'
+                  ? <span className="badge badge-gold">Procesando…</span>
+                  : <button
+                      className="summarize-ch-btn"
+                      onClick={(e) => handleSummarize(e, ch)}
+                      disabled={summarizing[ch.id]}
+                    >
+                      {summarizing[ch.id] ? '…' : '+ Resumir'}
+                    </button>
+              }
               {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
               {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>

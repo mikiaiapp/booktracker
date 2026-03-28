@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage'
 import LibraryPage from './pages/LibraryPage'
 import BookPage from './pages/BookPage'
 import UploadPage from './pages/UploadPage'
+import AuthorsPage from './pages/AuthorsPage'
 import Layout from './components/Layout'
 
 function PrivateRoute({ children }) {
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<LibraryPage />} />
           <Route path="upload" element={<UploadPage />} />
+          <Route path="authors" element={<AuthorsPage />} />
           <Route path="book/:id" element={<BookPage />} />
         </Route>
       </Routes>

@@ -1,14 +1,14 @@
 """
 Phase 1: Identify book and gather metadata.
-1. Extract text from file to get title/author hints
-2. Search Open Library + Google Books + Wikipedia
-3. Download cover image
+1. Extract hints from the file (title, author from metadata)
+2. Search Open Library + Google Books for book data
+3. Search Wikipedia + Open Library for author bio
+4. Download cover image
 """
 import httpx
 import re
 import os
-import asyncio
-from urllib.parse import quote   # reemplaza httpx.utils.quote eliminado en httpx 0.25+
+from urllib.parse import quote
 from typing import Optional
 import fitz  # PyMuPDF
 from app.core.config import settings
@@ -55,7 +55,8 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
     query = f"{title} {author or ''}".strip()
     metadata = {"title": title, "author": author}
 
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        # Open Library
         try:
             ol_data = await search_open_library(client, query)
             if ol_data:
@@ -63,6 +64,7 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Open Library error: {e}")
 
+        # Google Books
         try:
             gb_data = await search_google_books(client, query)
             if gb_data:
@@ -72,13 +74,29 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Google Books error: {e}")
 
-        if metadata.get("author") and not metadata.get("author_bio"):
-            try:
-                author_data = await search_wikipedia_author(client, metadata["author"])
-                if author_data:
-                    metadata.update(author_data)
-            except Exception as e:
-                print(f"Wikipedia error: {e}")
+        # Author bio + bibliography
+        author_name = metadata.get("author") or author
+        if author_name:
+            # Wikipedia (es + en)
+            if not metadata.get("author_bio"):
+                try:
+                    bio_data = await search_wikipedia_author(client, author_name)
+                    if bio_data:
+                        metadata.update(bio_data)
+                except Exception as e:
+                    print(f"Wikipedia error: {e}")
+
+            # Open Library author works (bibliography)
+            if not metadata.get("author_bibliography") and metadata.get("_ol_author_key"):
+                try:
+                    biblio = await get_ol_author_works(client, metadata["_ol_author_key"])
+                    if biblio:
+                        metadata["author_bibliography"] = biblio
+                except Exception as e:
+                    print(f"OL bibliography error: {e}")
+
+        # Limpiar clave interna
+        metadata.pop("_ol_author_key", None)
 
     return metadata
 
@@ -106,15 +124,22 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
         result["cover_url"] = f"https://covers.openlibrary.org/b/id/{doc['cover_i']}-L.jpg"
     if doc.get("first_sentence"):
         result["synopsis"] = doc["first_sentence"].get("value", "")
-    if doc.get("author_name") and doc.get("author_key"):
-        author_key = doc["author_key"][0]
-        try:
-            ar = await client.get(f"https://openlibrary.org{author_key}/works.json?limit=10")
-            works = ar.json().get("entries", [])
-            result["author_bibliography"] = [w.get("title") for w in works if w.get("title")][:10]
-        except Exception:
-            pass
+    # Guardar author_key para obtener bibliografía después
+    if doc.get("author_key"):
+        result["_ol_author_key"] = doc["author_key"][0]
     return result
+
+
+async def get_ol_author_works(client: httpx.AsyncClient, author_key: str) -> list:
+    """Obtiene la bibliografía completa del autor desde Open Library."""
+    url = f"https://openlibrary.org{author_key}/works.json?limit=20"
+    r = await client.get(url)
+    if r.status_code != 200:
+        return []
+    data = r.json()
+    works = data.get("entries", [])
+    titles = [w.get("title") for w in works if w.get("title")]
+    return titles[:15]
 
 
 async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
@@ -150,14 +175,15 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
 
 
 async def search_wikipedia_author(client: httpx.AsyncClient, author: str) -> dict:
+    """Busca biografía del autor en Wikipedia (español primero, luego inglés)."""
     for lang in ("es", "en"):
-        url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(author)}"
         try:
-            r = await client.get(url)
+            url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(author)}"
+            r = await client.get(url, headers={"User-Agent": "BookTracker/1.0"})
             if r.status_code == 200:
                 data = r.json()
                 bio = data.get("extract", "")
-                if bio:
+                if bio and len(bio) > 50:
                     return {"author_bio": bio}
         except Exception:
             pass
@@ -167,14 +193,13 @@ async def search_wikipedia_author(client: httpx.AsyncClient, author: str) -> dic
 async def download_cover(url: str, file_path: str) -> Optional[str]:
     try:
         book_id = os.path.basename(file_path).rsplit(".", 1)[0]
-        # Ruta absoluta basada en COVERS_DIR para que nginx la sirva correctamente
         user_folder = os.path.basename(os.path.dirname(file_path))
         cover_dir = os.path.join(settings.COVERS_DIR, user_folder)
         os.makedirs(cover_dir, exist_ok=True)
         cover_path = os.path.join(cover_dir, f"{book_id}.jpg")
 
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            r = await client.get(url)
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            r = await client.get(url, headers={"User-Agent": "BookTracker/1.0"})
             if r.status_code == 200:
                 with open(cover_path, "wb") as f:
                     f.write(r.content)

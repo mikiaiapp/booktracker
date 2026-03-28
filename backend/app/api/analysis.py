@@ -2,11 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pydantic import BaseModel
+from typing import Optional
 
 from app.core.security import get_current_user
 from app.core.database import get_user_db
 from app.models.user import User
-from app.models.book import Book, AnalysisJob
+from app.models.book import Book, AnalysisJob, Chapter
 
 router = APIRouter()
 
@@ -16,6 +18,7 @@ async def get_db(current_user: User = Depends(get_current_user)):
         yield session
 
 
+# ── Fase 2 ────────────────────────────────────────────────────
 @router.post("/{book_id}/phase2")
 async def trigger_phase2(
     book_id: str,
@@ -37,6 +40,7 @@ async def trigger_phase2(
     return {"task_id": task.id}
 
 
+# ── Fase 3 completa ───────────────────────────────────────────
 @router.post("/{book_id}/phase3")
 async def trigger_phase3(
     book_id: str,
@@ -58,6 +62,39 @@ async def trigger_phase3(
     return {"task_id": task.id}
 
 
+# ── Resumen de un capítulo individual ─────────────────────────
+@router.post("/{book_id}/chapter/{chapter_id}/summarize")
+async def summarize_single_chapter(
+    book_id: str,
+    chapter_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resume un capítulo concreto sin necesidad de lanzar toda la Fase 3."""
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if not book.phase2_done:
+        raise HTTPException(400, "Phase 2 not complete")
+
+    ch_result = await db.execute(
+        select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id)
+    )
+    chapter = ch_result.scalar_one_or_none()
+    if not chapter:
+        raise HTTPException(404, "Chapter not found")
+    if not chapter.raw_text:
+        raise HTTPException(400, "Chapter has no text to summarize")
+
+    from app.workers.tasks import summarize_chapter_task
+    task = summarize_chapter_task.delay(current_user.id, book_id, chapter_id)
+    chapter.summary_status = "processing"
+    await db.commit()
+    return {"task_id": task.id, "chapter_id": chapter_id}
+
+
+# ── Podcast ───────────────────────────────────────────────────
 @router.post("/{book_id}/podcast")
 async def trigger_podcast(
     book_id: str,
@@ -79,6 +116,7 @@ async def trigger_podcast(
     return {"task_id": task.id}
 
 
+# ── Status ────────────────────────────────────────────────────
 @router.get("/{book_id}/status")
 async def get_status(
     book_id: str,
@@ -95,16 +133,25 @@ async def get_status(
     )
     jobs = jobs_result.scalars().all()
 
+    # Progreso capítulos
+    ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+    chapters = ch_result.scalars().all()
+    total_ch = len(chapters)
+    done_ch = sum(1 for c in chapters if c.summary_status == "done")
+
     return {
         "status": book.status,
         "phase1_done": book.phase1_done,
         "phase2_done": book.phase2_done,
         "phase3_done": book.phase3_done,
         "error_msg": book.error_msg,
+        "chapters_total": total_ch,
+        "chapters_done": done_ch,
         "jobs": [{"phase": j.phase, "status": j.status, "progress": j.progress, "detail": j.detail} for j in jobs],
     }
 
 
+# ── Audio podcast ─────────────────────────────────────────────
 @router.get("/{book_id}/podcast/audio")
 async def get_podcast_audio(
     book_id: str,
@@ -116,3 +163,42 @@ async def get_podcast_audio(
     if not book or not book.podcast_audio_path:
         raise HTTPException(404, "Podcast not available")
     return FileResponse(book.podcast_audio_path, media_type="audio/mpeg")
+
+
+# ── Autores ───────────────────────────────────────────────────
+@router.get("/authors/list")
+async def list_authors(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Devuelve todos los autores únicos con sus libros."""
+    result = await db.execute(
+        select(Book.author, Book.author_bio, Book.author_bibliography,
+               Book.id, Book.title, Book.cover_local, Book.year, Book.status)
+        .where(Book.author.isnot(None))
+        .order_by(Book.author)
+    )
+    rows = result.all()
+
+    # Agrupar por autor
+    authors: dict = {}
+    for row in rows:
+        author = row.author
+        if not author:
+            continue
+        if author not in authors:
+            authors[author] = {
+                "name": author,
+                "bio": row.author_bio,
+                "bibliography": row.author_bibliography or [],
+                "books": [],
+            }
+        authors[author]["books"].append({
+            "id": row.id,
+            "title": row.title,
+            "cover_local": row.cover_local,
+            "year": row.year,
+            "status": row.status,
+        })
+
+    return list(authors.values())
