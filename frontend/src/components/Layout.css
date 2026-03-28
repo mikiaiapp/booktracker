@@ -1,3 +1,4 @@
+/* ── Desktop: sidebar vertical ────────────────────────────── */
 .layout {
   display: flex;
   min-height: 100vh;
@@ -127,4 +128,88 @@
   flex: 1;
   min-height: 100vh;
   background: var(--cream);
+}
+
+/* ── Mobile portrait: barra inferior ─────────────────────── */
+@media (max-width: 768px) and (orientation: portrait) {
+
+  .layout {
+    flex-direction: column;
+  }
+
+  /* Ocultar sidebar vertical */
+  .sidebar {
+    width: 100%;
+    min-height: unset;
+    height: auto;
+    position: fixed;
+    top: unset;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0;
+    flex-direction: row;
+    align-items: stretch;
+    border-top: 1px solid rgba(201,169,110,0.2);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+    z-index: 200;
+  }
+
+  /* Ocultar marca y footer en móvil */
+  .sidebar-brand,
+  .sidebar-footer {
+    display: none;
+  }
+
+  /* Nav horizontal */
+  .sidebar-nav {
+    flex-direction: row;
+    flex: 1;
+    padding: 0;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  /* Cada ítem ocupa el mismo espacio */
+  .nav-item {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.6rem 0.25rem;
+    border-radius: 0;
+    font-size: 0.65rem;
+    text-align: center;
+    /* safe area para iPhone con notch */
+    padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .nav-item svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-item span {
+    display: block;
+    line-height: 1;
+  }
+
+  .nav-item:hover {
+    background: rgba(255,255,255,0.06);
+  }
+
+  .nav-item.active {
+    background: rgba(201,169,110,0.12);
+    color: var(--gold);
+    border-top: 2px solid var(--gold);
+  }
+
+  /* Contenido ocupa toda la pantalla menos la barra inferior */
+  .main-content {
+    margin-left: 0;
+    margin-bottom: 64px; /* altura aprox. de la barra */
+    min-height: calc(100vh - 64px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
