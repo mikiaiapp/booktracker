@@ -124,15 +124,19 @@ services:
 
   # -----------------------------------------------------------
   # NGINX · Proxy inverso
+  # Construido desde ./nginx/Dockerfile que embebe nginx.conf
+  # dentro de la imagen — sin bind mounts de ficheros de config
   # -----------------------------------------------------------
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: booktracker-nginx:latest
     container_name: booktracker-nginx
     restart: unless-stopped
     ports:
       - "${NGINX_PORT:-8080}:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /volume1/docker/booktracker/data/covers:/data/covers:ro
       - /volume1/docker/booktracker/data/audio:/data/audio:ro
     depends_on:
