@@ -111,6 +111,15 @@ export default function BookPage() {
   )
 
   const book = data?.book || {}
+  // Guard: si no hay datos básicos, mostrar estado vacío
+  if (!loading && !data) return (
+    <div className="book-loading" style={{flexDirection:"column",gap:"1rem"}}>
+      <p style={{color:"var(--slate)"}}>No se pudo cargar el libro</p>
+      <button onClick={() => navigate("/")} style={{background:"var(--ink)",color:"var(--paper)",border:"none",padding:"0.5rem 1rem",borderRadius:"4px",cursor:"pointer"}}>
+        Volver a la biblioteca
+      </button>
+    </div>
+  )
   const chapters = data?.chapters || []
   const characters = data?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(status?.status)
@@ -126,7 +135,7 @@ export default function BookPage() {
         <div className="hero-content">
           <div className="hero-cover">
             {book.cover_local ? (
-              <img src={`/data/covers/${book.cover_local.split('/covers/')[1]}`} alt={book.title} />
+              <img src={book.cover_local?.includes('/covers/') ? `/data/covers/${book.cover_local.split('/covers/')[1]}` : book.cover_local} alt={book.title} />
             ) : (
               <div className="cover-ph-lg">
                 <BookOpen size={48} strokeWidth={1} />
