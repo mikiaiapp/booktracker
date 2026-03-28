@@ -262,7 +262,7 @@ export default function BookPage() {
 function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   if (!status) return null
   const steps = [
-    { label: 'Fase 1: Identificación', done: status.phase1_done },
+    { label: 'Fase 1: Identificación', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
     { label: 'Fase 2: Estructura', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done && !status.phase2_done },
     { label: 'Fase 3: Análisis IA', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done && !status.phase3_done },
     { label: 'Podcast', done: !!status.podcast_audio_path, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
@@ -280,7 +280,9 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
           }
           <span>{s.label}</span>
           {s.canTrigger && !isProcessing && (
-            <button className="trigger-btn" onClick={s.trigger}>Iniciar</button>
+            <button className="trigger-btn" onClick={s.trigger}>
+              {s.done ? 'Reidentificar' : 'Iniciar'}
+            </button>
           )}
         </div>
       ))}
