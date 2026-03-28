@@ -3,14 +3,13 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { authorsAPI, shellAPI } from '../utils/api'
-import { BookOpen, User, Clock, ExternalLink } from 'lucide-react'
+import { BookOpen, User, ExternalLink, Plus } from 'lucide-react'
 import './AuthorsPage.css'
 
 export default function AuthorsPage() {
   const [authors, setAuthors] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
-  const [autoCreating, setAutoCreating] = useState(false)  // visual spinner
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -36,52 +35,31 @@ export default function AuthorsPage() {
     }).finally(() => setLoading(false))
   }, [])
 
-  const [isAutoCreating, setIsAutoCreating] = useState(false)
-
   // Al seleccionar un autor, crea automáticamente fichas para todos los libros
   // de su bibliografía que aún no estén en la app
-  const isMissing = (item, existingBooks) => {
-    const title = typeof item === 'string' ? item : item.title
-    const isbn = typeof item === 'string' ? null : item.isbn
-    if (!title) return false
-    // Comprobar por ISBN
-    if (isbn && existingBooks.some(b => b.isbn && b.isbn === isbn)) return false
-    // Comprobar por título normalizado
-    const normalized = title.toLowerCase().trim()
-    return !existingBooks.some(b => b.title.toLowerCase().trim() === normalized)
+  const handleSelectAuthor = (author) => {
+    setSelected(author)
   }
 
-  const handleSelectAuthor = async (author) => {
-    setSelected(author)
-    if (isAutoCreating) return
-
-    const missing = (author.bibliography || []).filter(item => isMissing(item, author.books))
-    if (missing.length === 0) return
-
-    setIsAutoCreating(true)
-    setAutoCreating(true)
-
-    // Obtener lista actualizada antes de crear para evitar duplicados
-    let currentBooks = [...author.books]
-
-    for (const item of missing) {
-      const title = typeof item === 'string' ? item : item.title
-      const isbn = typeof item === 'string' ? null : (item.isbn || null)
-      if (!title) continue
-      // Doble comprobación con la lista actualizada en memoria
-      if (!isMissing(item, currentBooks)) continue
-      try {
-        await shellAPI.create(title, author.name, isbn)
-        // Añadir a la lista local para evitar duplicados en siguiente iteración
-        currentBooks.push({ title, isbn, status: 'shell' })
-      } catch {
-        // 400 = ya existe, ignorar
+  const handleAddShell = async (item, authorName) => {
+    const title = typeof item === 'string' ? item : item.title
+    const isbn = typeof item === 'string' ? null : (item.isbn || null)
+    const key = isbn || title
+    setCreating(c => ({ ...c, [key]: true }))
+    try {
+      const { data } = await shellAPI.create(title, authorName, isbn)
+      toast.success(`"${title}" añadida`)
+      await load()
+      navigate(`/book/${data.id}`)
+    } catch (err) {
+      if (err.response?.status === 400) {
+        toast('Este libro ya está en tu biblioteca')
+      } else {
+        toast.error('Error al crear la ficha')
       }
+    } finally {
+      setCreating(c => ({ ...c, [key]: false }))
     }
-
-    setIsAutoCreating(false)
-    setAutoCreating(false)
-    await load()
   }
 
   if (loading) return (
@@ -152,11 +130,7 @@ export default function AuthorsPage() {
               </div>
               <div>
                 <h2>{selected.name}</h2>
-                {autoCreating && (
-                  <p className="auto-creating">
-                    <Clock size={12} className="spin" /> Creando fichas automáticamente…
-                  </p>
-                )}
+
               </div>
             </div>
 
@@ -191,15 +165,15 @@ export default function AuthorsPage() {
             )}
 
             {/* Bibliografía completa como grid de portadas */}
-            {selected.books?.length > 0 && (
+            {(selected.books?.length > 0 || selected.bibliography?.length > 0) && (
               <div className="author-section">
                 <h3>Bibliografía completa</h3>
                 <div className="biblio-covers-grid">
+                  {/* Libros ya en la app */}
                   {selected.books.map(book => {
                     const isAnalyzed = book.status === 'complete' || book.phase3_done
                     const isShell = book.status === 'shell' || book.status === 'shell_error'
                     const isProcessing = ['summarizing', 'analyzing_structure', 'identifying'].includes(book.status)
-
                     return (
                       <Link
                         key={book.id}
@@ -209,14 +183,9 @@ export default function AuthorsPage() {
                       >
                         <div className="biblio-cover-img">
                           {book.cover_local ? (
-                            <img
-                              src={`/data/covers/${book.cover_local.split('/covers/')[1]}`}
-                              alt={book.title}
-                            />
+                            <img src={`/data/covers/${book.cover_local.split('/covers/')[1]}`} alt={book.title} />
                           ) : (
-                            <div className="biblio-cover-ph">
-                              <BookOpen size={18} strokeWidth={1} />
-                            </div>
+                            <div className="biblio-cover-ph"><BookOpen size={18} strokeWidth={1} /></div>
                           )}
                           {isShell && <div className="biblio-shell-overlay" />}
                           <div className="biblio-cover-badge-wrap">
@@ -228,6 +197,38 @@ export default function AuthorsPage() {
                         <span className="biblio-cover-title">{book.title}</span>
                         {book.year && <span className="biblio-cover-year">{book.year}</span>}
                       </Link>
+                    )
+                  })}
+
+                  {/* Libros de la bibliografía que NO están en la app */}
+                  {(selected.bibliography || []).filter(item => {
+                    const title = typeof item === 'string' ? item : item.title
+                    const isbn = typeof item === 'string' ? null : item.isbn
+                    if (!title) return false
+                    if (isbn && selected.books.some(b => b.isbn === isbn)) return false
+                    return !selected.books.some(b => b.title.toLowerCase().trim() === title.toLowerCase().trim())
+                  }).map((item, i) => {
+                    const title = typeof item === 'string' ? item : item.title
+                    const isbn = typeof item === 'string' ? null : item.isbn
+                    const key = isbn || title
+                    const isCreating = creating[key]
+                    return (
+                      <div key={i} className="biblio-cover-card is-missing" title={title}>
+                        <div className="biblio-cover-img">
+                          <div className="biblio-cover-ph">
+                            <BookOpen size={18} strokeWidth={1} />
+                          </div>
+                          <button
+                            className="biblio-add-btn"
+                            onClick={() => handleAddShell(item, selected.name)}
+                            disabled={isCreating}
+                            title="Añadir ficha"
+                          >
+                            {isCreating ? '…' : <Plus size={16} />}
+                          </button>
+                        </div>
+                        <span className="biblio-cover-title">{title}</span>
+                      </div>
                     )
                   })}
                 </div>

@@ -207,3 +207,27 @@
   border-color: #c9a96e;
   color: #c9a96e;
 }
+
+/* Libros no añadidos aún */
+.biblio-cover-card.is-missing .biblio-cover-img {
+  border-style: dashed;
+  border-color: #c9a96e;
+  background: #faf7f2;
+  position: relative;
+}
+
+.biblio-add-btn {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(201, 169, 110, 0.15);
+  border: none;
+  cursor: pointer;
+  color: #c9a96e;
+  transition: background 0.15s;
+  border-radius: 4px;
+}
+.biblio-add-btn:hover { background: rgba(201, 169, 110, 0.3); }
+.biblio-add-btn:disabled { opacity: 0.5; cursor: not-allowed; }
