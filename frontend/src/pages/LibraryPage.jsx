@@ -52,6 +52,7 @@ export default function LibraryPage() {
   }, [])
 
   const filtered = books
+    .filter(b => b.status !== 'shell' && b.status !== 'shell_error') // excluir fichas sin PDF
     .filter(b => filter === 'all' || b.read_status === filter)
     .filter(b => !search || b.title.toLowerCase().includes(search.toLowerCase()) ||
       b.author?.toLowerCase().includes(search.toLowerCase()))
@@ -61,7 +62,7 @@ export default function LibraryPage() {
       <div className="library-header">
         <div>
           <h1>Mi Biblioteca</h1>
-          <p className="library-sub">{books.length} {books.length === 1 ? 'libro' : 'libros'}</p>
+          <p className="library-sub">{books.filter(b => b.status !== 'shell' && b.status !== 'shell_error').length} {books.filter(b => b.status !== 'shell' && b.status !== 'shell_error').length === 1 ? 'libro' : 'libros'}</p>
         </div>
         <Link to="/upload" className="btn-upload">
           + Añadir libro
