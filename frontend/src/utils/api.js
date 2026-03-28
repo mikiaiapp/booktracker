@@ -64,3 +64,8 @@ export const chapterAPI = {
   summarize: (bookId, chapterId) =>
     api.post(`/analysis/${bookId}/chapter/${chapterId}/summarize`),
 }
+
+// Shell books (ficha sin archivo)
+export const shellAPI = {
+  create: (title, author) => api.post('/books/shell', { title, author }),
+}

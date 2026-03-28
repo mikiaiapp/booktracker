@@ -299,3 +299,50 @@ async def _summarize_single(user_id: str, book_id: str, chapter_id: str):
             chapter.summary_status = "error"
             await db.commit()
             raise
+
+
+# ── Ficha vacía: solo metadatos web ───────────────────────────
+@celery_app.task(bind=True, name="fetch_shell_metadata")
+def fetch_shell_metadata(self, user_id: str, book_id: str):
+    return run_async(_fetch_shell(user_id, book_id))
+
+
+async def _fetch_shell(user_id: str, book_id: str):
+    from app.core.database import get_user_db
+    from app.models.book import Book
+    from app.services.book_identifier import search_book_metadata, download_cover
+    from sqlalchemy import select
+    import traceback
+
+    async for db in get_user_db(user_id):
+        try:
+            result = await db.execute(select(Book).where(Book.id == book_id))
+            book = result.scalar_one_or_none()
+            if not book:
+                return
+
+            metadata = await search_book_metadata(book.title, book.author)
+
+            for k, v in metadata.items():
+                if hasattr(book, k) and v is not None and k != "_ol_author_key":
+                    setattr(book, k, v)
+
+            # Descargar portada (sin file_path real, usamos un path ficticio)
+            if metadata.get("cover_url"):
+                from app.core.config import settings
+                import os
+                cover_dir = os.path.join(settings.COVERS_DIR, user_id)
+                os.makedirs(cover_dir, exist_ok=True)
+                fake_path = os.path.join(settings.UPLOADS_DIR, user_id, f"{book_id}.pdf")
+                local_cover = await download_cover(metadata["cover_url"], fake_path)
+                if local_cover:
+                    book.cover_local = local_cover
+
+            book.phase1_done = True
+            book.status = "shell"   # Mantiene status shell (sin análisis)
+            await db.commit()
+
+        except Exception as e:
+            book.status = "shell_error"
+            book.error_msg = traceback.format_exc()
+            await db.commit()

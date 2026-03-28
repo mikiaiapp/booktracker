@@ -1,20 +1,50 @@
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { authorsAPI } from '../utils/api'
-import { BookOpen, User } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { authorsAPI, shellAPI } from '../utils/api'
+import { BookOpen, User, Plus, ExternalLink } from 'lucide-react'
 import './AuthorsPage.css'
 
 export default function AuthorsPage() {
   const [authors, setAuthors] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
+  const [creating, setCreating] = useState({})
+  const navigate = useNavigate()
 
-  useEffect(() => {
+  const load = () =>
     authorsAPI.list()
-      .then(r => setAuthors(r.data))
+      .then(r => {
+        setAuthors(r.data)
+        // Refrescar el autor seleccionado
+        if (selected) {
+          const updated = r.data.find(a => a.name === selected.name)
+          if (updated) setSelected(updated)
+        }
+      })
       .finally(() => setLoading(false))
-  }, [])
+
+  useEffect(() => { load() }, [])
+
+  const handleAddShell = async (title, author) => {
+    const key = `${title}__${author}`
+    setCreating(c => ({ ...c, [key]: true }))
+    try {
+      const { data } = await shellAPI.create(title, author)
+      toast.success(`"${title}" añadida a tu biblioteca`)
+      await load()
+      navigate(`/book/${data.id}`)
+    } catch (err) {
+      if (err.response?.status === 400) {
+        toast('Este libro ya está en tu biblioteca')
+      } else {
+        toast.error('Error al crear la ficha')
+      }
+    } finally {
+      setCreating(c => ({ ...c, [key]: false }))
+    }
+  }
 
   if (loading) return (
     <div className="authors-page">
@@ -32,12 +62,14 @@ export default function AuthorsPage() {
       <div className="page-header">
         <div>
           <h1>Autores</h1>
-          <p className="page-sub">{authors.length} {authors.length === 1 ? 'autor' : 'autores'} en tu biblioteca</p>
+          <p className="page-sub">
+            {authors.length} {authors.length === 1 ? 'autor' : 'autores'} en tu biblioteca
+          </p>
         </div>
       </div>
 
       <div className="authors-layout">
-        {/* Lista de autores */}
+        {/* Lista lateral de autores */}
         <div className="authors-list">
           {authors.length === 0 ? (
             <div className="empty-state">
@@ -68,8 +100,8 @@ export default function AuthorsPage() {
           )}
         </div>
 
-        {/* Detalle del autor */}
-        {selected && (
+        {/* Detalle del autor seleccionado */}
+        {selected ? (
           <motion.div
             className="author-detail"
             key={selected.name}
@@ -108,6 +140,9 @@ export default function AuthorsPage() {
                     </div>
                     <span className="author-book-title">{book.title}</span>
                     {book.year && <span className="author-book-year">{book.year}</span>}
+                    {book.status === 'shell' && (
+                      <span className="shell-badge">Solo ficha</span>
+                    )}
                   </Link>
                 ))}
               </div>
@@ -120,17 +155,38 @@ export default function AuthorsPage() {
                 <ul className="biblio-list">
                   {selected.bibliography.map((title, i) => {
                     const appBook = selected.books.find(
-                      b => b.title.toLowerCase() === title.toLowerCase()
+                      b => b.title.toLowerCase().trim() === title.toLowerCase().trim()
                     )
+                    const key = `${title}__${selected.name}`
+                    const isCreating = creating[key]
+
                     return (
                       <li key={i} className="biblio-item">
                         {appBook ? (
+                          // Ya en la biblioteca → link a la ficha
                           <Link to={`/book/${appBook.id}`} className="biblio-link">
-                            {title}
-                            <span className="biblio-badge">En tu biblioteca</span>
+                            <ExternalLink size={13} />
+                            <span>{title}</span>
+                            <span className={`biblio-badge ${appBook.status === 'shell' ? 'shell' : 'analyzed'}`}>
+                              {appBook.status === 'shell' ? 'Solo ficha' : 'Analizado'}
+                            </span>
                           </Link>
                         ) : (
-                          <span>{title}</span>
+                          // No está → mostrar título + botón añadir ficha
+                          <div className="biblio-item-row">
+                            <span className="biblio-title">{title}</span>
+                            <button
+                              className="add-shell-btn"
+                              onClick={() => handleAddShell(title, selected.name)}
+                              disabled={isCreating}
+                              title="Añadir ficha básica sin análisis"
+                            >
+                              {isCreating
+                                ? '…'
+                                : <><Plus size={12} /> Añadir ficha</>
+                              }
+                            </button>
+                          </div>
                         )}
                       </li>
                     )
@@ -139,9 +195,7 @@ export default function AuthorsPage() {
               </div>
             )}
           </motion.div>
-        )}
-
-        {!selected && authors.length > 0 && (
+        ) : (
           <div className="author-placeholder">
             <User size={48} strokeWidth={1} />
             <p>Selecciona un autor para ver su ficha</p>

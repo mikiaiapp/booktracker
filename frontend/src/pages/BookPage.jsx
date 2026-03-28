@@ -170,7 +170,12 @@ export default function BookPage() {
             </div>
 
             {/* Status pipeline */}
-            <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />
+            {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />}
+            {isShell && (
+              <div style={{marginTop:'0.5rem'}}>
+                <span style={{fontSize:'11px',background:'#f5f0e8',color:'#8a9aaa',padding:'3px 10px',borderRadius:'20px'}}>Solo ficha — sube el PDF para analizar</span>
+              </div>
+            )}
           </div>
 
           <button className="delete-btn" onClick={handleDelete} title="Eliminar libro">
@@ -187,6 +192,7 @@ export default function BookPage() {
               className={`tab-btn ${tab === t.id ? 'active' : ''}`}
               onClick={() => setTab(t.id)}
               disabled={
+                isShell ||
                 (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
                 (t.id === 'summary' && !status?.phase3_done) ||

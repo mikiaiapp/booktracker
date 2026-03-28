@@ -164,3 +164,49 @@ async def delete_book(
     await db.delete(book)
     await db.commit()
     return {"ok": True}
+
+
+# ── Crear ficha vacía desde bibliografía ──────────────────────
+class CreateShellRequest(BaseModel):
+    title: str
+    author: Optional[str] = None
+
+
+@router.post("/shell", status_code=201)
+async def create_shell_book(
+    req: CreateShellRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Crea una ficha de libro sin archivo — busca metadatos automáticamente."""
+    import uuid
+
+    # Comprobar si ya existe
+    from sqlalchemy import func as sqlfunc
+    existing = await db.execute(
+        select(Book).where(
+            sqlfunc.lower(Book.title) == req.title.lower(),
+            Book.author == req.author,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Este libro ya está en tu biblioteca")
+
+    book_id = str(uuid.uuid4())
+    book = Book(
+        id=book_id,
+        title=req.title,
+        author=req.author,
+        file_type=None,
+        file_path=None,
+        status="shell",          # sin archivo, solo ficha
+        phase1_done=False,
+    )
+    db.add(book)
+    await db.commit()
+
+    # Lanzar búsqueda de metadatos en background
+    from app.workers.tasks import fetch_shell_metadata
+    fetch_shell_metadata.delay(current_user.id, book_id)
+
+    return {"id": book_id, "status": "shell"}
