@@ -97,6 +97,9 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-worker
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     command: >
       celery -A app.workers.celery_app worker
       --loglevel=info
