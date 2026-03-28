@@ -77,7 +77,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: booktracker-backend:latest
+      no_cache: true
     container_name: booktracker-backend
     restart: unless-stopped
     environment:
@@ -95,7 +95,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    image: booktracker-backend:latest
     container_name: booktracker-worker
     restart: unless-stopped
     command: >
@@ -119,7 +118,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    image: booktracker-frontend:latest
+      no_cache: true
     container_name: booktracker-frontend
     restart: unless-stopped
     environment:
@@ -134,7 +133,6 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
-    image: booktracker-nginx:latest
     container_name: booktracker-nginx
     restart: unless-stopped
     ports:
