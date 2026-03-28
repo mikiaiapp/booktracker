@@ -64,12 +64,6 @@ services:
       - /volume1/docker/booktracker/data/redis:/data
     networks:
       - booktracker-net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
 
   # -----------------------------------------------------------
   # BACKEND · FastAPI
@@ -85,17 +79,9 @@ services:
       <<: *backend-env
     volumes: *backend-volumes
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     networks:
       - booktracker-net
-    healthcheck:
-      # Apunta a /api/health (endpoint dedicado, siempre disponible)
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
-      interval: 20s
-      timeout: 10s
-      retries: 10
-      start_period: 60s   # NAS puede tardar en arrancar uvicorn
 
   # -----------------------------------------------------------
   # WORKER · Celery — procesamiento IA en background
@@ -116,12 +102,8 @@ services:
       <<: *backend-env
     volumes: *backend-volumes
     depends_on:
-      redis:
-        condition: service_healthy
-      # Sin condition: service_healthy en backend para evitar
-      # bloqueo en cadena si el backend tarda en arrancar
-      backend:
-        condition: service_started
+      - redis
+      - backend
     networks:
       - booktracker-net
 
@@ -139,12 +121,6 @@ services:
       - VITE_API_URL=/api
     networks:
       - booktracker-net
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
-      interval: 20s
-      timeout: 10s
-      retries: 10
-      start_period: 60s   # Vite build puede tardar en NAS lentos
 
   # -----------------------------------------------------------
   # NGINX · Proxy inverso
@@ -160,10 +136,8 @@ services:
       - /volume1/docker/booktracker/data/covers:/data/covers:ro
       - /volume1/docker/booktracker/data/audio:/data/audio:ro
     depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_healthy
+      - backend
+      - frontend
     networks:
       - booktracker-net
 
