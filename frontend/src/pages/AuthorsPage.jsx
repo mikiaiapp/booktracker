@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { authorsAPI, shellAPI } from '../utils/api'
@@ -12,6 +12,7 @@ export default function AuthorsPage() {
   const [selected, setSelected] = useState(null)
   const [autoCreating, setAutoCreating] = useState(false)  // visual spinner
   const navigate = useNavigate()
+  const location = useLocation()
 
   const load = useCallback(() =>
     authorsAPI.list().then(r => {
@@ -23,48 +24,64 @@ export default function AuthorsPage() {
     }).finally(() => setLoading(false))
   , [selected])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    authorsAPI.list().then(r => {
+      setAuthors(r.data)
+      // Si venimos desde la ficha de un libro, seleccionar el autor automáticamente
+      const targetAuthor = location.state?.author
+      if (targetAuthor) {
+        const found = r.data.find(a => a.name === targetAuthor)
+        if (found) handleSelectAuthor(found)
+      }
+    }).finally(() => setLoading(false))
+  }, [])
 
   const [isAutoCreating, setIsAutoCreating] = useState(false)
 
   // Al seleccionar un autor, crea automáticamente fichas para todos los libros
   // de su bibliografía que aún no estén en la app
+  const isMissing = (item, existingBooks) => {
+    const title = typeof item === 'string' ? item : item.title
+    const isbn = typeof item === 'string' ? null : item.isbn
+    if (!title) return false
+    // Comprobar por ISBN
+    if (isbn && existingBooks.some(b => b.isbn && b.isbn === isbn)) return false
+    // Comprobar por título normalizado
+    const normalized = title.toLowerCase().trim()
+    return !existingBooks.some(b => b.title.toLowerCase().trim() === normalized)
+  }
+
   const handleSelectAuthor = async (author) => {
     setSelected(author)
-    if (isAutoCreating) return  // evitar ejecuciones paralelas
+    if (isAutoCreating) return
 
-    const missing = (author.bibliography || []).filter(item => {
-      const title = typeof item === 'string' ? item : item.title
-      const isbn = typeof item === 'string' ? null : item.isbn
-      if (!title) return false
-      if (isbn && author.books.some(b => b.isbn === isbn)) return false
-      const normalized = title.toLowerCase().trim()
-      return !author.books.some(b => b.title.toLowerCase().trim() === normalized)
-    })
-
+    const missing = (author.bibliography || []).filter(item => isMissing(item, author.books))
     if (missing.length === 0) return
 
     setIsAutoCreating(true)
     setAutoCreating(true)
-    let created = 0
+
+    // Obtener lista actualizada antes de crear para evitar duplicados
+    let currentBooks = [...author.books]
+
     for (const item of missing) {
       const title = typeof item === 'string' ? item : item.title
       const isbn = typeof item === 'string' ? null : (item.isbn || null)
       if (!title) continue
+      // Doble comprobación con la lista actualizada en memoria
+      if (!isMissing(item, currentBooks)) continue
       try {
         await shellAPI.create(title, author.name, isbn)
-        created++
+        // Añadir a la lista local para evitar duplicados en siguiente iteración
+        currentBooks.push({ title, isbn, status: 'shell' })
       } catch {
         // 400 = ya existe, ignorar
       }
     }
+
     setIsAutoCreating(false)
     setAutoCreating(false)
-
-    if (created > 0) {
-      toast(`${created} ficha${created > 1 ? 's' : ''} creada${created > 1 ? 's' : ''} automáticamente`)
-      await load()
-    }
+    await load()
   }
 
   if (loading) return (
