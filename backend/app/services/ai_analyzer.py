@@ -30,19 +30,29 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000) -> str:
 
 
 async def _call_gemini(system: str, user: str, max_tokens: int) -> str:
+    import os
+    import asyncio
     import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+
+    # Acepta GEMINI_API_KEY o GOOGLE_API_KEY (nombre que usa la librería de Google)
+    api_key = (
+        settings.GEMINI_API_KEY
+        or os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("GEMINI_API_KEY")
+    )
+    if not api_key:
+        raise ValueError("Configura GEMINI_API_KEY en las variables de entorno de Portainer")
+
+    # configure() debe llamarse ANTES de crear GenerativeModel
+    genai.configure(api_key=api_key)
+
     model = genai.GenerativeModel(
         model_name=settings.AI_MODEL,
         system_instruction=system,
         generation_config={"max_output_tokens": max_tokens, "temperature": 0.3},
     )
-    # Gemini es síncrono — lo ejecutamos en un executor para no bloquear
-    import asyncio
     loop = asyncio.get_event_loop()
-    response = await loop.run_in_executor(
-        None, lambda: model.generate_content(user)
-    )
+    response = await loop.run_in_executor(None, lambda: model.generate_content(user))
     return response.text
 
 
