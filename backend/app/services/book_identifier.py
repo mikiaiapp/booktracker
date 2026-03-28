@@ -86,17 +86,15 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
                 except Exception as e:
                     print(f"Wikipedia error: {e}")
 
-            # Open Library author works (bibliography)
-            if metadata.get("_ol_author_key"):
+            # Bibliografía via Google Books (más fiable que Open Library)
+            author_name = metadata.get("author") or author
+            if author_name:
                 try:
-                    biblio = await get_ol_author_works(metadata["_ol_author_key"])
+                    biblio = await get_author_bibliography(author_name)
                     if biblio:
                         metadata["author_bibliography"] = biblio
-                        print(f"Bibliography found: {len(biblio)} titles")
-                    else:
-                        print("Bibliography empty from OL")
                 except Exception as e:
-                    print(f"OL bibliography error: {e}")
+                    print(f"Bibliography error: {e}")
 
         # Limpiar clave interna
         metadata.pop("_ol_author_key", None)
@@ -133,32 +131,31 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
     return result
 
 
-async def get_ol_author_works(author_key: str) -> list:
-    """Obtiene la bibliografía completa del autor desde Open Library con reintentos."""
-    import asyncio
-    import socket
-    url = f"https://openlibrary.org{author_key}/works.json?limit=20"
-    for attempt in range(4):
-        try:
-            # Forzar resolución DNS con Google antes de la llamada
-            socket.getaddrinfo("openlibrary.org", 443)
-            async with httpx.AsyncClient(
-                timeout=30,
-                follow_redirects=True,
-                transport=httpx.AsyncHTTPTransport(retries=2)
-            ) as c:
-                r = await c.get(url)
-            if r.status_code == 200:
-                data = r.json()
-                works = data.get("entries", [])
-                titles = [w.get("title") for w in works if w.get("title")]
-                print(f"OL bibliography: {len(titles)} titles found")
-                return titles[:15]
-        except Exception as e:
-            print(f"OL bibliography attempt {attempt+1} failed: {e}")
-            if attempt < 3:
-                await asyncio.sleep(3 * (attempt + 1))
-    return []
+async def get_author_bibliography(author_name: str) -> list:
+    """Obtiene bibliografía del autor via Google Books (siempre accesible)."""
+    url = f"https://www.googleapis.com/books/v1/volumes?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=relevance"
+    try:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
+            r = await c.get(url)
+        if r.status_code != 200:
+            return []
+        items = r.json().get("items", [])
+        seen = set()
+        titles = []
+        for item in items:
+            info = item.get("volumeInfo", {})
+            title = info.get("title", "")
+            authors = info.get("authors", [])
+            # Solo libros donde el autor es el principal
+            if title and authors and author_name.lower() in " ".join(authors).lower():
+                if title not in seen:
+                    seen.add(title)
+                    titles.append(title)
+        print(f"Google Books bibliography: {len(titles)} titles for {author_name}")
+        return titles[:20]
+    except Exception as e:
+        print(f"Google Books bibliography error: {e}")
+        return []
 
 
 async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:

@@ -240,3 +240,72 @@
 .empty-state p {
   font-size: 0.875rem;
 }
+
+/* ── Indicadores visuales de estado en portada ─────────────── */
+.book-cover {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Overlay semitransparente para fichas sin PDF */
+.shell-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 13, 13, 0.35);
+  pointer-events: none;
+}
+
+/* Badge de estado en esquina inferior */
+.cover-status {
+  position: absolute;
+  bottom: 6px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cover-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+  white-space: nowrap;
+}
+
+.cover-badge.analyzed {
+  background: rgba(201, 169, 110, 0.92);
+  color: #0d0d0d;
+}
+
+.cover-badge.shell {
+  background: rgba(30, 30, 30, 0.80);
+  color: #8a9aaa;
+  border: 1px solid rgba(138, 154, 170, 0.3);
+}
+
+.cover-badge.processing {
+  background: rgba(201, 169, 110, 0.5);
+  color: #fff;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.cover-badge.identified {
+  background: rgba(30, 30, 30, 0.75);
+  color: #c9a96e;
+  border: 1px solid rgba(201, 169, 110, 0.3);
+}
+
+/* Portadas shell ligeramente desaturadas */
+.book-cover.is-shell img {
+  filter: saturate(0.5) brightness(0.85);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}

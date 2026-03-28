@@ -155,7 +155,7 @@ async def _phase3(user_id: str, book_id: str):
             await db.commit()
 
             total = len(chapters)
-            # Summarize each chapter
+            # Summarize each chapter with pause to respect Gemini free tier rate limit
             for i, chapter in enumerate(chapters):
                 if chapter.raw_text:
                     summary_data = await summarize_chapter(
@@ -168,6 +168,11 @@ async def _phase3(user_id: str, book_id: str):
                 job.progress = int((i + 1) / total * 60)
                 job.detail = f"Resumiendo capítulo {i+1}/{total}: {chapter.title}"
                 await db.commit()
+
+                # Pausa entre capítulos para respetar el rate limit de Gemini free tier
+                # (15 req/min → 1 cada 5 segundos como mínimo)
+                import asyncio as _asyncio
+                await _asyncio.sleep(5)
 
             # Analyze characters
             job.detail = "Analizando personajes..."

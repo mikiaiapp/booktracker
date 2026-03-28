@@ -158,3 +158,46 @@
   .authors-layout { grid-template-columns: 1fr; }
   .authors-list { position: static; }
 }
+
+/* ── Indicadores visuales en portadas de autor ─────────────── */
+.author-book-cover {
+  position: relative;
+  overflow: hidden;
+}
+
+.author-book-cover.is-shell img {
+  filter: saturate(0.4) brightness(0.8);
+}
+
+.shell-overlay-sm {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 13, 13, 0.3);
+  pointer-events: none;
+}
+
+.author-cover-badge-wrap {
+  position: absolute;
+  bottom: 3px;
+  left: 0; right: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.author-cover-badge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+}
+
+.author-cover-badge.analyzed {
+  background: rgba(201, 169, 110, 0.9);
+  color: #0d0d0d;
+}
+
+.author-cover-badge.shell {
+  background: rgba(20, 20, 20, 0.8);
+  color: #8a9aaa;
+}

@@ -129,8 +129,6 @@ services:
     restart: unless-stopped
     environment:
       - VITE_API_URL=/api
-    volumes:
-      - /volume1/docker/booktracker/overrides/BookPage.jsx:/app/src/pages/BookPage.jsx:ro
     networks:
       - booktracker-net
 
@@ -192,6 +190,12 @@ networks:
 #  │ book_identifier.py   │ Fase 1: metadatos y bibliografía     │
 #  │ analysis.py          │ API endpoints de análisis            │
 #  │ tasks.py             │ Tareas Celery (fases + resumen)      │
-#  │ BookPage.jsx         │ Vista de libro con botón + Resumir   │
 #  └──────────────────────┴──────────────────────────────────────┘
+#
+#  NOTA: El frontend (React) se compila durante el build de Docker.
+#  Para actualizar ficheros .jsx hay que reconstruir la imagen:
+#    docker stop booktracker-frontend
+#    docker rm booktracker-frontend
+#    docker rmi booktracker-frontend (o el ID)
+#    Portainer → Start the stack
 # =============================================================

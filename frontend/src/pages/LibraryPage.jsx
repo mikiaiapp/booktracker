@@ -113,20 +113,31 @@ export default function LibraryPage() {
               transition={{ delay: i * 0.05 }}
             >
               <Link to={`/book/${book.id}`} className="book-card">
-                <div className="book-cover">
+                <div className={`book-cover ${book.status === 'shell' || book.status === 'shell_error' ? 'is-shell' : ''}`}>
                   {book.cover_local ? (
                     <img src={`/data/covers/${book.cover_local.split('/covers/')[1]}`} alt={book.title} />
                   ) : (
                     <div className="cover-placeholder">
                       <BookOpen size={32} strokeWidth={1} />
-                      <span>{book.file_type?.toUpperCase()}</span>
+                      <span>{book.file_type?.toUpperCase() || 'FICHA'}</span>
                     </div>
                   )}
-                  <div className="cover-overlay">
-                    <span className={`badge ${STATUS_LABELS[book.status]?.cls || 'badge-slate'}`}>
-                      {STATUS_LABELS[book.status]?.label || book.status}
-                    </span>
+                  {/* Overlay con estado del análisis */}
+                  <div className="cover-status">
+                    {book.status === 'complete' || book.phase3_done ? (
+                      <span className="cover-badge analyzed">✦ Analizado</span>
+                    ) : book.status === 'shell' || book.status === 'shell_error' ? (
+                      <span className="cover-badge shell">Solo ficha</span>
+                    ) : ['summarizing','analyzing_structure','identifying'].includes(book.status) ? (
+                      <span className="cover-badge processing">Procesando…</span>
+                    ) : book.phase1_done ? (
+                      <span className="cover-badge identified">Identificado</span>
+                    ) : null}
                   </div>
+                  {/* Overlay semitransparente para libros shell */}
+                  {(book.status === 'shell' || book.status === 'shell_error') && (
+                    <div className="shell-overlay" />
+                  )}
                 </div>
                 <div className="book-info">
                   <h3 className="book-title">{book.title}</h3>

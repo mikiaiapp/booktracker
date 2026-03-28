@@ -225,7 +225,7 @@ export default function BookPage() {
             {tab === 'info' && <InfoTab book={book} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} />}
