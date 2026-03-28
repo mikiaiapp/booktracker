@@ -77,7 +77,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      no_cache: true
     container_name: booktracker-backend
     restart: unless-stopped
     environment:
@@ -121,7 +120,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      no_cache: true
     container_name: booktracker-frontend
     restart: unless-stopped
     environment:
