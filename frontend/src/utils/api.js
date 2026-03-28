@@ -48,6 +48,7 @@ export const booksAPI = {
 // Analysis
 export const analysisAPI = {
   status: (bookId) => api.get(`/analysis/${bookId}/status`),
+  triggerPhase1: (bookId) => api.post(`/analysis/${bookId}/phase1`),
   triggerPhase2: (bookId) => api.post(`/analysis/${bookId}/phase2`),
   triggerPhase3: (bookId) => api.post(`/analysis/${bookId}/phase3`),
   triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),

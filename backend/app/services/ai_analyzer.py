@@ -54,11 +54,33 @@ async def _call_gemini(system: str, user: str, max_tokens: int) -> str:
         },
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        r = await client.post(url, json=payload)
-        if r.status_code != 200:
+    import asyncio
+    # Reintentos automáticos con espera exponencial para límites de cuota (429)
+    max_retries = 4
+    for attempt in range(max_retries):
+        async with httpx.AsyncClient(timeout=120) as client:
+            r = await client.post(url, json=payload)
+
+        if r.status_code == 200:
+            data = r.json()
+            break
+        elif r.status_code == 429:
+            if attempt < max_retries - 1:
+                # Extraer retryDelay del error si está disponible
+                try:
+                    retry_secs = float(
+                        r.json()["error"]["details"][-1].get("retryDelay", "60s")
+                        .replace("s", "")
+                    )
+                except Exception:
+                    retry_secs = 60
+                wait = min(retry_secs + (attempt * 15), 120)
+                print(f"Gemini 429 — esperando {wait:.0f}s antes de reintentar ({attempt+1}/{max_retries})")
+                await asyncio.sleep(wait)
+                continue
+            raise ValueError(f"Gemini cuota agotada. Límite diario alcanzado. Inténtalo mañana.")
+        else:
             raise ValueError(f"Gemini API error {r.status_code}: {r.text}")
-        data = r.json()
 
     try:
         return data["candidates"][0]["content"]["parts"][0]["text"]

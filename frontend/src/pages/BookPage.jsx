@@ -64,6 +64,7 @@ export default function BookPage() {
 
   const triggerPhase = async (phase) => {
     try {
+      if (phase === 1) await analysisAPI.triggerPhase1(id)
       if (phase === 2) await analysisAPI.triggerPhase2(id)
       if (phase === 3) await analysisAPI.triggerPhase3(id)
       if (phase === 'podcast') await analysisAPI.triggerPodcast(id)

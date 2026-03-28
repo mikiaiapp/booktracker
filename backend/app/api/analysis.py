@@ -18,6 +18,27 @@ async def get_db(current_user: User = Depends(get_current_user)):
         yield session
 
 
+# ── Fase 1 (relanzar identificación) ─────────────────────────
+@router.post("/{book_id}/phase1")
+async def trigger_phase1(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    from app.workers.tasks import process_book_phase1
+    task = process_book_phase1.delay(current_user.id, book_id)
+    book.task_id = task.id
+    book.status = "identifying"
+    book.phase1_done = False
+    await db.commit()
+    return {"task_id": task.id}
+
+
 # ── Fase 2 ────────────────────────────────────────────────────
 @router.post("/{book_id}/phase2")
 async def trigger_phase2(
