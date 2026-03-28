@@ -10,6 +10,7 @@ export default function AuthorsPage() {
   const [authors, setAuthors] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
+  const [creating, setCreating] = useState({})
   const navigate = useNavigate()
   const location = useLocation()
 
