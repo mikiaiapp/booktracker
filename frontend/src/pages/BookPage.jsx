@@ -319,7 +319,7 @@ function InfoTab({ book }) {
         <section>
           <h3>Otras obras del autor</h3>
           <ul className="biblio-list">
-            {book.author_bibliography.map((t, i) => <li key={i}>{t}</li>)}
+            {book.author_bibliography.map((t, i) => <li key={i}>{typeof t === 'string' ? t : t?.title || ''}</li>)}
           </ul>
         </section>
       )}
