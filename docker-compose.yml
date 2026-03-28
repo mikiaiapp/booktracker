@@ -7,13 +7,14 @@
 #
 #  1. Crear carpetas en el NAS (una sola vez vía SSH):
 #       mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
+#       mkdir -p /volume1/docker/booktracker/overrides
 #
 #  2. En Portainer → Stacks → Add stack → Repository:
 #       - Repository URL:  https://github.com/TU_USUARIO/TU_REPO
 #       - Compose path:    docker-compose.yml
 #
-#  3. En la sección "Environment variables" de Portainer añadir:
-#       SECRET_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
+#  3. En la sección "Environment variables" de Portainer añadir
+#     las variables listadas al final de este archivo.
 #
 #  ACCESO:  http://IP-NAS:8080
 # =============================================================
@@ -25,7 +26,9 @@ x-backend-env: &backend-env
   SECRET_KEY:           ${SECRET_KEY:?Variable SECRET_KEY no definida en Portainer}
   ANTHROPIC_API_KEY:    ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY:       ${OPENAI_API_KEY:-}
-  AI_MODEL:             ${AI_MODEL:-claude-sonnet-4-20250514}
+  GEMINI_API_KEY:       ${GEMINI_API_KEY:-}
+  GOOGLE_API_KEY:       ${GOOGLE_API_KEY:-}
+  AI_MODEL:             ${AI_MODEL:-gemini-2.0-flash}
   TTS_PROVIDER:         ${TTS_PROVIDER:-openai}
   ELEVENLABS_API_KEY:   ${ELEVENLABS_API_KEY:-}
   DATABASE_DIR:         /data/databases
@@ -44,6 +47,8 @@ x-backend-volumes: &backend-volumes
   - /volume1/docker/booktracker/data/covers:/data/covers
   - /volume1/docker/booktracker/data/audio:/data/audio
   - /volume1/docker/booktracker/data/databases:/data/databases
+  - /volume1/docker/booktracker/overrides/ai_analyzer.py:/app/app/services/ai_analyzer.py:ro
+  - /volume1/docker/booktracker/overrides/book_identifier.py:/app/app/services/book_identifier.py:ro
 
 # ── Servicios ──────────────────────────────────────────────────
 services:
@@ -124,8 +129,6 @@ services:
 
   # -----------------------------------------------------------
   # NGINX · Proxy inverso
-  # Construido desde ./nginx/Dockerfile que embebe nginx.conf
-  # dentro de la imagen — sin bind mounts de ficheros de config
   # -----------------------------------------------------------
   nginx:
     build:
@@ -156,20 +159,29 @@ networks:
 #  OBLIGATORIAS:
 #  ┌─────────────────────┬────────────────────────────────────────┐
 #  │ SECRET_KEY          │ Texto largo aleatorio (mín. 32 chars)  │
-#  │ ANTHROPIC_API_KEY   │ sk-ant-...  (si usas Claude)           │
-#  │ OPENAI_API_KEY      │ sk-...      (si usas GPT-4o o TTS)     │
-#  │ AI_MODEL            │ claude-sonnet-4-20250514  o  gpt-4o    │
-#  │ TTS_PROVIDER        │ openai  (más barato)  o  elevenlabs    │
+#  │ GEMINI_API_KEY      │ AIza... — obtener en aistudio.google.com│
+#  │ GOOGLE_API_KEY      │ AIza... — misma clave que GEMINI_API_KEY│
+#  │ AI_MODEL            │ gemini-2.0-flash  (gratuito)           │
 #  └─────────────────────┴────────────────────────────────────────┘
 #
-#  OPCIONALES:
+#  PARA PODCAST (opcional):
 #  ┌─────────────────────┬────────────────────────────────────────┐
+#  │ OPENAI_API_KEY      │ sk-...  (necesario para TTS de audio)  │
+#  │ TTS_PROVIDER        │ openai                                 │
+#  └─────────────────────┴────────────────────────────────────────┘
+#
+#  OTRAS OPCIONALES:
+#  ┌─────────────────────┬────────────────────────────────────────┐
+#  │ ANTHROPIC_API_KEY   │ sk-ant-...  (si prefieres Claude)      │
 #  │ NGINX_PORT          │ 8080  (cambia si el puerto está ocupado)│
-#  │ ELEVENLABS_API_KEY  │ Solo si TTS_PROVIDER=elevenlabs        │
 #  │ SMTP_HOST           │ smtp.gmail.com  (para 2FA por email)   │
 #  │ SMTP_PORT           │ 587                                    │
 #  │ SMTP_USER           │ tu_cuenta@gmail.com                    │
 #  │ SMTP_PASS           │ App Password de Google                 │
-#  │ SMTP_FROM           │ noreply@booktracker.local              │
 #  └─────────────────────┴────────────────────────────────────────┘
+#
+#  NOTA: Los ficheros ai_analyzer.py y book_identifier.py se
+#  montan desde /volume1/docker/booktracker/overrides/ para
+#  permitir actualizaciones sin reconstruir la imagen Docker.
+#  Asegúrate de que esa carpeta existe y contiene los ficheros.
 # =============================================================
