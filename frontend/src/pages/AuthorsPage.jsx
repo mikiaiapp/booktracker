@@ -10,7 +10,7 @@ export default function AuthorsPage() {
   const [authors, setAuthors] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
-  const [autoCreating, setAutoCreating] = useState(false)
+  const [autoCreating, setAutoCreating] = useState(false)  // visual spinner
   const navigate = useNavigate()
 
   const load = useCallback(() =>
@@ -25,15 +25,18 @@ export default function AuthorsPage() {
 
   useEffect(() => { load() }, [])
 
+  const [isAutoCreating, setIsAutoCreating] = useState(false)
+
   // Al seleccionar un autor, crea automáticamente fichas para todos los libros
   // de su bibliografía que aún no estén en la app
   const handleSelectAuthor = async (author) => {
     setSelected(author)
+    if (isAutoCreating) return  // evitar ejecuciones paralelas
 
     const missing = (author.bibliography || []).filter(item => {
-      const title = item.title || item
-      const isbn = item.isbn
-      // Comprobar por ISBN primero, luego por título
+      const title = typeof item === 'string' ? item : item.title
+      const isbn = typeof item === 'string' ? null : item.isbn
+      if (!title) return false
       if (isbn && author.books.some(b => b.isbn === isbn)) return false
       const normalized = title.toLowerCase().trim()
       return !author.books.some(b => b.title.toLowerCase().trim() === normalized)
@@ -41,18 +44,21 @@ export default function AuthorsPage() {
 
     if (missing.length === 0) return
 
+    setIsAutoCreating(true)
     setAutoCreating(true)
     let created = 0
     for (const item of missing) {
-      const title = item.title || item
-      const isbn = item.isbn || null
+      const title = typeof item === 'string' ? item : item.title
+      const isbn = typeof item === 'string' ? null : (item.isbn || null)
+      if (!title) continue
       try {
         await shellAPI.create(title, author.name, isbn)
         created++
       } catch {
-        // Ya existe o error — ignorar silenciosamente
+        // 400 = ya existe, ignorar
       }
     }
+    setIsAutoCreating(false)
     setAutoCreating(false)
 
     if (created > 0) {

@@ -27,6 +27,7 @@ export default function BookPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [data, setData] = useState(null)
+  const [prevData, setPrevData] = useState(null)  // mantiene datos previos durante reload
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('info')
@@ -111,9 +112,10 @@ export default function BookPage() {
     </div>
   )
 
-  const book = data?.book || {}
-  // Guard: si no hay datos básicos, mostrar estado vacío
-  if (!loading && !data) return (
+  // Usar datos previos como fallback durante recargas (evita pantalla en blanco)
+  const activeData = data || prevData
+  const book = activeData?.book || {}
+  if (!loading && !activeData) return (
     <div className="book-loading" style={{flexDirection:"column",gap:"1rem"}}>
       <p style={{color:"var(--slate)"}}>No se pudo cargar el libro</p>
       <button onClick={() => navigate("/")} style={{background:"var(--ink)",color:"var(--paper)",border:"none",padding:"0.5rem 1rem",borderRadius:"4px",cursor:"pointer"}}>
@@ -121,8 +123,8 @@ export default function BookPage() {
       </button>
     </div>
   )
-  const chapters = data?.chapters || []
-  const characters = data?.characters || []
+  const chapters = activeData?.chapters || []
+  const characters = activeData?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(status?.status)
   const isShell = book?.status === 'shell' || book?.status === 'shell_error'
 
