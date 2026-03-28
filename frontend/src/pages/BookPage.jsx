@@ -285,7 +285,7 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
           <span>{s.label}</span>
           {s.canTrigger && !isProcessing && (
             <button className="trigger-btn" onClick={s.trigger}>
-              {s.done ? 'Reidentificar' : 'Iniciar'}
+              {s.done ? 'Reidentificar' : s.resumable ? 'Reanudar' : 'Iniciar'}
             </button>
           )}
         </div>
@@ -515,7 +515,6 @@ function RefsTab({ book }) {
       icon: '📖',
       desc: 'Artículo del libro',
       url: `https://es.wikipedia.org/wiki/${title.replace(/%20/g, '_')}`,
-      fallback: `https://es.wikipedia.org/w/index.php?search=${title}+${author}`,
     },
     {
       name: 'Goodreads',
@@ -573,7 +572,6 @@ function RefsTab({ book }) {
       icon: '📖',
       desc: 'Biografía del autor',
       url: `https://es.wikipedia.org/wiki/${author.replace(/%20/g, '_')}`,
-      fallback: `https://es.wikipedia.org/w/index.php?search=${author}`,
     },
     {
       name: 'Goodreads',
@@ -601,65 +599,26 @@ function RefsTab({ book }) {
     },
   ] : []
 
-  const [modal, setModal] = React.useState(null)  // {url, name}
-
-  const openModal = (link) => setModal(link)
-  const closeModal = () => setModal(null)
-
-  // Cerrar con Escape
-  React.useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') closeModal() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [])
-
   return (
     <div className="refs-tab">
-      {modal && (
-        <div className="ref-modal-overlay" onClick={closeModal}>
-          <div className="ref-modal" onClick={e => e.stopPropagation()}>
-            <div className="ref-modal-bar">
-              <span className="ref-modal-title">{modal.icon} {modal.name}</span>
-              <div className="ref-modal-actions">
-                <a href={modal.url} target="_blank" rel="noopener noreferrer"
-                   className="ref-modal-ext" title="Abrir en nueva pestaña">
-                  <ExternalLink size={14} />
-                </a>
-                <button className="ref-modal-close" onClick={closeModal}>✕</button>
-              </div>
-            </div>
-            <div className="ref-modal-body">
-              <iframe
-                src={modal.url}
-                title={modal.name}
-                className="ref-iframe"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-                onError={() => {}}
-              />
-              <div className="ref-iframe-blocked">
-                <p>Este sitio no permite ser embebido.</p>
-                <a href={modal.url} target="_blank" rel="noopener noreferrer"
-                   className="ref-open-btn">
-                  <ExternalLink size={16} /> Abrir {modal.name}
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="refs-section">
         <h3>Sobre el libro</h3>
         <div className="refs-grid">
           {bookLinks.map(link => (
-            <button key={link.name} className="ref-card" onClick={() => openModal(link)}>
+            <a
+              key={link.name}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ref-card"
+            >
               <span className="ref-icon">{link.icon}</span>
               <div className="ref-info">
                 <span className="ref-name">{link.name}</span>
                 <span className="ref-desc">{link.desc}</span>
               </div>
               <ExternalLink size={13} className="ref-arrow" />
-            </button>
+            </a>
           ))}
         </div>
       </div>
@@ -669,22 +628,28 @@ function RefsTab({ book }) {
           <h3>Sobre {authorRaw}</h3>
           <div className="refs-grid">
             {authorLinks.map(link => (
-              <button key={link.name} className="ref-card" onClick={() => openModal(link)}>
+              <a
+                key={link.name}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ref-card"
+              >
                 <span className="ref-icon">{link.icon}</span>
                 <div className="ref-info">
                   <span className="ref-name">{link.name}</span>
                   <span className="ref-desc">{link.desc}</span>
                 </div>
                 <ExternalLink size={13} className="ref-arrow" />
-              </button>
+              </a>
             ))}
           </div>
         </div>
       )}
 
       <p className="refs-note">
-        Los enlaces se generan automáticamente. Si el sitio no permite embeberse,
-        usa el icono <ExternalLink size={11} style={{verticalAlign:'middle'}} /> para abrirlo en nueva pestaña.
+        Los enlaces se generan automáticamente a partir del título y autor.
+        Algunos pueden no encontrar el libro exacto.
       </p>
     </div>
   )
