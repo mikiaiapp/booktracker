@@ -9,11 +9,14 @@
 #       mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
 #       mkdir -p /volume1/docker/booktracker/overrides
 #
-#  2. En Portainer → Stacks → Add stack → Repository:
+#  2. Copiar los ficheros de override al NAS:
+#       scp ai_analyzer.py book_identifier.py analysis.py tasks.py BookPage.jsx admin@IP-NAS:/volume1/docker/booktracker/overrides/
+#
+#  3. En Portainer → Stacks → Add stack → Repository:
 #       - Repository URL:  https://github.com/TU_USUARIO/TU_REPO
 #       - Compose path:    docker-compose.yml
 #
-#  3. En la sección "Environment variables" de Portainer añadir
+#  4. En la sección "Environment variables" de Portainer añadir
 #     las variables listadas al final de este archivo.
 #
 #  ACCESO:  http://IP-NAS:8080
@@ -49,6 +52,8 @@ x-backend-volumes: &backend-volumes
   - /volume1/docker/booktracker/data/databases:/data/databases
   - /volume1/docker/booktracker/overrides/ai_analyzer.py:/app/app/services/ai_analyzer.py:ro
   - /volume1/docker/booktracker/overrides/book_identifier.py:/app/app/services/book_identifier.py:ro
+  - /volume1/docker/booktracker/overrides/analysis.py:/app/app/api/analysis.py:ro
+  - /volume1/docker/booktracker/overrides/tasks.py:/app/app/workers/tasks.py:ro
 
 # ── Servicios ──────────────────────────────────────────────────
 services:
@@ -124,6 +129,8 @@ services:
     restart: unless-stopped
     environment:
       - VITE_API_URL=/api
+    volumes:
+      - /volume1/docker/booktracker/overrides/BookPage.jsx:/app/src/pages/BookPage.jsx:ro
     networks:
       - booktracker-net
 
@@ -179,8 +186,12 @@ networks:
 #  │ SMTP_PASS           │ App Password de Google                 │
 #  └─────────────────────┴────────────────────────────────────────┘
 #
-#  NOTA: Los ficheros ai_analyzer.py y book_identifier.py se
-#  montan desde /volume1/docker/booktracker/overrides/ para
-#  permitir actualizaciones sin reconstruir la imagen Docker.
-#  Asegúrate de que esa carpeta existe y contiene los ficheros.
+#  FICHEROS DE OVERRIDE en /volume1/docker/booktracker/overrides/:
+#  ┌──────────────────────┬──────────────────────────────────────┐
+#  │ ai_analyzer.py       │ Motor IA (Gemini REST / Claude / GPT)│
+#  │ book_identifier.py   │ Fase 1: metadatos y bibliografía     │
+#  │ analysis.py          │ API endpoints de análisis            │
+#  │ tasks.py             │ Tareas Celery (fases + resumen)      │
+#  │ BookPage.jsx         │ Vista de libro con botón + Resumir   │
+#  └──────────────────────┴──────────────────────────────────────┘
 # =============================================================
