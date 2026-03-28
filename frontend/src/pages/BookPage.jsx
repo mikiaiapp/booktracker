@@ -123,6 +123,7 @@ export default function BookPage() {
   const chapters = data?.chapters || []
   const characters = data?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(status?.status)
+  const isShell = book?.status === 'shell' || book?.status === 'shell_error'
 
   return (
     <div className="book-page">
@@ -180,7 +181,7 @@ export default function BookPage() {
             </div>
 
             {/* Status pipeline */}
-            {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />}
+            {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} book={book} />}
             {isShell && (
               <div style={{marginTop:'0.5rem'}}>
                 <span style={{fontSize:'11px',background:'#f5f0e8',color:'#8a9aaa',padding:'3px 10px',borderRadius:'20px'}}>Solo ficha — sube el PDF para analizar</span>
@@ -258,7 +259,7 @@ export default function BookPage() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function ProcessingPipeline({ status, isProcessing, onTrigger }) {
+function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   if (!status) return null
   const steps = [
     { label: 'Fase 1: Identificación', done: status.phase1_done },
