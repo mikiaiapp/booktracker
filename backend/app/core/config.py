@@ -5,11 +5,13 @@ from typing import Optional
 class Settings(BaseSettings):
     SECRET_KEY: str = "dev-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24h
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
+    # IA — configura solo el que vayas a usar
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
-    AI_MODEL: str = "claude-sonnet-4-20250514"
+    GEMINI_API_KEY: Optional[str] = None
+    AI_MODEL: str = "gemini-2.0-flash"   # por defecto gratuito
     TTS_PROVIDER: str = "openai"
 
     DATABASE_DIR: str = "/data/databases"
