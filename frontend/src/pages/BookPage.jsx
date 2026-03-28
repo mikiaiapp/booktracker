@@ -149,7 +149,11 @@ export default function BookPage() {
 
           <div className="hero-info">
             <h1>{book.title}</h1>
-            {book.author && <p className="hero-author">{book.author}</p>}
+            {book.author && (
+              <p className="hero-author">
+                <Link to="/authors" state={{author: book.author}} className="author-link">{book.author}</Link>
+              </p>
+            )}
 
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}

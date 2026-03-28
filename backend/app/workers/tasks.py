@@ -327,8 +327,10 @@ async def _fetch_shell(user_id: str, book_id: str):
     from app.core.database import get_user_db
     from app.models.book import Book
     from app.services.book_identifier import search_book_metadata, download_cover
-    from sqlalchemy import select
-    import traceback
+    from sqlalchemy import select, or_
+    from sqlalchemy import func as sqlfunc
+    import traceback, os
+    from app.core.config import settings
 
     async for db in get_user_db(user_id):
         try:
@@ -339,14 +341,33 @@ async def _fetch_shell(user_id: str, book_id: str):
 
             metadata = await search_book_metadata(book.title, book.author)
 
+            # Si encontramos un ISBN, comprobar si ya existe otro libro con ese ISBN
+            # (deduplicación definitiva por ISBN)
+            found_isbn = metadata.get("isbn")
+            if found_isbn and found_isbn != book.isbn:
+                dup = await db.execute(
+                    select(Book).where(
+                        Book.isbn == found_isbn,
+                        Book.id != book_id
+                    )
+                )
+                if dup.scalar_one_or_none():
+                    # Ya existe un libro con ese ISBN — eliminar este duplicado
+                    await db.delete(book)
+                    await db.commit()
+                    print(f"Shell duplicado eliminado: {book.title} (ISBN {found_isbn} ya existe)")
+                    return
+
+            # Aplicar todos los metadatos encontrados
+            skip_keys = {"_ol_author_key", "cover_url"}
             for k, v in metadata.items():
-                if hasattr(book, k) and v is not None and k != "_ol_author_key":
+                if k in skip_keys:
+                    continue
+                if hasattr(book, k) and v is not None:
                     setattr(book, k, v)
 
-            # Descargar portada (sin file_path real, usamos un path ficticio)
+            # Descargar portada
             if metadata.get("cover_url"):
-                from app.core.config import settings
-                import os
                 cover_dir = os.path.join(settings.COVERS_DIR, user_id)
                 os.makedirs(cover_dir, exist_ok=True)
                 fake_path = os.path.join(settings.UPLOADS_DIR, user_id, f"{book_id}.pdf")
@@ -355,10 +376,13 @@ async def _fetch_shell(user_id: str, book_id: str):
                     book.cover_local = local_cover
 
             book.phase1_done = True
-            book.status = "shell"   # Mantiene status shell (sin análisis)
+            book.status = "shell"
             await db.commit()
 
         except Exception as e:
-            book.status = "shell_error"
-            book.error_msg = traceback.format_exc()
-            await db.commit()
+            try:
+                book.status = "shell_error"
+                book.error_msg = traceback.format_exc()
+                await db.commit()
+            except:
+                pass

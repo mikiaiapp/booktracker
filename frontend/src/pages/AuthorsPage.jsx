@@ -27,13 +27,14 @@ export default function AuthorsPage() {
   useEffect(() => {
     authorsAPI.list().then(r => {
       setAuthors(r.data)
+      setLoading(false)
       // Si venimos desde la ficha de un libro, seleccionar el autor automáticamente
       const targetAuthor = location.state?.author
       if (targetAuthor) {
         const found = r.data.find(a => a.name === targetAuthor)
-        if (found) handleSelectAuthor(found)
+        if (found) setSelected(found)
       }
-    }).finally(() => setLoading(false))
+    }).catch(() => setLoading(false))
   }, [])
 
   // Al seleccionar un autor, crea automáticamente fichas para todos los libros

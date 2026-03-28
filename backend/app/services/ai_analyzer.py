@@ -173,24 +173,49 @@ def _parse_json(text: str) -> dict | list:
 async def summarize_chapter(chapter_title: str, text: str, book_title: str, author: Optional[str]) -> dict:
     system = """Eres un experto literario que crea resúmenes detallados con spoilers completos.
 El objetivo es que el lector pueda recordar exactamente qué pasó leyendo solo el resumen.
-Responde ÚNICAMENTE con JSON válido, sin texto adicional ni bloques de código."""
+Responde ÚNICAMENTE con JSON válido, sin texto adicional ni bloques de código.
+IMPORTANTE: El resumen debe estar completo. No lo cortes nunca a mitad de frase."""
+
+    # Si el texto es muy largo, dividir en dos partes y resumir cada una
+    max_input = 12000
+    if len(text) > max_input:
+        mid = len(text) // 2
+        # Buscar un punto de corte natural (fin de párrafo)
+        cut = text.rfind('\n\n', max_input // 2, max_input)
+        if cut == -1:
+            cut = max_input
+        text_input = text[:cut]
+        suffix = f"\n[Nota: texto truncado a {cut} caracteres. Resume lo que hay aquí.]"
+    else:
+        text_input = text
+        suffix = ""
 
     user = f"""Libro: "{book_title}" de {author or "autor desconocido"}
 Capítulo: "{chapter_title}"
 
 Texto del capítulo:
-{text[:15000]}
+{text_input}{suffix}
 
-Genera un JSON con esta estructura exacta:
+Genera un JSON con esta estructura exacta. El resumen DEBE terminar con una frase completa:
 {{
-  "summary": "Resumen detallado del capítulo con todos los eventos importantes y spoilers (mínimo 300 palabras)",
+  "summary": "Resumen detallado del capítulo con todos los eventos importantes y spoilers (mínimo 200 palabras, máximo 400 palabras)",
   "key_events": ["evento 1", "evento 2", "evento 3"]
 }}"""
 
-    result = await _call_ai(system, user, max_tokens=2500)
+    # Usar más tokens para evitar truncamiento
+    result = await _call_ai(system, user, max_tokens=3500)
+
+    # Detectar si el resultado parece truncado (no termina con } o ")
+    clean = result.strip()
+    if clean and not (clean.endswith('}') or clean.endswith('"') or clean.endswith(']')):
+        # Intentar reparar añadiendo cierre
+        if '"summary"' in clean and '"key_events"' not in clean:
+            clean += '", "key_events": []}' 
+        elif '"key_events"' in clean:
+            clean += ']}'
+
     try:
-        data = _parse_json(result)
-        # Limpiar el texto del resumen de artefactos
+        data = _parse_json(clean)
         if isinstance(data, dict):
             if "summary" in data:
                 data["summary"] = _clean_summary(data["summary"])
