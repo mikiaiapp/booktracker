@@ -1,15 +1,16 @@
-.authors-page { padding: 2.5rem; max-width: 1100px; }
+.authors-page { padding: 2.5rem; max-width: 1200px; }
 .page-header { margin-bottom: 2rem; }
 .page-header h1 { font-size: 22px; font-weight: 500; }
 .page-sub { font-size: 13px; color: #4a5568; margin-top: 3px; }
 
 .authors-layout {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 240px 1fr;
   gap: 1.5rem;
   align-items: start;
 }
 
+/* ── Lista lateral ───────────────────────────────────────────── */
 .authors-list {
   background: white;
   border: 1.5px solid #ede6d6;
@@ -35,12 +36,11 @@
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; font-weight: 500; flex-shrink: 0;
 }
-
 .author-item-info { display: flex; flex-direction: column; min-width: 0; }
 .author-item-name { font-size: 13px; font-weight: 500; color: #0d0d0d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .author-item-count { font-size: 11px; color: #8a9aaa; }
 
-/* Detalle */
+/* ── Detalle ─────────────────────────────────────────────────── */
 .author-detail {
   background: white; border: 1.5px solid #ede6d6;
   border-radius: 8px; padding: 1.75rem;
@@ -58,146 +58,131 @@
   display: flex; align-items: center; justify-content: center;
   font-size: 22px; font-family: Georgia, serif; flex-shrink: 0;
 }
-
 .author-detail-header h2 { font-size: 20px; font-weight: 500; }
+
+.auto-creating {
+  font-size: 11px; color: #8a9aaa; margin-top: 4px;
+  display: flex; align-items: center; gap: 5px;
+}
 
 .author-section { margin-bottom: 1.75rem; }
 .author-section h3 {
   font-size: 11px; font-weight: 500;
   text-transform: uppercase; letter-spacing: 0.07em;
-  color: #8a9aaa; margin-bottom: 0.75rem;
+  color: #8a9aaa; margin-bottom: 1rem;
   padding-bottom: 0.4rem; border-bottom: 1px solid #f5f0e8;
 }
-.author-section p { font-size: 13px; color: #4a5568; line-height: 1.75; }
+.author-section > p { font-size: 13px; color: #4a5568; line-height: 1.75; }
 
-/* Libros en la app */
-.author-books-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-
-.author-book-card {
-  display: flex; flex-direction: column; align-items: center;
-  gap: 5px; text-decoration: none; width: 76px; transition: transform 0.15s;
+/* ── Grid de portadas ────────────────────────────────────────── */
+.biblio-covers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 1rem;
 }
-.author-book-card:hover { transform: translateY(-2px); }
 
-.author-book-cover {
-  width: 60px; height: 85px; border-radius: 4px;
-  background: #f5f0e8; border: 1px solid #ede6d6;
-  overflow: hidden; display: flex; align-items: center;
-  justify-content: center; color: #8a9aaa;
+.biblio-cover-card {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 6px;
+  text-decoration: none;
+  transition: transform 0.15s;
+  cursor: pointer;
 }
-.author-book-cover img { width: 100%; height: 100%; object-fit: cover; }
-.author-book-title {
+.biblio-cover-card:hover { transform: translateY(-3px); }
+
+.biblio-cover-img {
+  width: 80px; height: 114px;
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+  background: #f5f0e8;
+  border: 1.5px solid #ede6d6;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: box-shadow 0.15s;
+}
+.biblio-cover-card:hover .biblio-cover-img {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+.biblio-cover-img img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+.biblio-cover-ph {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%; color: #8a9aaa;
+}
+
+/* Overlay para fichas sin PDF */
+.biblio-shell-overlay {
+  position: absolute; inset: 0;
+  background: rgba(13,13,13,0.3);
+  pointer-events: none;
+}
+.biblio-cover-card.is-shell .biblio-cover-img img {
+  filter: saturate(0.4) brightness(0.85);
+}
+
+/* Badge de estado */
+.biblio-cover-badge-wrap {
+  position: absolute; bottom: 4px;
+  left: 0; right: 0;
+  display: flex; justify-content: center;
+}
+.biblio-status-badge {
+  font-size: 8px; font-weight: 700;
+  padding: 2px 6px; border-radius: 20px;
+  backdrop-filter: blur(4px);
+  letter-spacing: 0.03em;
+}
+.biblio-status-badge.analyzed {
+  background: rgba(201,169,110,0.92); color: #0d0d0d;
+}
+.biblio-status-badge.shell {
+  background: rgba(20,20,20,0.78); color: #8a9aaa;
+  border: 1px solid rgba(138,154,170,0.3);
+}
+.biblio-status-badge.processing {
+  background: rgba(201,169,110,0.5); color: #fff;
+  animation: pulse 1.5s infinite;
+}
+
+/* Borde dorado para analizados */
+.biblio-cover-card.is-analyzed .biblio-cover-img {
+  border-color: #c9a96e;
+  box-shadow: 0 2px 8px rgba(201,169,110,0.25);
+}
+
+.biblio-cover-title {
   font-size: 10px; color: #0d0d0d; text-align: center;
-  line-height: 1.3; display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.3; max-width: 90px;
+  display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden;
 }
-.author-book-year { font-size: 10px; color: #8a9aaa; }
-.shell-badge {
-  font-size: 9px; background: #f5f0e8; color: #8a9aaa;
-  padding: 1px 5px; border-radius: 10px;
-}
+.biblio-cover-year { font-size: 10px; color: #8a9aaa; }
 
-/* Bibliografía */
-.biblio-list { list-style: none; display: flex; flex-direction: column; gap: 0; }
-
-.biblio-item {
-  font-size: 13px; color: #4a5568;
-  padding: 7px 0; border-bottom: 1px solid #f5f0e8;
-}
-.biblio-item:last-child { border-bottom: none; }
-
-/* Libro ya en biblioteca */
-.biblio-link {
-  display: flex; align-items: center; gap: 8px;
-  color: #0d0d0d; text-decoration: none;
-}
-.biblio-link:hover { color: #c9a96e; }
-.biblio-link span:first-of-type { flex: 1; }
-
-.biblio-badge {
-  font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 20px; flex-shrink: 0;
-}
-.biblio-badge.analyzed { background: #d4edda; color: #1a5c2e; }
-.biblio-badge.shell { background: #f5f0e8; color: #8a9aaa; }
-
-/* Libro NO en biblioteca */
-.biblio-item-row {
-  display: flex; align-items: center; gap: 10px;
-}
-.biblio-title { flex: 1; color: #4a5568; }
-
-.add-shell-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: none; border: 1.5px solid #ede6d6;
-  color: #8a9aaa; padding: 3px 10px; border-radius: 20px;
-  font-size: 11px; font-weight: 500; cursor: pointer;
-  transition: all 0.15s; white-space: nowrap; flex-shrink: 0;
-}
-.add-shell-btn:hover:not(:disabled) { border-color: #c9a96e; color: #c9a96e; }
-.add-shell-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* Placeholder */
+/* ── Placeholder y utilidades ────────────────────────────────── */
 .author-placeholder {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; min-height: 300px; gap: 0.75rem;
   color: #8a9aaa; font-size: 13px;
   background: white; border: 1.5px dashed #ede6d6; border-radius: 8px;
 }
-
 .empty-state {
   display: flex; flex-direction: column; align-items: center;
   padding: 3rem; gap: 0.75rem; color: #8a9aaa;
   font-size: 13px; text-align: center;
 }
-
 .authors-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem;
 }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
 @media (max-width: 700px) {
   .authors-layout { grid-template-columns: 1fr; }
   .authors-list { position: static; }
-}
-
-/* ── Indicadores visuales en portadas de autor ─────────────── */
-.author-book-cover {
-  position: relative;
-  overflow: hidden;
-}
-
-.author-book-cover.is-shell img {
-  filter: saturate(0.4) brightness(0.8);
-}
-
-.shell-overlay-sm {
-  position: absolute;
-  inset: 0;
-  background: rgba(13, 13, 13, 0.3);
-  pointer-events: none;
-}
-
-.author-cover-badge-wrap {
-  position: absolute;
-  bottom: 3px;
-  left: 0; right: 0;
-  display: flex;
-  justify-content: center;
-}
-
-.author-cover-badge {
-  font-size: 8px;
-  font-weight: 700;
-  padding: 2px 5px;
-  border-radius: 10px;
-  backdrop-filter: blur(4px);
-}
-
-.author-cover-badge.analyzed {
-  background: rgba(201, 169, 110, 0.9);
-  color: #0d0d0d;
-}
-
-.author-cover-badge.shell {
-  background: rgba(20, 20, 20, 0.8);
-  color: #8a9aaa;
+  .biblio-covers-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
 }

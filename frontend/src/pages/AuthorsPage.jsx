@@ -1,48 +1,57 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { authorsAPI, shellAPI } from '../utils/api'
-import { BookOpen, User, Plus, ExternalLink } from 'lucide-react'
+import { BookOpen, User, CheckCircle, Clock } from 'lucide-react'
 import './AuthorsPage.css'
 
 export default function AuthorsPage() {
   const [authors, setAuthors] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
-  const [creating, setCreating] = useState({})
+  const [autoCreating, setAutoCreating] = useState(false)
   const navigate = useNavigate()
 
-  const load = () =>
-    authorsAPI.list()
-      .then(r => {
-        setAuthors(r.data)
-        // Refrescar el autor seleccionado
-        if (selected) {
-          const updated = r.data.find(a => a.name === selected.name)
-          if (updated) setSelected(updated)
-        }
-      })
-      .finally(() => setLoading(false))
+  const load = useCallback(() =>
+    authorsAPI.list().then(r => {
+      setAuthors(r.data)
+      if (selected) {
+        const updated = r.data.find(a => a.name === selected.name)
+        if (updated) setSelected(updated)
+      }
+    }).finally(() => setLoading(false))
+  , [selected])
 
   useEffect(() => { load() }, [])
 
-  const handleAddShell = async (title, author) => {
-    const key = `${title}__${author}`
-    setCreating(c => ({ ...c, [key]: true }))
-    try {
-      const { data } = await shellAPI.create(title, author)
-      toast.success(`"${title}" añadida a tu biblioteca`)
-      await load()
-      navigate(`/book/${data.id}`)
-    } catch (err) {
-      if (err.response?.status === 400) {
-        toast('Este libro ya está en tu biblioteca')
-      } else {
-        toast.error('Error al crear la ficha')
+  // Al seleccionar un autor, crea automáticamente fichas para todos los libros
+  // de su bibliografía que aún no estén en la app
+  const handleSelectAuthor = async (author) => {
+    setSelected(author)
+
+    const missing = (author.bibliography || []).filter(title => {
+      const normalized = title.toLowerCase().trim()
+      return !author.books.some(b => b.title.toLowerCase().trim() === normalized)
+    })
+
+    if (missing.length === 0) return
+
+    setAutoCreating(true)
+    let created = 0
+    for (const title of missing) {
+      try {
+        await shellAPI.create(title, author.name)
+        created++
+      } catch {
+        // Ya existe o error — ignorar silenciosamente
       }
-    } finally {
-      setCreating(c => ({ ...c, [key]: false }))
+    }
+    setAutoCreating(false)
+
+    if (created > 0) {
+      toast(`${created} ficha${created > 1 ? 's' : ''} creada${created > 1 ? 's' : ''} automáticamente`)
+      await load()
     }
   }
 
@@ -69,7 +78,7 @@ export default function AuthorsPage() {
       </div>
 
       <div className="authors-layout">
-        {/* Lista lateral de autores */}
+        {/* Lista lateral */}
         <div className="authors-list">
           {authors.length === 0 ? (
             <div className="empty-state">
@@ -84,7 +93,7 @@ export default function AuthorsPage() {
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
-                onClick={() => setSelected(author)}
+                onClick={() => handleSelectAuthor(author)}
               >
                 <div className="author-avatar-sm">
                   {author.name[0].toUpperCase()}
@@ -100,7 +109,7 @@ export default function AuthorsPage() {
           )}
         </div>
 
-        {/* Detalle del autor seleccionado */}
+        {/* Detalle */}
         {selected ? (
           <motion.div
             className="author-detail"
@@ -112,7 +121,14 @@ export default function AuthorsPage() {
               <div className="author-avatar-lg">
                 {selected.name[0].toUpperCase()}
               </div>
-              <h2>{selected.name}</h2>
+              <div>
+                <h2>{selected.name}</h2>
+                {autoCreating && (
+                  <p className="auto-creating">
+                    <Clock size={12} className="spin" /> Creando fichas automáticamente…
+                  </p>
+                )}
+              </div>
             </div>
 
             {selected.bio && (
@@ -122,83 +138,54 @@ export default function AuthorsPage() {
               </div>
             )}
 
-            {/* Libros en la app */}
-            <div className="author-section">
-              <h3>En tu biblioteca</h3>
-              <div className="author-books-grid">
-                {selected.books.map(book => (
-                  <Link key={book.id} to={`/book/${book.id}`} className="author-book-card">
-                    <div className="author-book-cover">
-                      {book.cover_local ? (
-                        <img
-                          src={`/data/covers/${book.cover_local.split('/covers/')[1]}`}
-                          alt={book.title}
-                        />
-                      ) : (
-                        <BookOpen size={20} strokeWidth={1} />
-                      )}
-                    </div>
-                    <span className="author-book-title">{book.title}</span>
-                    {book.year && <span className="author-book-year">{book.year}</span>}
-                    {book.status === 'shell' && (
-                      <span className="shell-badge">Solo ficha</span>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            {/* Bibliografía completa */}
-            {selected.bibliography?.length > 0 && (
+            {/* Bibliografía completa como grid de portadas */}
+            {selected.books?.length > 0 && (
               <div className="author-section">
                 <h3>Bibliografía completa</h3>
-                <ul className="biblio-list">
-                  {selected.bibliography.map((title, i) => {
-                    const appBook = selected.books.find(
-                      b => b.title.toLowerCase().trim() === title.toLowerCase().trim()
-                    )
-                    const key = `${title}__${selected.name}`
-                    const isCreating = creating[key]
+                <div className="biblio-covers-grid">
+                  {selected.books.map(book => {
+                    const isAnalyzed = book.status === 'complete' || book.phase3_done
+                    const isShell = book.status === 'shell' || book.status === 'shell_error'
+                    const isProcessing = ['summarizing', 'analyzing_structure', 'identifying'].includes(book.status)
 
                     return (
-                      <li key={i} className="biblio-item">
-                        {appBook ? (
-                          // Ya en la biblioteca → link a la ficha
-                          <Link to={`/book/${appBook.id}`} className="biblio-link">
-                            <ExternalLink size={13} />
-                            <span>{title}</span>
-                            <span className={`biblio-badge ${appBook.status === 'shell' ? 'shell' : 'analyzed'}`}>
-                              {appBook.status === 'shell' ? 'Solo ficha' : 'Analizado'}
-                            </span>
-                          </Link>
-                        ) : (
-                          // No está → mostrar título + botón añadir ficha
-                          <div className="biblio-item-row">
-                            <span className="biblio-title">{title}</span>
-                            <button
-                              className="add-shell-btn"
-                              onClick={() => handleAddShell(title, selected.name)}
-                              disabled={isCreating}
-                              title="Añadir ficha básica sin análisis"
-                            >
-                              {isCreating
-                                ? '…'
-                                : <><Plus size={12} /> Añadir ficha</>
-                              }
-                            </button>
+                      <Link
+                        key={book.id}
+                        to={`/book/${book.id}`}
+                        className={`biblio-cover-card ${isShell ? 'is-shell' : ''} ${isAnalyzed ? 'is-analyzed' : ''}`}
+                        title={book.title}
+                      >
+                        <div className="biblio-cover-img">
+                          {book.cover_local ? (
+                            <img
+                              src={`/data/covers/${book.cover_local.split('/covers/')[1]}`}
+                              alt={book.title}
+                            />
+                          ) : (
+                            <div className="biblio-cover-ph">
+                              <BookOpen size={18} strokeWidth={1} />
+                            </div>
+                          )}
+                          {isShell && <div className="biblio-shell-overlay" />}
+                          <div className="biblio-cover-badge-wrap">
+                            {isAnalyzed && <span className="biblio-status-badge analyzed">✦ Analizado</span>}
+                            {isShell && <span className="biblio-status-badge shell">Ficha</span>}
+                            {isProcessing && <span className="biblio-status-badge processing">Procesando</span>}
                           </div>
-                        )}
-                      </li>
+                        </div>
+                        <span className="biblio-cover-title">{book.title}</span>
+                        {book.year && <span className="biblio-cover-year">{book.year}</span>}
+                      </Link>
                     )
                   })}
-                </ul>
+                </div>
               </div>
             )}
           </motion.div>
         ) : (
           <div className="author-placeholder">
             <User size={48} strokeWidth={1} />
-            <p>Selecciona un autor para ver su ficha</p>
+            <p>Selecciona un autor para ver su bibliografía</p>
           </div>
         )}
       </div>
