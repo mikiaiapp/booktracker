@@ -10,6 +10,17 @@ import os
 from app.workers.celery_app import celery_app
 
 
+def _format_quota_error(e: Exception) -> str:
+    """Convierte error de cuota en mensaje legible con tiempo restante."""
+    msg = str(e)
+    if msg.startswith("QUOTA_EXCEEDED:"):
+        parts = msg.split(":")
+        hours = parts[1] if len(parts) > 1 else "?"
+        mins = parts[2] if len(parts) > 2 else "?"
+        return f"Cuota de IA agotada. Se restablece en {hours}h {mins}min (medianoche UTC)."
+    return msg
+
+
 def run_async(coro):
     """Run async coroutine from sync celery task."""
     loop = asyncio.new_event_loop()
@@ -47,9 +58,18 @@ async def _phase1(user_id: str, book_id: str):
             metadata = await identify_book(book.file_path, book.file_type, book.title)
 
             # Update book
+            # Aplicar metadatos — lista explícita de campos válidos
+            valid_fields = {
+                "title", "author", "isbn", "synopsis", "genre",
+                "language", "year", "pages", "author_bio",
+                "author_bibliography", "cover_url", "cover_local"
+            }
             for k, v in metadata.items():
-                if hasattr(book, k) and v is not None:
-                    setattr(book, k, v)
+                if k in valid_fields and v is not None and v != "":
+                    try:
+                        setattr(book, k, v)
+                    except Exception as e:
+                        print(f"Phase1 error setting {k}: {e}")
 
             book.phase1_done = True
             book.status = "identified"
@@ -59,7 +79,12 @@ async def _phase1(user_id: str, book_id: str):
 
         except Exception as e:
             book.status = "error"
-            book.error_msg = traceback.format_exc()
+            err_msg = str(e)
+            if "QUOTA_EXCEEDED" in err_msg:
+                book.error_msg = _format_quota_error(e)
+                book.status = "quota_exceeded"
+            else:
+                book.error_msg = traceback.format_exc()
             await db.commit()
             raise
 
@@ -312,7 +337,12 @@ async def _summarize_single(user_id: str, book_id: str, chapter_id: str):
             await db.commit()
 
         except Exception as e:
-            chapter.summary_status = "error"
+            err_msg = str(e)
+            if "QUOTA_EXCEEDED" in err_msg:
+                chapter.summary_status = "quota_exceeded"
+                chapter.summary = _format_quota_error(e)
+            else:
+                chapter.summary_status = "error"
             await db.commit()
             raise
 
@@ -358,13 +388,21 @@ async def _fetch_shell(user_id: str, book_id: str):
                     print(f"Shell duplicado eliminado: {book.title} (ISBN {found_isbn} ya existe)")
                     return
 
-            # Aplicar todos los metadatos encontrados
-            skip_keys = {"_ol_author_key", "cover_url"}
-            for k, v in metadata.items():
-                if k in skip_keys:
-                    continue
-                if hasattr(book, k) and v is not None:
-                    setattr(book, k, v)
+            # Aplicar metadatos encontrados — lista explícita de campos válidos
+            field_map = {
+                "title": str, "author": str, "isbn": str,
+                "synopsis": str, "genre": str, "language": str,
+                "year": int, "pages": int,
+                "author_bio": str, "author_bibliography": list,
+                "cover_url": str,
+            }
+            for field, ftype in field_map.items():
+                val = metadata.get(field)
+                if val is not None and val != "":
+                    try:
+                        setattr(book, field, val)
+                    except Exception as e:
+                        print(f"Error setting {field}: {e}")
 
             # Descargar portada
             if metadata.get("cover_url"):

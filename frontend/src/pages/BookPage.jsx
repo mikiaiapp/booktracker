@@ -295,9 +295,11 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
         </div>
       ))}
       {status.error_msg && (
-        <div className="pipeline-error">
+        <div className={`pipeline-error ${status.error_msg.includes('Cuota') || status.error_msg.includes('quota') ? 'quota-error' : ''}`}>
           <AlertCircle size={14} />
-          <span>Error en el proceso</span>
+          <span>{status.error_msg.includes('Cuota') || status.status === 'quota_exceeded'
+            ? status.error_msg
+            : 'Error en el proceso'}</span>
         </div>
       )}
     </div>
@@ -372,6 +374,8 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
             <div className="ch-meta">
               {ch.summary_status === 'done'
                 ? <span className="badge badge-green">Resumido</span>
+                : ch.summary_status === 'quota_exceeded'
+                  ? <span className="badge badge-rust" title={ch.summary || 'Cuota agotada'}>⏰ Cuota agotada</span>
                 : ch.summary_status === 'processing'
                   ? <span className="badge badge-gold">Procesando…</span>
                   : <button

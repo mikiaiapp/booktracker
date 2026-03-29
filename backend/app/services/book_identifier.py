@@ -74,6 +74,33 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Google Books error: {e}")
 
+        # 1. Intentar generar synopsis con IA (completa, 250-400 palabras)
+        if not metadata.get("synopsis") or len(metadata.get("synopsis", "")) < 200:
+            try:
+                from app.services.ai_analyzer import _call_ai
+                book_title = metadata.get("title") or title
+                book_author = metadata.get("author") or author or "autor desconocido"
+                year = metadata.get("year", "")
+                genre = metadata.get("genre", "")
+                system = "Eres un experto literario. Escribe en español con precisión y detalle."
+                user = f"""Escribe una sinopsis completa e informativa (mínimo 250 palabras, máximo 400) del libro:
+Título: "{book_title}"
+Autor: {book_author}
+{f"Año: {year}" if year else ""}
+{f"Género: {genre}" if genre else ""}
+
+Incluye: argumento principal, contexto histórico o social si es relevante, personajes clave y tono narrativo.
+Escribe en tercera persona, sin spoilers del final. No empieces con "En este libro" ni "Este libro"."""
+                synopsis = await _call_ai(system, user, max_tokens=800)
+                if synopsis and len(synopsis) > 150:
+                    metadata["synopsis"] = synopsis.strip()
+                    print(f"AI synopsis generated: {len(synopsis)} chars")
+            except Exception as e:
+                print(f"AI synopsis error: {e}")
+
+        # Si la IA no pudo generar synopsis (cuota agotada), se deja vacía
+        # El usuario puede pulsar Reidentificar cuando se restablezca la cuota
+
         # Author bio + bibliography
         author_name = metadata.get("author") or author
         if author_name:
@@ -123,7 +150,10 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
         result["language"] = doc["language"][0] if doc["language"] else None
     if doc.get("cover_i"):
         result["cover_url"] = f"https://covers.openlibrary.org/b/id/{doc['cover_i']}-L.jpg"
-    if doc.get("first_sentence"):
+    if doc.get("description"):
+        desc = doc["description"]
+        result["synopsis"] = desc.get("value", desc) if isinstance(desc, dict) else str(desc)
+    elif doc.get("first_sentence"):
         result["synopsis"] = doc["first_sentence"].get("value", "")
     # Guardar author_key para obtener bibliografía después
     if doc.get("author_key"):
@@ -177,13 +207,20 @@ async def get_author_bibliography(author_name: str) -> list:
 
 
 async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
-    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=1"
+    # Sin API key para evitar restricciones de permisos
+    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=3"
     r = await client.get(url)
     data = r.json()
     items = data.get("items", [])
     if not items:
         return {}
-    info = items[0].get("volumeInfo", {})
+    # Buscar el resultado con más datos (preferir el que tenga descripción)
+    best = items[0]
+    for item in items:
+        if item.get("volumeInfo", {}).get("description"):
+            best = item
+            break
+    info = best.get("volumeInfo", {})
     result = {}
     result["title"] = info.get("title", "")
     if info.get("authors"):
