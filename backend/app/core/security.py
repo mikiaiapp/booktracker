@@ -95,14 +95,11 @@ async def send_otp_email(email: str, otp: str):
     msg["From"] = settings.SMTP_FROM
     msg["To"] = email
 
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.SMTP_HOST,
-            port=settings.SMTP_PORT,
-            username=settings.SMTP_USER,
-            password=settings.SMTP_PASS,
-            start_tls=True,
-        )
-    except Exception as e:
-        print(f"Email error: {e}")
+    await aiosmtplib.send(
+        msg,
+        hostname=settings.SMTP_HOST,
+        port=settings.SMTP_PORT,
+        username=settings.SMTP_USER,
+        password=settings.SMTP_PASS,
+        start_tls=True,
+    )

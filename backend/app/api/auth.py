@@ -186,11 +186,15 @@ async def change_password(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_global_db),
 ):
-    if not verify_password(req.current_password, current_user.hashed_password):
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "Usuario no encontrado")
+    if not verify_password(req.current_password, user.hashed_password):
         raise HTTPException(400, "Contraseña actual incorrecta")
     if len(req.new_password) < 8:
         raise HTTPException(400, "La contraseña debe tener al menos 8 caracteres")
-    current_user.hashed_password = get_password_hash(req.new_password)
+    user.hashed_password = get_password_hash(req.new_password)
     await db.commit()
     return {"message": "Contraseña actualizada"}
 
@@ -202,16 +206,21 @@ async def setup_2fa(
     db: AsyncSession = Depends(get_global_db),
 ):
     """Genera nuevo secret TOTP y devuelve QR para escanear."""
+    # Obtener usuario desde ESTA sesión de BD para poder modificarlo
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "Usuario no encontrado")
     secret = pyotp.random_base32()
-    current_user.totp_secret = secret
-    current_user.totp_enabled = False  # No activar hasta verificar
+    user.totp_secret = secret
+    user.totp_enabled = False
     await db.commit()
+    await db.refresh(user)
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(
-        name=current_user.email,
+        name=user.email,
         issuer_name="BookTracker"
     )
-    # Generar QR en base64
     img = qrcode.make(uri)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
@@ -219,35 +228,46 @@ async def setup_2fa(
     return {"secret": secret, "qr": f"data:image/png;base64,{qr_b64}"}
 
 
+class VerifyTOTPRequest(BaseModel):
+    code: str
+
 @router.post("/verify-setup-2fa")
 async def verify_setup_2fa(
-    req: dict,
+    req: VerifyTOTPRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_global_db),
 ):
     """Verifica el código TOTP y activa el 2FA."""
-    code = req.get("code", "")
-    if not current_user.totp_secret:
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if not user or not user.totp_secret:
         raise HTTPException(400, "Primero genera el QR")
-    totp = pyotp.TOTP(current_user.totp_secret)
-    if not totp.verify(code, valid_window=1):
+    totp = pyotp.TOTP(user.totp_secret)
+    if not totp.verify(req.code, valid_window=1):
         raise HTTPException(400, "Código incorrecto")
-    current_user.totp_enabled = True
+    user.totp_enabled = True
     await db.commit()
     return {"message": "2FA activado correctamente"}
 
 
+class DisableTFARequest(BaseModel):
+    password: str
+
 @router.post("/disable-2fa")
 async def disable_2fa(
-    req: dict,
+    req: DisableTFARequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_global_db),
 ):
     """Desactiva el 2FA tras verificar contraseña."""
-    if not verify_password(req.get("password", ""), current_user.hashed_password):
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "Usuario no encontrado")
+    if not verify_password(req.password, user.hashed_password):
         raise HTTPException(400, "Contraseña incorrecta")
-    current_user.totp_enabled = False
-    current_user.totp_secret = None
+    user.totp_enabled = False
+    user.totp_secret = None
     await db.commit()
     return {"message": "2FA desactivado"}
 
@@ -269,17 +289,21 @@ async def forgot_password(
         user.email_otp = otp
         user.email_otp_expires = datetime.utcnow() + timedelta(minutes=15)
         await db.commit()
+        # Si no hay SMTP configurado, devolver el código directamente
+        from app.core.config import settings as _settings
+        if not _settings.SMTP_HOST:
+            return {
+                "message": "Sin servidor de email configurado. Usa este código:",
+                "code": otp,
+                "dev_mode": True
+            }
         # Intentar enviar email
-        email_sent = False
         try:
             await send_otp_email(req.email, otp)
-            email_sent = True
         except Exception as e:
-            print(f"[OTP] Email no enviado: {e}")
-        # Si no hay SMTP, devolver el código directamente
-        if not email_sent:
+            print(f"[OTP] Email error: {e}")
             return {
-                "message": "Email no configurado. Usa este código directamente.",
+                "message": "Error al enviar email. Usa este código:",
                 "code": otp,
                 "dev_mode": True
             }

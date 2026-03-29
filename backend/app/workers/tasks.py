@@ -198,12 +198,27 @@ async def _phase3(user_id: str, book_id: str):
                 chapter.summary_status = "processing"
                 await db.commit()
 
-                summary_data = await summarize_chapter(
-                    chapter.title, chapter.raw_text, book.title, book.author
-                )
-                chapter.summary = summary_data.get("summary")
-                chapter.key_events = summary_data.get("key_events", [])
-                chapter.summary_status = "done"
+                try:
+                    summary_data = await summarize_chapter(
+                        chapter.title, chapter.raw_text, book.title, book.author
+                    )
+                    chapter.summary = summary_data.get("summary")
+                    chapter.key_events = summary_data.get("key_events", [])
+                    # Si el resumen es un mensaje de bloqueo, marcar como omitido
+                    if chapter.summary and chapter.summary.startswith("[Contenido"):
+                        chapter.summary_status = "skipped"
+                    else:
+                        chapter.summary_status = "done"
+                except ValueError as e:
+                    err_msg = str(e)
+                    if "QUOTA_EXCEEDED" in err_msg:
+                        chapter.summary_status = "quota_exceeded"
+                        chapter.summary = _format_quota_error(e)
+                        await db.commit()
+                        raise  # Detener fase 3
+                    else:
+                        chapter.summary_status = "error"
+                        chapter.summary = f"Error: {err_msg}"
                 await db.commit()
 
                 # Pausa entre capítulos para respetar el rate limit de Gemini free tier
@@ -501,12 +516,29 @@ async def _reidentify_author(user_id: str, author_name: str):
                     db.add(shell)
                     await db.commit()
 
-                    # Buscar metadatos en background
+                    # Buscar metadatos en background (portada, sinopsis, ISBN)
                     fetch_shell_metadata.delay(user_id, book_id)
                     created += 1
                     print(f"Shell creado: {b_title} ({b_isbn})")
 
-                print(f"Autor {author_name} reidentificado. {created} fichas nuevas creadas.")
+                # 5. Relanzar fetch_shell_metadata en fichas existentes sin portada o sinopsis
+                updated = 0
+                result2 = await db.execute(
+                    select(Book).where(
+                        Book.author == author_name,
+                        Book.status.in_(["shell", "shell_error"]),
+                        or_(
+                            Book.cover_local.is_(None),
+                            Book.synopsis.is_(None),
+                        )
+                    )
+                )
+                incomplete_shells = result2.scalars().all()
+                for shell in incomplete_shells:
+                    fetch_shell_metadata.delay(user_id, shell.id)
+                    updated += 1
+
+                print(f"Autor {author_name} reidentificado. {created} fichas nuevas, {updated} fichas actualizadas.")
 
         except Exception as e:
             print(f"Error reidentifying author {author_name}: {traceback.format_exc()}")
