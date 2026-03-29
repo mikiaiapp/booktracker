@@ -173,3 +173,133 @@ async def me(current_user: User = Depends(get_current_user)):
         "email_otp_enabled": current_user.email_otp_enabled,
         "avatar_color": current_user.avatar_color,
     }
+
+
+# ── Cambiar contraseña ─────────────────────────────────────────
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.post("/change-password")
+async def change_password(
+    req: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_global_db),
+):
+    if not verify_password(req.current_password, current_user.hashed_password):
+        raise HTTPException(400, "Contraseña actual incorrecta")
+    if len(req.new_password) < 8:
+        raise HTTPException(400, "La contraseña debe tener al menos 8 caracteres")
+    current_user.hashed_password = get_password_hash(req.new_password)
+    await db.commit()
+    return {"message": "Contraseña actualizada"}
+
+
+# ── Configurar/desactivar 2FA ──────────────────────────────────
+@router.post("/setup-2fa")
+async def setup_2fa(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_global_db),
+):
+    """Genera nuevo secret TOTP y devuelve QR para escanear."""
+    secret = pyotp.random_base32()
+    current_user.totp_secret = secret
+    current_user.totp_enabled = False  # No activar hasta verificar
+    await db.commit()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(
+        name=current_user.email,
+        issuer_name="BookTracker"
+    )
+    # Generar QR en base64
+    img = qrcode.make(uri)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    qr_b64 = base64.b64encode(buf.getvalue()).decode()
+    return {"secret": secret, "qr": f"data:image/png;base64,{qr_b64}"}
+
+
+@router.post("/verify-setup-2fa")
+async def verify_setup_2fa(
+    req: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_global_db),
+):
+    """Verifica el código TOTP y activa el 2FA."""
+    code = req.get("code", "")
+    if not current_user.totp_secret:
+        raise HTTPException(400, "Primero genera el QR")
+    totp = pyotp.TOTP(current_user.totp_secret)
+    if not totp.verify(code, valid_window=1):
+        raise HTTPException(400, "Código incorrecto")
+    current_user.totp_enabled = True
+    await db.commit()
+    return {"message": "2FA activado correctamente"}
+
+
+@router.post("/disable-2fa")
+async def disable_2fa(
+    req: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_global_db),
+):
+    """Desactiva el 2FA tras verificar contraseña."""
+    if not verify_password(req.get("password", ""), current_user.hashed_password):
+        raise HTTPException(400, "Contraseña incorrecta")
+    current_user.totp_enabled = False
+    current_user.totp_secret = None
+    await db.commit()
+    return {"message": "2FA desactivado"}
+
+
+# ── Recuperar contraseña ───────────────────────────────────────
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+@router.post("/forgot-password")
+async def forgot_password(
+    req: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_global_db),
+):
+    """Envía OTP por email para resetear contraseña."""
+    result = await db.execute(select(User).where(User.email == req.email))
+    user = result.scalar_one_or_none()
+    # No revelar si el email existe
+    if user:
+        otp = generate_otp()
+        user.email_otp = otp
+        user.email_otp_expires = datetime.utcnow() + timedelta(minutes=15)
+        await db.commit()
+        try:
+            await send_otp_email(req.email, otp)
+        except Exception:
+            pass
+    return {"message": "Si el email existe, recibirás un código de recuperación"}
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str
+    new_password: str
+
+@router.post("/reset-password")
+async def reset_password(
+    req: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_global_db),
+):
+    """Resetea la contraseña con el código OTP recibido por email."""
+    result = await db.execute(select(User).where(User.email == req.email))
+    user = result.scalar_one_or_none()
+    if not user or not user.email_otp:
+        raise HTTPException(400, "Código inválido o expirado")
+    if user.email_otp != req.code:
+        raise HTTPException(400, "Código incorrecto")
+    if datetime.utcnow() > user.email_otp_expires:
+        raise HTTPException(400, "El código ha expirado. Solicita uno nuevo.")
+    if len(req.new_password) < 8:
+        raise HTTPException(400, "La contraseña debe tener al menos 8 caracteres")
+    user.hashed_password = get_password_hash(req.new_password)
+    user.email_otp = None
+    user.email_otp_expires = None
+    await db.commit()
+    return {"message": "Contraseña actualizada correctamente"}

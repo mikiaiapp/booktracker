@@ -247,3 +247,47 @@ input.otp-input {
   .auth-deco { display: none; }
   .auth-panel { width: 100%; }
 }
+
+/* ── Recuperar contraseña ──────────────────────────────────── */
+.forgot-link {
+  display: block; margin: 0.75rem auto 0;
+  background: none; border: none;
+  color: #8a9aaa; font-size: 12px;
+  cursor: pointer; text-decoration: underline;
+  transition: color 0.15s;
+}
+.forgot-link:hover { color: #c9a96e; }
+
+.forgot-modal {
+  position: fixed; inset: 0;
+  background: rgba(13,13,13,0.6); backdrop-filter: blur(4px);
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.forgot-box {
+  background: white; border-radius: 10px; padding: 2rem;
+  width: min(420px, 95vw); display: flex; flex-direction: column; gap: 1rem;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.forgot-box h3 { font-size: 16px; font-weight: 500; margin-bottom: 0.25rem; }
+.forgot-box p { font-size: 13px; color: #4a5568; line-height: 1.5; }
+.forgot-box input {
+  border: 1.5px solid #ede6d6; border-radius: 6px;
+  padding: 9px 12px; font-size: 13px; width: 100%;
+  background: #faf7f2; outline: none; box-sizing: border-box;
+}
+.forgot-box input:focus { border-color: #c9a96e; }
+.forgot-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 0.5rem; }
+.forgot-cancel {
+  background: none; border: 1.5px solid #ede6d6;
+  padding: 7px 16px; border-radius: 6px; font-size: 13px;
+  cursor: pointer; color: #4a5568; transition: all 0.15s;
+}
+.forgot-cancel:hover { border-color: #c9a96e; }
+.forgot-submit {
+  background: #0d0d0d; color: #c9a96e; border: none;
+  padding: 7px 16px; border-radius: 6px; font-size: 13px;
+  font-weight: 500; cursor: pointer; transition: background 0.15s;
+}
+.forgot-submit:hover:not(:disabled) { background: #1a1a1a; }
+.forgot-submit:disabled { opacity: 0.5; cursor: not-allowed; }

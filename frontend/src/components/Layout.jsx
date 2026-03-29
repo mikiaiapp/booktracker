@@ -1,5 +1,5 @@
 import React from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
 import { BookOpen, Upload, LogOut, Library, Users } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import './Layout.css'
@@ -35,7 +35,7 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-badge">
+          <Link to="/profile" className="user-badge" style={{textDecoration:'none'}}>
             <div className="user-avatar" style={{ background: user?.avatar_color || '#6366f1' }}>
               {user?.username?.[0]?.toUpperCase() || '?'}
             </div>
@@ -43,7 +43,7 @@ export default function Layout() {
               <span className="user-name">{user?.username}</span>
               <span className="user-email">{user?.email}</span>
             </div>
-          </div>
+          </Link>
           <button className="logout-btn" onClick={handleLogout} title="Cerrar sesión">
             <LogOut size={16} strokeWidth={1.5} />
           </button>

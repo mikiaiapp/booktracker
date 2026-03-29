@@ -4,11 +4,18 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { BookOpen, Mail, Lock, Shield } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import api from '../utils/api'
 import './AuthPages.css'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showForgot, setShowForgot] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotCode, setForgotCode] = useState('')
+  const [forgotNewPw, setForgotNewPw] = useState('')
+  const [forgotStep, setForgotStep] = useState(1) // 1=email, 2=code+new pw
+  const [forgotLoading, setForgotLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [twoFAStep, setTwoFAStep] = useState(null) // null | {temp_token, method}
   const [code, setCode] = useState('')
@@ -45,6 +52,32 @@ export default function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleForgotRequest = async () => {
+    if (!forgotEmail) return
+    setForgotLoading(true)
+    try {
+      await api.post('/auth/forgot-password', { email: forgotEmail })
+      toast.success('Si el email existe, recibirás un código')
+      setForgotStep(2)
+    } catch { toast.error('Error al enviar el código') }
+    finally { setForgotLoading(false) }
+  }
+
+  const handleForgotReset = async () => {
+    if (!forgotCode || !forgotNewPw) return
+    setForgotLoading(true)
+    try {
+      await api.post('/auth/reset-password', {
+        email: forgotEmail, code: forgotCode, new_password: forgotNewPw
+      })
+      toast.success('Contraseña actualizada. Ya puedes entrar.')
+      setShowForgot(false)
+      setForgotStep(1)
+      setForgotEmail(''); setForgotCode(''); setForgotNewPw('')
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error al resetear') }
+    finally { setForgotLoading(false) }
   }
 
   return (
@@ -101,7 +134,41 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <button type="submit" className="btn-primary" disabled={loading}>
+                {showForgot && (
+                <div className="forgot-modal">
+                  <div className="forgot-box">
+                    <h3>Recuperar contraseña</h3>
+                    {forgotStep === 1 ? (
+                      <>
+                        <p>Introduce tu email y te enviaremos un código de recuperación.</p>
+                        <input type="email" placeholder="tu@email.com"
+                          value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} />
+                        <div className="forgot-actions">
+                          <button onClick={() => setShowForgot(false)} className="forgot-cancel">Cancelar</button>
+                          <button onClick={handleForgotRequest} disabled={forgotLoading || !forgotEmail} className="forgot-submit">
+                            {forgotLoading ? 'Enviando…' : 'Enviar código'}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p>Introduce el código recibido en <strong>{forgotEmail}</strong> y tu nueva contraseña.</p>
+                        <input type="text" placeholder="Código de 6 dígitos"
+                          value={forgotCode} onChange={e => setForgotCode(e.target.value)} maxLength={6} />
+                        <input type="password" placeholder="Nueva contraseña (mín. 8 caracteres)"
+                          value={forgotNewPw} onChange={e => setForgotNewPw(e.target.value)} />
+                        <div className="forgot-actions">
+                          <button onClick={() => setForgotStep(1)} className="forgot-cancel">Atrás</button>
+                          <button onClick={handleForgotReset} disabled={forgotLoading || !forgotCode || !forgotNewPw} className="forgot-submit">
+                            {forgotLoading ? 'Guardando…' : 'Cambiar contraseña'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+              <button type="submit" className="btn-primary" disabled={loading}>
                   {loading ? <span className="spinner" /> : 'Entrar'}
                 </button>
 
@@ -133,7 +200,41 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <button type="submit" className="btn-primary" disabled={loading || code.length < 6}>
+                {showForgot && (
+                <div className="forgot-modal">
+                  <div className="forgot-box">
+                    <h3>Recuperar contraseña</h3>
+                    {forgotStep === 1 ? (
+                      <>
+                        <p>Introduce tu email y te enviaremos un código de recuperación.</p>
+                        <input type="email" placeholder="tu@email.com"
+                          value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} />
+                        <div className="forgot-actions">
+                          <button onClick={() => setShowForgot(false)} className="forgot-cancel">Cancelar</button>
+                          <button onClick={handleForgotRequest} disabled={forgotLoading || !forgotEmail} className="forgot-submit">
+                            {forgotLoading ? 'Enviando…' : 'Enviar código'}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p>Introduce el código recibido en <strong>{forgotEmail}</strong> y tu nueva contraseña.</p>
+                        <input type="text" placeholder="Código de 6 dígitos"
+                          value={forgotCode} onChange={e => setForgotCode(e.target.value)} maxLength={6} />
+                        <input type="password" placeholder="Nueva contraseña (mín. 8 caracteres)"
+                          value={forgotNewPw} onChange={e => setForgotNewPw(e.target.value)} />
+                        <div className="forgot-actions">
+                          <button onClick={() => setForgotStep(1)} className="forgot-cancel">Atrás</button>
+                          <button onClick={handleForgotReset} disabled={forgotLoading || !forgotCode || !forgotNewPw} className="forgot-submit">
+                            {forgotLoading ? 'Guardando…' : 'Cambiar contraseña'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+              <button type="submit" className="btn-primary" disabled={loading || code.length < 6}>
                   {loading ? <span className="spinner" /> : 'Verificar'}
                 </button>
 
@@ -148,3 +249,5 @@ export default function LoginPage() {
     </div>
   )
 }
+
+// Styles injected - add to existing CSS file
