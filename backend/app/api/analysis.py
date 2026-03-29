@@ -234,3 +234,30 @@ async def list_authors(
         })
 
     return list(authors.values())
+
+
+# ── Reidentificar autor ────────────────────────────────────────
+@router.post("/authors/reidentify")
+async def reidentify_author(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from pydantic import BaseModel as BM
+    body = await request.json()
+    author_name = body.get("author")
+    if not author_name:
+        raise HTTPException(400, "author required")
+
+    # Buscar todos los libros de este autor para actualizar bio y bibliografía
+    result = await db.execute(
+        select(Book).where(Book.author == author_name)
+    )
+    books = result.scalars().all()
+    if not books:
+        raise HTTPException(404, "Author not found")
+
+    # Lanzar tarea de reidentificación del autor
+    from app.workers.tasks import reidentify_author_task
+    task = reidentify_author_task.delay(current_user.id, author_name)
+    return {"task_id": task.id, "status": "processing"}

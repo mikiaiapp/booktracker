@@ -43,17 +43,40 @@ async def upload_book(
         content = await file.read()
         await f.write(content)
 
-    book = Book(
-        id=book_id,
-        title=file.filename.rsplit(".", 1)[0],
-        file_path=file_path,
-        file_type=ext,
-        file_size=len(content),
-        status="uploaded",
+    # Comprobar si ya existe una ficha shell con el mismo nombre de fichero
+    from sqlalchemy import func as sqlfunc
+    base_title = file.filename.rsplit(".", 1)[0]
+    existing_shell = await db.execute(
+        select(Book).where(
+            Book.status.in_(["shell", "shell_error"]),
+            sqlfunc.lower(Book.title) == base_title.lower()
+        )
     )
-    db.add(book)
-    await db.commit()
-    await db.refresh(book)
+    shell_book = existing_shell.scalar_one_or_none()
+
+    if shell_book:
+        # Reusar la ficha shell existente
+        shell_book.file_path = file_path
+        shell_book.file_type = ext
+        shell_book.file_size = len(content)
+        shell_book.phase1_done = False
+        shell_book.phase2_done = False
+        shell_book.phase3_done = False
+        await db.commit()
+        book = shell_book
+        book_id = shell_book.id
+    else:
+        book = Book(
+            id=book_id,
+            title=base_title,
+            file_path=file_path,
+            file_type=ext,
+            file_size=len(content),
+            status="uploaded",
+        )
+        db.add(book)
+        await db.commit()
+        await db.refresh(book)
 
     # Queue phase 1
     from app.workers.tasks import process_book_phase1
@@ -214,3 +237,51 @@ async def create_shell_book(
     fetch_shell_metadata.delay(current_user.id, book_id)
 
     return {"id": book_id, "status": "shell"}
+
+
+# ── Subir PDF a ficha shell existente ─────────────────────────
+@router.post("/{book_id}/upload-file", status_code=200)
+async def upload_file_to_shell(
+    book_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sube un PDF/EPUB a una ficha shell para convertirla en libro analizable."""
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if book.status not in ("shell", "shell_error"):
+        raise HTTPException(400, "Este libro ya tiene un archivo")
+
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ("pdf", "epub"):
+        raise HTTPException(400, "Solo se admiten PDF y EPUB")
+
+    filename = f"{book_id}.{ext}"
+    user_dir = os.path.join(settings.UPLOADS_DIR, current_user.id)
+    os.makedirs(user_dir, exist_ok=True)
+    file_path = os.path.join(user_dir, filename)
+
+    async with aiofiles.open(file_path, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    book.file_path = file_path
+    book.file_type = ext
+    book.file_size = len(content)
+    book.status = "uploaded"
+    book.phase1_done = False
+    book.phase2_done = False
+    book.phase3_done = False
+    await db.commit()
+
+    # Lanzar fase 1 para identificar/confirmar metadatos
+    from app.workers.tasks import process_book_phase1
+    task = process_book_phase1.delay(current_user.id, book_id)
+    book.task_id = task.id
+    book.status = "identifying"
+    await db.commit()
+
+    return {"id": book_id, "status": "identifying", "task_id": task.id}

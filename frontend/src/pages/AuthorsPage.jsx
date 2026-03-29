@@ -11,6 +11,7 @@ export default function AuthorsPage() {
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState({})
+  const [reidentifying, setReidentifying] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -41,6 +42,30 @@ export default function AuthorsPage() {
   // de su bibliografía que aún no estén en la app
   const handleSelectAuthor = (author) => {
     setSelected(author)
+  }
+
+  const handleReidentifyAuthor = async (authorName) => {
+    setReidentifying(true)
+    try {
+      await authorsAPI.reidentify(authorName)
+      toast('Reidentificando autor y creando fichas…', { icon: '⏳' })
+      // Poll hasta que termine (aprox 10-30 segundos)
+      let attempts = 0
+      const poll = setInterval(async () => {
+        attempts++
+        await load()
+        if (attempts > 20) clearInterval(poll)
+      }, 3000)
+      setTimeout(() => {
+        clearInterval(poll)
+        setReidentifying(false)
+        toast.success('Autor actualizado')
+        load()
+      }, 30000)
+    } catch {
+      toast.error('Error al reidentificar el autor')
+      setReidentifying(false)
+    }
   }
 
   const handleAddShell = async (item, authorName) => {

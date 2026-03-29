@@ -424,3 +424,90 @@ async def _fetch_shell(user_id: str, book_id: str):
                 await db.commit()
             except:
                 pass
+
+
+# ── Reidentificar autor: actualiza bio, bibliografía y crea fichas ─────────────
+@celery_app.task(bind=True, name="reidentify_author_task")
+def reidentify_author_task(self, user_id: str, author_name: str):
+    return run_async(_reidentify_author(user_id, author_name))
+
+
+async def _reidentify_author(user_id: str, author_name: str):
+    from app.core.database import get_user_db
+    from app.models.book import Book
+    from app.services.book_identifier import (
+        search_wikipedia_author, get_author_bibliography
+    )
+    from sqlalchemy import select, func as sqlfunc, or_
+    import traceback
+
+    async for db in get_user_db(user_id):
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+                # 1. Actualizar bio del autor en Wikipedia
+                bio_data = await search_wikipedia_author(client, author_name)
+                new_bio = bio_data.get("author_bio")
+
+                # 2. Obtener bibliografía actualizada de Google Books
+                new_biblio = await get_author_bibliography(author_name)
+
+                # 3. Actualizar todos los libros del autor con nueva bio y bibliografía
+                result = await db.execute(
+                    select(Book).where(Book.author == author_name)
+                )
+                books = result.scalars().all()
+                for book in books:
+                    if new_bio:
+                        book.author_bio = new_bio
+                    if new_biblio:
+                        book.author_bibliography = new_biblio
+                await db.commit()
+
+                # 4. Crear fichas para libros de la bibliografía que no existan
+                import uuid
+                created = 0
+                for item in (new_biblio or []):
+                    b_title = item.get("title") if isinstance(item, dict) else item
+                    b_isbn = item.get("isbn") if isinstance(item, dict) else None
+                    if not b_title:
+                        continue
+
+                    # Comprobar si ya existe por ISBN o título
+                    conditions = []
+                    if b_isbn:
+                        conditions.append(Book.isbn == b_isbn)
+                    conditions.append(
+                        sqlfunc.lower(Book.title) == b_title.lower()
+                    )
+                    existing = await db.execute(
+                        select(Book).where(or_(*conditions))
+                    )
+                    if existing.scalar_one_or_none():
+                        continue
+
+                    # Crear ficha shell
+                    book_id = str(uuid.uuid4())
+                    shell = Book(
+                        id=book_id,
+                        title=b_title,
+                        author=author_name,
+                        isbn=b_isbn,
+                        author_bio=new_bio,
+                        author_bibliography=new_biblio,
+                        status="shell",
+                        phase1_done=False,
+                    )
+                    db.add(shell)
+                    await db.commit()
+
+                    # Buscar metadatos en background
+                    fetch_shell_metadata.delay(user_id, book_id)
+                    created += 1
+                    print(f"Shell creado: {b_title} ({b_isbn})")
+
+                print(f"Autor {author_name} reidentificado. {created} fichas nuevas creadas.")
+
+        except Exception as e:
+            print(f"Error reidentifying author {author_name}: {traceback.format_exc()}")
+            raise

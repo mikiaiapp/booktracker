@@ -498,3 +498,22 @@
   border-radius: 20px;
   cursor: help;
 }
+
+/* ── Subir PDF a ficha shell ─────────────────────────────────── */
+.shell-upload-area {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin-top: 0.5rem; flex-wrap: wrap;
+}
+.shell-label {
+  font-size: 11px; color: #8a9aaa;
+  background: #f5f0e8; padding: 3px 10px; border-radius: 20px;
+}
+.shell-upload-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #0d0d0d; color: #c9a96e;
+  padding: 5px 14px; border-radius: 6px;
+  font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: background 0.15s;
+  white-space: nowrap;
+}
+.shell-upload-btn:hover { background: #1a1a1a; }

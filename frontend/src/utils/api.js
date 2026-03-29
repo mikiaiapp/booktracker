@@ -58,6 +58,16 @@ export const analysisAPI = {
 // Authors
 export const authorsAPI = {
   list: () => api.get('/analysis/authors/list'),
+  reidentify: (author) => api.post('/analysis/authors/reidentify', { author }),
+}
+
+// Upload file to shell book
+export const uploadToShell = (bookId, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/books/${bookId}/upload-file`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
 }
 
 // Chapter individual summary

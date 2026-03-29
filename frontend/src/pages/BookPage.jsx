@@ -7,7 +7,7 @@ import {
   Play, Pause, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle
 } from 'lucide-react'
-import { booksAPI, analysisAPI, chapterAPI } from '../utils/api'
+import { booksAPI, analysisAPI, chapterAPI, uploadToShell } from '../utils/api'
 import MindMap from '../components/MindMap'
 import './BookPage.css'
 
@@ -190,8 +190,28 @@ export default function BookPage() {
             {/* Status pipeline */}
             {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} book={book} />}
             {isShell && (
-              <div style={{marginTop:'0.5rem'}}>
-                <span style={{fontSize:'11px',background:'#f5f0e8',color:'#8a9aaa',padding:'3px 10px',borderRadius:'20px'}}>Solo ficha — sube el PDF para analizar</span>
+              <div className="shell-upload-area">
+                <span className="shell-label">Solo ficha — sube el PDF/EPUB para analizar</span>
+                <label className="shell-upload-btn">
+                  <input
+                    type="file"
+                    accept=".pdf,.epub"
+                    style={{display:'none'}}
+                    onChange={async (e) => {
+                      const file = e.target.files[0]
+                      if (!file) return
+                      try {
+                        toast('Subiendo archivo…', {icon: '⏳'})
+                        await uploadToShell(id, file)
+                        toast.success('Archivo subido. Identificando…')
+                        load()
+                      } catch {
+                        toast.error('Error al subir el archivo')
+                      }
+                    }}
+                  />
+                  📎 Subir PDF/EPUB
+                </label>
               </div>
             )}
           </div>
