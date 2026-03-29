@@ -213,3 +213,14 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 }
+
+/* ── Perfil: solo visible en móvil, oculto en desktop ────────── */
+.nav-item-profile {
+  display: none;
+}
+
+@media (max-width: 768px) and (orientation: portrait) {
+  .nav-item-profile {
+    display: flex;
+  }
+}
