@@ -271,6 +271,30 @@ export default function BookPage() {
               </p>
             )}
 
+            {/* Botón TTS en cabecera */}
+            {(book.synopsis || chapters.some(c => c.summary_status === 'done')) && (
+              <div className="hero-tts">
+                {ttsPlaying ? (
+                  <button className="tts-hero-btn tts-hero-stop" onClick={stopTTS}>
+                    <Square size={14} fill="currentColor" /> Detener lectura
+                  </button>
+                ) : hasSavedPos() ? (
+                  <div className="tts-hero-group">
+                    <button className="tts-hero-btn" onClick={() => resumeTTS(book, chapters)}>
+                      <Play size={14} /> Continuar
+                    </button>
+                    <button className="tts-hero-btn tts-hero-restart" onClick={() => { localStorage.removeItem(storageKey); playFromBeginning(book, chapters) }} title="Empezar desde el principio">
+                      <Volume2 size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <button className="tts-hero-btn" onClick={() => playFromBeginning(book, chapters)}>
+                    <Volume2 size={14} /> Leer análisis
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} páginas</span>}

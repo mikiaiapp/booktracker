@@ -106,17 +106,31 @@ async def _call_claude(system: str, user: str, max_tokens: int) -> str:
 
 
 async def _call_openai(system: str, user: str, max_tokens: int) -> str:
-    from openai import AsyncOpenAI
+    from openai import AsyncOpenAI, RateLimitError
+    import asyncio as _asyncio
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    resp = await client.chat.completions.create(
-        model=settings.AI_MODEL,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-    )
-    return resp.choices[0].message.content
+    max_retries = 4
+    for attempt in range(max_retries):
+        try:
+            resp = await client.chat.completions.create(
+                model=settings.AI_MODEL,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            return resp.choices[0].message.content
+        except RateLimitError as e:
+            if attempt < max_retries - 1:
+                wait = 20 * (attempt + 1)  # 20s, 40s, 60s
+                print(f"OpenAI 429 — esperando {wait}s antes de reintentar ({attempt+1}/{max_retries})")
+                await _asyncio.sleep(wait)
+                continue
+            # Calcular tiempo hasta reset (OpenAI resetea por minuto, no por día)
+            raise ValueError(f"OpenAI rate limit alcanzado. Espera 1 minuto e inténtalo de nuevo.")
+        except Exception as e:
+            raise
 
 
 def _clean_summary(text: str) -> str:

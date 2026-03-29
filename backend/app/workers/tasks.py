@@ -184,6 +184,12 @@ async def _phase3(user_id: str, book_id: str):
             pending = [c for c in chapters if c.summary_status != "done" and c.raw_text]
             done_count = total - len(pending)
 
+            # Resetear capítulos pillados en 'processing' (tarea anterior murió)
+            for ch in chapters:
+                if ch.summary_status == 'processing':
+                    ch.summary_status = 'pending'
+            await db.commit()
+
             if done_count > 0:
                 job.detail = f"Reanudando desde capítulo {done_count + 1}/{total}…"
                 await db.commit()
@@ -221,9 +227,10 @@ async def _phase3(user_id: str, book_id: str):
                         chapter.summary = f"Error: {err_msg}"
                 await db.commit()
 
-                # Pausa entre capítulos para respetar el rate limit de Gemini free tier
+                # Pausa entre capítulos para respetar rate limits (Gemini: 15 req/min, OpenAI TPM)
                 if i < len(pending) - 1:
-                    await _asyncio.sleep(5)
+                    pause = 10 if 'gemini' in (settings.AI_MODEL or '').lower() else 15
+                    await _asyncio.sleep(pause)
 
             # Analyze characters
             job.detail = "Analizando personajes..."

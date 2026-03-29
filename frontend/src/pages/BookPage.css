@@ -566,3 +566,109 @@
   opacity: 0.6;
 }
 .tts-btn.tts-restart:hover { opacity: 1; }
+
+/* ── Botón TTS en cabecera ─────────────────────────────────── */
+.hero-tts { margin-top: 0.75rem; }
+.tts-hero-group { display: flex; gap: 8px; align-items: center; }
+
+.tts-hero-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 18px; border-radius: 22px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  border: 1.5px solid rgba(201,169,110,0.5);
+  background: rgba(201,169,110,0.12);
+  color: #c9a96e;
+  transition: all 0.15s;
+}
+.tts-hero-btn:hover { background: rgba(201,169,110,0.25); border-color: #c9a96e; }
+.tts-hero-btn.tts-hero-stop {
+  background: rgba(201,169,110,0.85); color: #0d0d0d; border-color: #c9a96e;
+}
+.tts-hero-btn.tts-hero-restart { padding: 8px 12px; opacity: 0.7; }
+
+/* ── Barra flotante TTS ─────────────────────────────────────── */
+.tts-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: #0d0d0d;
+  border-top: 1.5px solid #c9a96e;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 500;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+  animation: slideUpBar 0.2s ease;
+}
+
+@keyframes slideUpBar {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.tts-bar-info {
+  display: flex; align-items: center; gap: 10px;
+  flex: 1; min-width: 0;
+}
+
+.tts-bar-icon { color: #c9a96e; flex-shrink: 0; }
+
+.tts-bar-title {
+  font-size: 13px; color: #e8dcc8;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.tts-bar-progress {
+  font-size: 11px; color: #8a9aaa;
+  flex-shrink: 0;
+}
+
+.tts-bar-controls {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+
+.tts-bar-btn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.08);
+  color: #e8dcc8;
+  transition: all 0.15s;
+}
+.tts-bar-btn:hover:not(:disabled) { background: rgba(255,255,255,0.15); }
+.tts-bar-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.tts-bar-btn.tts-bar-stop {
+  background: #c9a96e; color: #0d0d0d;
+  width: 48px; height: 48px;
+}
+.tts-bar-btn.tts-bar-stop:hover { background: #e0c080; }
+
+/* Espacio para que la barra no tape el contenido */
+.book-page { padding-bottom: 80px; }
+
+/* ── Móvil — barra TTS más grande ───────────────────────────── */
+@media (max-width: 768px) {
+  .tts-bar {
+    padding: 12px 16px 20px;
+    bottom: 64px; /* encima de la nav bar móvil */
+  }
+
+  .tts-bar-btn {
+    width: 52px; height: 52px;
+  }
+  .tts-bar-btn.tts-bar-stop {
+    width: 62px; height: 62px;
+  }
+  .tts-bar-btn svg { width: 26px; height: 26px; }
+  .tts-bar-btn.tts-bar-stop svg { width: 28px; height: 28px; }
+
+  .tts-bar-title { font-size: 14px; }
+  .tts-bar-controls { gap: 12px; }
+
+  .tts-hero-btn {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+}
