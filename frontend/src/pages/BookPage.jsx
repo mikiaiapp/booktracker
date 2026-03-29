@@ -396,6 +396,8 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                 ? <span className="badge badge-green">Resumido</span>
                 : ch.summary_status === 'quota_exceeded'
                   ? <span className="badge badge-rust" title={ch.summary || 'Cuota agotada'}>⏰ Cuota agotada</span>
+                : ch.summary_status === 'skipped'
+                  ? <span className="badge badge-slate" title="Contenido bloqueado por filtros de seguridad">⚠ Omitido</span>
                 : ch.summary_status === 'processing'
                   ? <span className="badge badge-gold">Procesando…</span>
                   : <button
