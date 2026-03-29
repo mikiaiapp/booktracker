@@ -558,3 +558,11 @@
 }
 .ch-tts-btn.play-from { color: #6a8aaa; }
 .ch-tts-btn.play-from:hover { background: rgba(100,140,180,0.15); color: #4a7aaa; }
+
+/* TTS grupo reanudar */
+.tts-resume-group { display: flex; gap: 6px; align-items: center; }
+.tts-btn.tts-restart {
+  padding: 6px 10px;
+  opacity: 0.6;
+}
+.tts-btn.tts-restart:hover { opacity: 1; }

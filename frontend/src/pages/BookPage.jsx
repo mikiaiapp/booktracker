@@ -33,8 +33,26 @@ export default function BookPage() {
 
   // TTS state
   const [ttsPlaying, setTtsPlaying] = useState(false)
-  const [ttsChapter, setTtsChapter] = useState(null) // null = sinopsis+todo, id = capítulo específico
-  const utteranceRef = React.useRef(null)
+  const [ttsChapter, setTtsChapter] = useState(null)
+  const [ttsQueue, setTtsQueue] = useState([]) // [{id, title, text}]
+  const [ttsIndex, setTtsIndex] = useState(0)
+  const ttsQueueRef = React.useRef([])
+  const ttsIndexRef = React.useRef(0)
+  const storageKey = `tts_pos_${id}`
+
+  // Guardar posición en localStorage
+  const saveTTSPos = (idx, queue) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ idx, chapterId: queue[idx]?.id }))
+    } catch {}
+  }
+
+  const loadTTSPos = () => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  }
 
   const stopTTS = () => {
     window.speechSynthesis.cancel()
@@ -42,37 +60,88 @@ export default function BookPage() {
     setTtsChapter(null)
   }
 
-  const playTTS = (text, chapterId = null) => {
-    stopTTS()
-    if (!text) return
-    const utterance = new SpeechSynthesisUtterance(text)
+  const speakItem = (queue, idx) => {
+    if (idx >= queue.length) {
+      setTtsPlaying(false)
+      setTtsChapter(null)
+      localStorage.removeItem(storageKey)
+      return
+    }
+    const item = queue[idx]
+    ttsIndexRef.current = idx
+    ttsQueueRef.current = queue
+    saveTTSPos(idx, queue)
+    setTtsIndex(idx)
+    setTtsChapter(item.id)
+
+    const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.lang = 'es-ES'
     utterance.rate = 0.95
-    utterance.onend = () => { setTtsPlaying(false); setTtsChapter(null) }
-    utterance.onerror = () => { setTtsPlaying(false); setTtsChapter(null) }
-    utteranceRef.current = utterance
+    utterance.onend = () => speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted') speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+    }
     window.speechSynthesis.speak(utterance)
-    setTtsPlaying(true)
-    setTtsChapter(chapterId)
+  }
+
+  const buildQueue = (book, chapters, fromIdx = 0) => {
+    const queue = []
+    if (fromIdx === 0 && book.synopsis) {
+      queue.push({ id: 'synopsis', title: 'Sinopsis', text: book.synopsis })
+    }
+    chapters
+      .filter(c => c.summary && c.summary_status === 'done')
+      .slice(fromIdx === 0 ? 0 : undefined)
+      .forEach(c => queue.push({ id: c.id, title: c.title, text: `${c.title}. ${c.summary}` }))
+    return queue
   }
 
   const playFromBeginning = (book, chapters) => {
-    // Concatena sinopsis + resúmenes de capítulos en orden
-    const parts = []
-    if (book.synopsis) parts.push(book.synopsis)
-    chapters
-      .filter(c => c.summary && c.summary_status === 'done')
-      .forEach(c => parts.push(`${c.title}. ${c.summary}`))
-    playTTS(parts.join(' ... '), 'all')
+    stopTTS()
+    const queue = buildQueue(book, chapters)
+    if (!queue.length) return
+    ttsQueueRef.current = queue
+    ttsIndexRef.current = 0
+    setTtsQueue(queue)
+    setTtsIndex(0)
+    setTtsPlaying(true)
+    speakItem(queue, 0)
   }
 
   const playFromChapter = (chapter, chapters) => {
-    const idx = chapters.findIndex(c => c.id === chapter.id)
-    const parts = chapters
-      .slice(idx)
-      .filter(c => c.summary && c.summary_status === 'done')
-      .map(c => `${c.title}. ${c.summary}`)
-    playTTS(parts.join(' ... '), chapter.id)
+    stopTTS()
+    const doneChapters = chapters.filter(c => c.summary && c.summary_status === 'done')
+    const idx = doneChapters.findIndex(c => c.id === chapter.id)
+    const queue = doneChapters
+      .slice(idx < 0 ? 0 : idx)
+      .map(c => ({ id: c.id, title: c.title, text: `${c.title}. ${c.summary}` }))
+    if (!queue.length) return
+    ttsQueueRef.current = queue
+    ttsIndexRef.current = 0
+    setTtsQueue(queue)
+    setTtsIndex(0)
+    setTtsPlaying(true)
+    speakItem(queue, 0)
+  }
+
+  const resumeTTS = (book, chapters) => {
+    const saved = loadTTSPos()
+    if (!saved) { playFromBeginning(book, chapters); return }
+    stopTTS()
+    const queue = buildQueue(book, chapters)
+    const idx = saved.chapterId
+      ? Math.max(0, queue.findIndex(q => q.id === saved.chapterId))
+      : saved.idx || 0
+    ttsQueueRef.current = queue
+    ttsIndexRef.current = idx
+    setTtsQueue(queue)
+    setTtsIndex(idx)
+    setTtsPlaying(true)
+    speakItem(queue, idx)
+  }
+
+  const hasSavedPos = () => {
+    try { return !!localStorage.getItem(storageKey) } catch { return false }
   }
 
   // Limpiar TTS al desmontar
