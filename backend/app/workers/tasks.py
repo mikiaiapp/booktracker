@@ -309,9 +309,13 @@ async def _podcast(user_id: str, book_id: str):
             os.makedirs(audio_dir, exist_ok=True)
             audio_path = os.path.join(audio_dir, f"{book_id}.mp3")
 
-            await synthesize_podcast(script, audio_path)
+            try:
+                await synthesize_podcast(script, audio_path)
+                book.podcast_audio_path = audio_path
+            except Exception as audio_err:
+                print(f"TTS audio failed (script saved anyway): {audio_err}")
+                book.podcast_audio_path = None  # Sin audio pero con guión
 
-            book.podcast_audio_path = audio_path
             book.status = "complete"
             await db.commit()
 

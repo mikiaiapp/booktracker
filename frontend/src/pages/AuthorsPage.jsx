@@ -269,9 +269,15 @@ export default function AuthorsPage() {
                   {(selected.bibliography || []).filter(item => {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
-                    if (!title) return false
-                    if (isbn && selected.books.some(b => b.isbn === isbn)) return false
-                    return !selected.books.some(b => b.title.toLowerCase().trim() === title.toLowerCase().trim())
+                    if (!title || title.trim() === '') return false
+                    // Comprobar por ISBN
+                    if (isbn && selected.books.some(b => b.isbn && b.isbn === isbn)) return false
+                    // Comprobar por título (normalizado)
+                    const norm = title.toLowerCase().trim()
+                    return !selected.books.some(b => {
+                      const bt = (b.title || '').toLowerCase().trim()
+                      return bt === norm || bt.includes(norm) || norm.includes(bt)
+                    })
                   }).map((item, i) => {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn

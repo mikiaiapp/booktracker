@@ -226,22 +226,24 @@ Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni bloques d
     user = f"""Libro: "{book_title}"
 
 Resúmenes de todos los capítulos:
-{all_summaries[:20000]}
+{all_summaries[:25000]}
 
-Identifica y analiza todos los personajes importantes. Devuelve un array JSON donde cada elemento tiene:
+Identifica y analiza TODOS los personajes (mínimo 10 si aparecen). Incluye protagonistas, antagonistas, secundarios y personajes menores relevantes.
+Devuelve un array JSON donde cada elemento tiene:
 {{
   "name": "nombre completo",
-  "aliases": ["apodo1"],
+  "aliases": ["apodo1", "apodo2"],
   "role": "protagonist|antagonist|secondary|minor",
-  "description": "descripción física y contextual",
-  "personality": "análisis de personalidad detallado",
-  "arc": "evolución del personaje a lo largo del libro",
-  "relationships": {{"nombre_personaje": "tipo de relación"}},
+  "description": "descripción física detallada, edad aproximada, contexto social",
+  "personality": "análisis profundo de personalidad, motivaciones, miedos, deseos (mínimo 3 frases)",
+  "arc": "evolución completa del personaje a lo largo del libro, cambios importantes",
+  "relationships": {{"nombre_personaje": "tipo y calidad de la relación"}},
   "first_appearance": "nombre del capítulo donde aparece por primera vez",
-  "quotes": ["cita memorable"]
+  "importance": "explicación de su importancia para la trama",
+  "quotes": ["frase o momento memorable del personaje"]
 }}"""
 
-    result = await _call_ai(system, user, max_tokens=4000)
+    result = await _call_ai(system, user, max_tokens=6000)
     try:
         data = _parse_json(result)
         return data if isinstance(data, list) else []
@@ -256,18 +258,21 @@ async def generate_global_summary(all_summaries: str, book_title: str, author: O
     user = f"""Libro: "{book_title}" de {author or "autor desconocido"}
 
 Resúmenes de capítulos:
-{all_summaries[:25000]}
+{all_summaries[:30000]}
 
-Escribe un resumen global completo (mínimo 500 palabras) que incluya:
-- Trama principal completa con spoilers
-- Arcos de los personajes principales
-- Temas centrales de la obra
-- Desenlace y conclusiones
-- Valoración literaria breve
+Escribe un resumen global exhaustivo (mínimo 800 palabras) que incluya:
+- Contexto y presentación del mundo narrativo
+- Trama principal completa con todos los giros y spoilers
+- Subtramas importantes
+- Arcos de evolución de los personajes principales
+- Temas centrales, simbolismo y mensaje del autor
+- Desenlace detallado y conclusiones
+- Estilo narrativo y recursos literarios destacables
+- Valoración crítica con puntos fuertes y débiles
 
-Escribe en prosa fluida, como una reseña académica detallada."""
+Escribe en prosa fluida y rica, como una reseña académica detallada para un club de lectura."""
 
-    return await _call_ai(system, user, max_tokens=3000)
+    return await _call_ai(system, user, max_tokens=4000)
 
 
 # ── Mapa mental ───────────────────────────────────────────────
@@ -311,13 +316,26 @@ ANA (analítica, profunda) y CARLOS (entusiasta, empático).
 Formato obligatorio: ANA: [texto] / CARLOS: [texto]"""
 
     chars_text = "\n".join(
-        f"- {c['name']}: {c.get('personality', '')[:200]}"
-        for c in characters[:8]
+        f"- {c['name']} ({c.get('role','')}: {c.get('personality', '')[:300]}"
+        for c in characters[:12]
     ) if characters else "Sin información de personajes"
 
-    user = f"""Podcast 8-12 min sobre "{book_title}" de {author or "autor desconocido"}.
-Resumen: {global_summary[:5000]}
-Personajes: {chars_text}
-Cubre: introducción, sinopsis, trama con spoilers, personajes, temas, valoración, despedida."""
+    user = f"""Crea un podcast completo de 15-20 minutos sobre "{book_title}" de {author or "autor desconocido"}.
 
-    return await _call_ai(system, user, max_tokens=4000)
+Resumen global: {global_summary[:8000]}
+Personajes principales: {chars_text}
+
+Estructura del podcast (cada sección debe ser sustancial):
+1. INTRODUCCIÓN — presentación del libro, autor y contexto histórico/literario
+2. PRIMERA IMPRESIÓN — qué tipo de libro es, a quién va dirigido
+3. TRAMA — narración detallada del argumento con todos los giros importantes (con spoilers)
+4. PERSONAJES — análisis profundo de los 3-4 personajes más importantes
+5. TEMAS — temas centrales, simbolismo, mensaje del autor
+6. PUNTOS FUERTES Y DÉBILES — crítica literaria honesta
+7. COMPARATIVA — similitudes con otras obras del género
+8. VALORACIÓN FINAL — nota y recomendación
+9. DESPEDIDA
+
+Recuerda: ANA es analítica y busca el significado profundo. CARLOS es más emocional y conecta con el lector común. Que el diálogo sea natural, con interrupciones y acuerdos."""
+
+    return await _call_ai(system, user, max_tokens=6000)
