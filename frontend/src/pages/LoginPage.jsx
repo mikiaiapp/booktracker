@@ -134,42 +134,12 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                {showForgot && (
-                <div className="forgot-modal">
-                  <div className="forgot-box">
-                    <h3>Recuperar contraseña</h3>
-                    {forgotStep === 1 ? (
-                      <>
-                        <p>Introduce tu email y te enviaremos un código de recuperación.</p>
-                        <input type="email" placeholder="tu@email.com"
-                          value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} />
-                        <div className="forgot-actions">
-                          <button onClick={() => setShowForgot(false)} className="forgot-cancel">Cancelar</button>
-                          <button onClick={handleForgotRequest} disabled={forgotLoading || !forgotEmail} className="forgot-submit">
-                            {forgotLoading ? 'Enviando…' : 'Enviar código'}
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p>Introduce el código recibido en <strong>{forgotEmail}</strong> y tu nueva contraseña.</p>
-                        <input type="text" placeholder="Código de 6 dígitos"
-                          value={forgotCode} onChange={e => setForgotCode(e.target.value)} maxLength={6} />
-                        <input type="password" placeholder="Nueva contraseña (mín. 8 caracteres)"
-                          value={forgotNewPw} onChange={e => setForgotNewPw(e.target.value)} />
-                        <div className="forgot-actions">
-                          <button onClick={() => setForgotStep(1)} className="forgot-cancel">Atrás</button>
-                          <button onClick={handleForgotReset} disabled={forgotLoading || !forgotCode || !forgotNewPw} className="forgot-submit">
-                            {forgotLoading ? 'Guardando…' : 'Cambiar contraseña'}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
               <button type="submit" className="btn-primary" disabled={loading}>
                   {loading ? <span className="spinner" /> : 'Entrar'}
+                </button>
+
+                <button type="button" className="forgot-link" onClick={() => { setShowForgot(true); setForgotStep(1) }}>
+                  ¿Olvidaste tu contraseña?
                 </button>
 
                 <p className="auth-link">
@@ -244,6 +214,41 @@ export default function LoginPage() {
               </motion.form>
             )}
           </AnimatePresence>
+        {/* Modal recuperar contraseña — fuera del form */}
+        {showForgot && (
+          <div className="forgot-modal">
+            <div className="forgot-box">
+              <h3>Recuperar contraseña</h3>
+              {forgotStep === 1 ? (
+                <>
+                  <p>Introduce tu email y te enviaremos un código de recuperación.</p>
+                  <input type="email" placeholder="tu@email.com"
+                    value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} />
+                  <div className="forgot-actions">
+                    <button onClick={() => setShowForgot(false)} className="forgot-cancel">Cancelar</button>
+                    <button onClick={handleForgotRequest} disabled={forgotLoading || !forgotEmail} className="forgot-submit">
+                      {forgotLoading ? 'Enviando…' : 'Enviar código'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p>Introduce el código recibido en <strong>{forgotEmail}</strong> y tu nueva contraseña.</p>
+                  <input type="text" placeholder="Código de 6 dígitos"
+                    value={forgotCode} onChange={e => setForgotCode(e.target.value)} maxLength={6} />
+                  <input type="password" placeholder="Nueva contraseña (mín. 8 caracteres)"
+                    value={forgotNewPw} onChange={e => setForgotNewPw(e.target.value)} />
+                  <div className="forgot-actions">
+                    <button onClick={() => setForgotStep(1)} className="forgot-cancel">Atrás</button>
+                    <button onClick={handleForgotReset} disabled={forgotLoading || !forgotCode || !forgotNewPw} className="forgot-submit">
+                      {forgotLoading ? 'Guardando…' : 'Cambiar contraseña'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
         </motion.div>
       </div>
     </div>
