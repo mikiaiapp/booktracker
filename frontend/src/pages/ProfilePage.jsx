@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle } from 'lucide-react'
-import api from '../utils/api'
+import { api } from '../utils/api'
 import './ProfilePage.css'
 
 export default function ProfilePage() {
