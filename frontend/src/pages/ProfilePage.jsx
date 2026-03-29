@@ -8,6 +8,7 @@ import './ProfilePage.css'
 
 export default function ProfilePage() {
   const user = useAuthStore(s => s.user)
+  const init = useAuthStore(s => s.init)
   const navigate = useNavigate()
 
   // Change password
@@ -19,7 +20,7 @@ export default function ProfilePage() {
   const [qr, setQr] = useState(null)
   const [totpCode, setTotpCode] = useState('')
   const [tfaLoading, setTfaLoading] = useState(false)
-  const [tfaEnabled, setTfaEnabled] = useState(user?.totp_enabled || false)
+  const [tfaEnabled, setTfaEnabled] = useState(!!user?.totp_enabled)
   const [disablePassword, setDisablePassword] = useState('')
 
   const handleChangePassword = async () => {
@@ -71,6 +72,7 @@ export default function ProfilePage() {
       setTfaEnabled(true)
       setQr(null)
       setTotpCode('')
+      await init()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Código incorrecto')
     } finally {
@@ -89,6 +91,7 @@ export default function ProfilePage() {
       toast.success('2FA desactivado')
       setTfaEnabled(false)
       setDisablePassword('')
+      await init()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Contraseña incorrecta')
     } finally {

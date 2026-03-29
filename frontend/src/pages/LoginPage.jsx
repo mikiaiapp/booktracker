@@ -46,7 +46,7 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const verify = useAuthStore.getState().verify2FA
+      const verify = useAuthStore.getState().verify2fa
       await verify(twoFAStep.temp_token, code)
       navigate('/')
     } catch {
@@ -60,8 +60,14 @@ export default function LoginPage() {
     if (!forgotEmail) return
     setForgotLoading(true)
     try {
-      await api.post('/auth/forgot-password', { email: forgotEmail })
-      toast.success('Si el email existe, recibirás un código')
+      const { data } = await api.post('/auth/forgot-password', { email: forgotEmail })
+      if (data.dev_mode && data.code) {
+        // Sin SMTP configurado — mostrar código directamente
+        toast.success(`Código: ${data.code}`, { duration: 30000, icon: '🔑' })
+        setForgotCode(data.code)
+      } else {
+        toast.success('Si el email existe, recibirás un código')
+      }
       setForgotStep(2)
     } catch {
       toast.error('Error al enviar el código')

@@ -264,16 +264,25 @@ async def forgot_password(
     """Envía OTP por email para resetear contraseña."""
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
-    # No revelar si el email existe
     if user:
         otp = generate_otp()
         user.email_otp = otp
         user.email_otp_expires = datetime.utcnow() + timedelta(minutes=15)
         await db.commit()
+        # Intentar enviar email
+        email_sent = False
         try:
             await send_otp_email(req.email, otp)
-        except Exception:
-            pass
+            email_sent = True
+        except Exception as e:
+            print(f"[OTP] Email no enviado: {e}")
+        # Si no hay SMTP, devolver el código directamente
+        if not email_sent:
+            return {
+                "message": "Email no configurado. Usa este código directamente.",
+                "code": otp,
+                "dev_mode": True
+            }
     return {"message": "Si el email existe, recibirás un código de recuperación"}
 
 
