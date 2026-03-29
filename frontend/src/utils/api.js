@@ -59,6 +59,7 @@ export const analysisAPI = {
 export const authorsAPI = {
   list: () => api.get('/analysis/authors/list'),
   reidentify: (author) => api.post('/analysis/authors/reidentify', { author }),
+  reidentifyBook: (bookId) => api.post(`/analysis/${bookId}/reidentify-book`),
 }
 
 // Upload file to shell book

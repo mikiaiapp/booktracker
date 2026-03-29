@@ -264,3 +264,27 @@ async def reidentify_author(
     from app.workers.tasks import reidentify_author_task
     task = reidentify_author_task.delay(current_user.id, author_name)
     return {"task_id": task.id, "status": "processing"}
+
+
+# ── Reidentificar libro individual ─────────────────────────────
+@router.post("/{book_id}/reidentify-book")
+async def reidentify_book(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Relanza fetch_shell_metadata para actualizar portada, sinopsis e ISBN de un libro."""
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    # Resetear status para que fetch_shell_metadata lo actualice
+    book.status = "shell"
+    book.phase1_done = False
+    await db.commit()
+
+    from app.workers.tasks import fetch_shell_metadata
+    fetch_shell_metadata.delay(current_user.id, book_id)
+
+    return {"status": "updating"}

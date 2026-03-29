@@ -12,6 +12,7 @@ export default function AuthorsPage() {
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState({})
   const [reidentifying, setReidentifying] = useState(false)
+  const [refreshingBook, setRefreshingBook] = useState({})
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -65,6 +66,22 @@ export default function AuthorsPage() {
     } catch {
       toast.error('Error al reidentificar el autor')
       setReidentifying(false)
+    }
+  }
+
+  const handleRefreshBook = async (bookId) => {
+    setRefreshingBook(r => ({ ...r, [bookId]: true }))
+    try {
+      await authorsAPI.reidentifyBook(bookId)
+      toast('Actualizando información del libro…', { icon: '🔄' })
+      // Poll hasta que termine
+      setTimeout(async () => {
+        await load()
+        setRefreshingBook(r => ({ ...r, [bookId]: false }))
+      }, 8000)
+    } catch {
+      toast.error('Error al actualizar el libro')
+      setRefreshingBook(r => ({ ...r, [bookId]: false }))
     }
   }
 
@@ -236,6 +253,14 @@ export default function AuthorsPage() {
                         </div>
                         <span className="biblio-cover-title">{book.title}</span>
                         {book.year && <span className="biblio-cover-year">{book.year}</span>}
+                        <button
+                          className="biblio-refresh-btn"
+                          onClick={e => { e.preventDefault(); handleRefreshBook(book.id) }}
+                          disabled={refreshingBook[book.id]}
+                          title="Actualizar portada, sinopsis e ISBN"
+                        >
+                          {refreshingBook[book.id] ? '⏳' : '↻'}
+                        </button>
                       </Link>
                     )
                   })}

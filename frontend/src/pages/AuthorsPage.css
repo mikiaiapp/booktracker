@@ -263,3 +263,19 @@
   background: rgba(74, 158, 255, 0.85);
   color: white;
 }
+
+/* ── Botón actualizar libro individual ───────────────────────── */
+.biblio-refresh-btn {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  color: #8a9aaa;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 0;
+  transition: color 0.15s;
+  line-height: 1;
+}
+.biblio-refresh-btn:hover:not(:disabled) { color: #c9a96e; }
+.biblio-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
