@@ -35,6 +35,7 @@ async def trigger_phase1(
     book.task_id = task.id
     book.status = "identifying"
     book.phase1_done = False
+    book.error_msg = None
     await db.commit()
     return {"task_id": task.id}
 
@@ -57,6 +58,7 @@ async def trigger_phase2(
     task = process_book_phase2.delay(current_user.id, book_id)
     book.task_id = task.id
     book.status = "analyzing_structure"
+    book.error_msg = None
     await db.commit()
     return {"task_id": task.id}
 
@@ -79,6 +81,7 @@ async def trigger_phase3(
     task = process_book_phase3.delay(current_user.id, book_id)
     book.task_id = task.id
     book.status = "summarizing"
+    book.error_msg = None
     await db.commit()
     return {"task_id": task.id}
 

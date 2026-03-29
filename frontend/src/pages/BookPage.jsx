@@ -4,8 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
-  Play, Pause, ChevronDown, ChevronUp, Loader, CheckCircle,
-  ArrowLeft, Edit3, Trash2, AlertCircle
+  Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
+  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell } from '../utils/api'
 import MindMap from '../components/MindMap'
@@ -30,6 +30,53 @@ export default function BookPage() {
   const [prevData, setPrevData] = useState(null)  // mantiene datos previos durante reload
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // TTS state
+  const [ttsPlaying, setTtsPlaying] = useState(false)
+  const [ttsChapter, setTtsChapter] = useState(null) // null = sinopsis+todo, id = capítulo específico
+  const utteranceRef = React.useRef(null)
+
+  const stopTTS = () => {
+    window.speechSynthesis.cancel()
+    setTtsPlaying(false)
+    setTtsChapter(null)
+  }
+
+  const playTTS = (text, chapterId = null) => {
+    stopTTS()
+    if (!text) return
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => { setTtsPlaying(false); setTtsChapter(null) }
+    utterance.onerror = () => { setTtsPlaying(false); setTtsChapter(null) }
+    utteranceRef.current = utterance
+    window.speechSynthesis.speak(utterance)
+    setTtsPlaying(true)
+    setTtsChapter(chapterId)
+  }
+
+  const playFromBeginning = (book, chapters) => {
+    // Concatena sinopsis + resúmenes de capítulos en orden
+    const parts = []
+    if (book.synopsis) parts.push(book.synopsis)
+    chapters
+      .filter(c => c.summary && c.summary_status === 'done')
+      .forEach(c => parts.push(`${c.title}. ${c.summary}`))
+    playTTS(parts.join(' ... '), 'all')
+  }
+
+  const playFromChapter = (chapter, chapters) => {
+    const idx = chapters.findIndex(c => c.id === chapter.id)
+    const parts = chapters
+      .slice(idx)
+      .filter(c => c.summary && c.summary_status === 'done')
+      .map(c => `${c.title}. ${c.summary}`)
+    playTTS(parts.join(' ... '), chapter.id)
+  }
+
+  // Limpiar TTS al desmontar
+  React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
   const [tab, setTab] = useState('info')
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [audioPlaying, setAudioPlaying] = useState(false)
@@ -252,7 +299,7 @@ export default function BookPage() {
             {tab === 'info' && <InfoTab book={book} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} onPlayChapter={(ch) => playTTS(`${ch.title}. ${ch.summary}`, ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} />}
@@ -356,7 +403,7 @@ function InfoTab({ book }) {
   )
 }
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, onPlayChapter, onPlayFromChapter, onStop }) {
   const [summarizing, setSummarizing] = React.useState({})
 
   const handleSummarize = async (e, chapter) => {
@@ -408,6 +455,24 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                       {summarizing[ch.id] ? '…' : '+ Resumir'}
                     </button>
               }
+              {ch.summary_status === 'done' && (
+                <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
+                  {ttsPlaying && ttsChapter === ch.id ? (
+                    <button className="ch-tts-btn stop" onClick={onStop} title="Detener">
+                      <Square size={12} fill="currentColor" />
+                    </button>
+                  ) : (
+                    <>
+                      <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)} title="Leer este capítulo">
+                        <Play size={12} />
+                      </button>
+                      <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
+                        <Volume2 size={12} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
               {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>

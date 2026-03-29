@@ -517,3 +517,44 @@
   white-space: nowrap;
 }
 .shell-upload-btn:hover { background: #1a1a1a; }
+
+/* ── TTS Play/Stop ───────────────────────────────────────────── */
+.hero-tts { margin-top: 0.75rem; }
+
+.tts-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  border: none; transition: all 0.15s;
+}
+.tts-btn.tts-play {
+  background: rgba(201,169,110,0.15);
+  color: #c9a96e;
+  border: 1.5px solid rgba(201,169,110,0.4);
+}
+.tts-btn.tts-play:hover { background: rgba(201,169,110,0.3); }
+.tts-btn.tts-stop {
+  background: rgba(201,169,110,0.9);
+  color: #0d0d0d;
+}
+.tts-btn.tts-stop:hover { background: #c9a96e; }
+
+/* Botones TTS por capítulo */
+.ch-tts-btns {
+  display: flex; gap: 4px; align-items: center; margin-left: 4px;
+}
+.ch-tts-btn {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: none; cursor: pointer;
+  transition: all 0.15s; background: transparent;
+  color: #8a9aaa;
+}
+.ch-tts-btn.play:hover, .ch-tts-btn.play-from:hover {
+  background: rgba(201,169,110,0.15); color: #c9a96e;
+}
+.ch-tts-btn.stop {
+  background: rgba(201,169,110,0.2); color: #c9a96e;
+}
+.ch-tts-btn.play-from { color: #6a8aaa; }
+.ch-tts-btn.play-from:hover { background: rgba(100,140,180,0.15); color: #4a7aaa; }
