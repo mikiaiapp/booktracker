@@ -54,6 +54,9 @@ x-backend-volumes: &backend-volumes
   - /volume1/docker/booktracker/overrides/book_identifier.py:/app/app/services/book_identifier.py:ro
   - /volume1/docker/booktracker/overrides/analysis.py:/app/app/api/analysis.py:ro
   - /volume1/docker/booktracker/overrides/tasks.py:/app/app/workers/tasks.py:ro
+  - /volume1/docker/booktracker/overrides/auth.py:/app/app/api/auth.py:ro
+  - /volume1/docker/booktracker/overrides/books.py:/app/app/api/books.py:ro
+  - /volume1/docker/booktracker/overrides/user.py:/app/app/models/user.py:ro
 
 # ── Servicios ──────────────────────────────────────────────────
 services:
@@ -190,6 +193,9 @@ networks:
 #  │ book_identifier.py   │ Fase 1: metadatos y bibliografía     │
 #  │ analysis.py          │ API endpoints de análisis            │
 #  │ tasks.py             │ Tareas Celery (fases + resumen)      │
+#  │ auth.py              │ Autenticación, 2FA, recuperar pw     │
+#  │ books.py             │ Subida de libros y fichas shell      │
+#  │ user.py              │ Modelo de usuario (campos OTP)       │
 #  └──────────────────────┴──────────────────────────────────────┘
 #
 #  NOTA: El frontend (React) se compila durante el build de Docker.
