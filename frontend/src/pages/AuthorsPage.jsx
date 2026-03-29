@@ -155,10 +155,17 @@ export default function AuthorsPage() {
               <div className="author-avatar-lg">
                 {selected.name[0].toUpperCase()}
               </div>
-              <div>
+              <div style={{flex:1}}>
                 <h2>{selected.name}</h2>
-
               </div>
+              <button
+                className="reidentify-author-btn"
+                onClick={() => handleReidentifyAuthor(selected.name)}
+                disabled={reidentifying}
+                title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
+              >
+                {reidentifying ? '⏳ Actualizando…' : '↻ Reidentificar'}
+              </button>
             </div>
 
             {selected.bio && (
@@ -200,12 +207,13 @@ export default function AuthorsPage() {
                   {selected.books.map(book => {
                     const isAnalyzed = book.status === 'complete' || book.phase3_done
                     const isShell = book.status === 'shell' || book.status === 'shell_error'
-                    const isProcessing = ['summarizing', 'analyzing_structure', 'identifying'].includes(book.status)
+                    const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified'].includes(book.status)
+                    const hasFile = !isShell
                     return (
                       <Link
                         key={book.id}
                         to={`/book/${book.id}`}
-                        className={`biblio-cover-card ${isShell ? 'is-shell' : ''} ${isAnalyzed ? 'is-analyzed' : ''}`}
+                        className={`biblio-cover-card ${isShell ? 'is-shell' : ''} ${isAnalyzed ? 'is-analyzed' : ''} ${hasFile && !isAnalyzed ? 'has-file' : ''}`}
                         title={book.title}
                       >
                         <div className="biblio-cover-img">
@@ -216,9 +224,14 @@ export default function AuthorsPage() {
                           )}
                           {isShell && <div className="biblio-shell-overlay" />}
                           <div className="biblio-cover-badge-wrap">
-                            {isAnalyzed && <span className="biblio-status-badge analyzed">✦ Analizado</span>}
-                            {isShell && <span className="biblio-status-badge shell">Ficha</span>}
-                            {isProcessing && <span className="biblio-status-badge processing">Procesando</span>}
+                            {isAnalyzed
+                              ? <span className="biblio-status-badge analyzed">✦ Analizado</span>
+                              : isProcessing
+                              ? <span className="biblio-status-badge processing">Procesando…</span>
+                              : isShell
+                              ? <span className="biblio-status-badge shell">Solo ficha</span>
+                              : <span className="biblio-status-badge has-file">Sin analizar</span>
+                            }
                           </div>
                         </div>
                         <span className="biblio-cover-title">{book.title}</span>

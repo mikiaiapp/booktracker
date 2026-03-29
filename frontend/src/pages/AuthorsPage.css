@@ -252,3 +252,14 @@
 .reidentify-author-btn:disabled {
   opacity: 0.6; cursor: not-allowed;
 }
+
+/* ── Distinción visual libros con archivo sin analizar ──────── */
+.biblio-cover-card.has-file .biblio-cover-img {
+  border-color: #4a9eff;
+  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.2);
+}
+
+.biblio-status-badge.has-file {
+  background: rgba(74, 158, 255, 0.85);
+  color: white;
+}
