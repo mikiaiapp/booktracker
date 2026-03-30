@@ -207,6 +207,17 @@ export default function BookPage() {
     }
   }, [status])
 
+  const cancelProcess = async () => {
+    if (!confirm('¿Cancelar el proceso en curso?')) return
+    try {
+      await analysisAPI.cancel(id)
+      toast('Proceso cancelado')
+      load()
+    } catch {
+      toast.error('Error al cancelar')
+    }
+  }
+
   const triggerPhase = async (phase) => {
     try {
       if (phase === 1) await analysisAPI.triggerPhase1(id)
@@ -383,7 +394,7 @@ export default function BookPage() {
             </div>
 
             {/* Status pipeline */}
-            {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} book={book} />}
+            {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={cancelProcess} book={book} />}
             {isShell && (
               <div className="shell-upload-area">
                 <span className="shell-label">Solo ficha — sube el PDF/EPUB para analizar</span>
@@ -444,10 +455,10 @@ export default function BookPage() {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} />}
+            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} onPlayChapter={(ch) => playTTS(chapterToText(ch), ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => playTTS(chapterToText(ch), ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} />}
@@ -485,10 +496,10 @@ export default function BookPage() {
 function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   if (!status) return null
   const steps = [
-    { label: 'Fase 1: Identificación', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
-    { label: 'Fase 2: Estructura', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
-    { label: 'Fase 3: Análisis IA', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
-    { label: 'Podcast', done: !!status.podcast_audio_path, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
+    { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
+    { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
+    { label: 'Fase 3: Análisis IA', sublabel: 'Resúmenes, personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
+    { label: 'Podcast', sublabel: 'Guión y audio', done: !!status.podcast_audio_path, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
 
   return (
@@ -501,10 +512,15 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
               ? <Loader size={14} className="spin" />
               : <div className="step-dot" />
           }
-          <span>{s.label}</span>
+          <span>{s.label}{s.sublabel && <span className="step-sublabel"> ({s.sublabel})</span>}</span>
           {s.canTrigger && !isProcessing && (
             <button className="trigger-btn" onClick={s.trigger}>
               {s.done ? 'Repetir' : s.resumable ? 'Reanudar' : 'Iniciar'}
+            </button>
+          )}
+          {isProcessing && i === steps.findIndex(x => !x.done) && (
+            <button className="cancel-btn" onClick={onCancel} title="Cancelar proceso">
+              Cancelar
             </button>
           )}
         </div>
@@ -521,7 +537,7 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   )
 }
 
-function InfoTab({ book }) {
+function InfoTab({ book, otherBooks = [] }) {
   return (
     <div className="info-tab">
       {book.synopsis && (
@@ -536,12 +552,30 @@ function InfoTab({ book }) {
           <p>{book.author_bio}</p>
         </section>
       )}
-      {book.author_bibliography?.length > 0 && (
+      {otherBooks.length > 0 && (
         <section>
           <h3>Otras obras del autor</h3>
-          <ul className="biblio-list">
-            {book.author_bibliography.map((t, i) => <li key={i}>{typeof t === 'string' ? t : t?.title || ''}</li>)}
-          </ul>
+          <div className="other-books-grid">
+            {otherBooks.map(ob => {
+              const isAnalyzed = ob.status === 'complete' || ob.phase3_done
+              const isShell = ob.status === 'shell' || ob.status === 'shell_error'
+              return (
+                <Link key={ob.id} to={`/book/${ob.id}`} className={`other-book-card ${isShell ? 'is-shell' : ''} ${isAnalyzed ? 'is-analyzed' : ''}`}>
+                  <div className="other-book-cover">
+                    {ob.cover_local ? (
+                      <img src={`/data/covers/${ob.cover_local.split('/covers/')[1]}`} alt={ob.title} />
+                    ) : (
+                      <div className="other-book-ph"><BookOpen size={16} strokeWidth={1} /></div>
+                    )}
+                    {isShell && <div className="other-book-overlay" />}
+                    {isAnalyzed && <span className="other-book-badge">✦</span>}
+                  </div>
+                  <span className="other-book-title">{ob.title}</span>
+                  {ob.year && <span className="other-book-year">{ob.year}</span>}
+                </Link>
+              )
+            })}
+          </div>
         </section>
       )}
       {!book.synopsis && !book.author_bio && (
@@ -551,7 +585,7 @@ function InfoTab({ book }) {
   )
 }
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, onPlayChapter, onPlayFromChapter, onStop, onPause }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onStop, onPause }) {
   const [summarizing, setSummarizing] = React.useState({})
 
   const handleSummarize = async (e, chapter) => {
@@ -616,8 +650,16 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                       : <Play size={12} />
                     }
                   </button>
-                  {/* Stop — para sin confirmación (capítulo individual) */}
-                  <button className="ch-tts-btn stop" onClick={() => onStop(true)} title="Parar reproducción">
+                  {/* Stop — confirma si hay cola activa (leer desde aquí) */}
+                  <button
+                    className="ch-tts-btn stop"
+                    onClick={() => {
+                      // Si hay cola activa (más de un capítulo en reproducción), pedir confirmación
+                      const hasQueue = ttsQueue && ttsQueue.length > 1
+                      onStop(!hasQueue)
+                    }}
+                    title="Parar reproducción"
+                  >
                     <Square size={11} fill="currentColor" />
                   </button>
                   {/* Leer desde aquí en adelante */}

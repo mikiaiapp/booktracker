@@ -236,6 +236,13 @@ async def list_authors(
             "isbn": row.isbn,
         })
 
+    # Sort books within each author by year desc
+    for author_data in authors.values():
+        author_data["books"].sort(
+            key=lambda b: (b.get("year") or 0),
+            reverse=True
+        )
+
     return list(authors.values())
 
 
@@ -307,3 +314,32 @@ async def reanalyze_characters(
     from app.workers.tasks import reanalyze_characters_task
     task = reanalyze_characters_task.delay(current_user.id, book_id)
     return {"task_id": task.id, "status": "processing"}
+
+
+# ── Cancelar proceso en curso ──────────────────────────────────
+@router.post("/{book_id}/cancel")
+async def cancel_processing(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    # Determinar a qué estado volver según qué fase estaba corriendo
+    if book.status in ("identifying",):
+        book.status = "uploaded"
+    elif book.status in ("analyzing_structure",):
+        book.status = "identified" if book.phase1_done else "uploaded"
+    elif book.status in ("summarizing", "quota_exceeded"):
+        book.status = "structured" if book.phase2_done else "identified"
+    elif book.status in ("generating_podcast",):
+        book.status = "complete" if book.phase3_done else "structured"
+    else:
+        book.status = "error"
+
+    book.error_msg = None
+    await db.commit()
+    return {"status": book.status}

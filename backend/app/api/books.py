@@ -53,6 +53,16 @@ async def upload_book(
         )
     )
     shell_book = existing_shell.scalar_one_or_none()
+    # También buscar por título exacto entre todos los libros (no solo shells)
+    if not shell_book:
+        existing_any = await db.execute(
+            select(Book).where(
+                sqlfunc.lower(Book.title) == base_title.lower()
+            )
+        )
+        existing_any_book = existing_any.scalar_one_or_none()
+        if existing_any_book and existing_any_book.status in ("shell", "shell_error"):
+            shell_book = existing_any_book
 
     if shell_book:
         # Reusar la ficha shell existente
@@ -130,11 +140,31 @@ async def get_book(
         select(Character).where(Character.book_id == book_id)
     )
 
+    # Otros libros del mismo autor (ordenados por año desc)
+    other_books = []
+    if book.author:
+        from sqlalchemy import func as sqlfunc
+        others_result = await db.execute(
+            select(Book)
+            .where(Book.author == book.author, Book.id != book_id)
+            .order_by(Book.year.desc().nulls_last(), Book.title)
+        )
+        other_books = [
+            {
+                "id": b.id, "title": b.title, "isbn": b.isbn,
+                "cover_local": b.cover_local, "year": b.year,
+                "status": b.status, "phase3_done": b.phase3_done,
+                "synopsis": b.synopsis,
+            }
+            for b in others_result.scalars().all()
+        ]
+
     return {
         "book": book.__dict__,
         "parts": [p.__dict__ for p in parts_result.scalars().all()],
         "chapters": [c.__dict__ for c in chapters_result.scalars().all()],
         "characters": [c.__dict__ for c in chars_result.scalars().all()],
+        "other_books": other_books,
     }
 
 
