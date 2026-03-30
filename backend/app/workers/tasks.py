@@ -612,3 +612,66 @@ async def _reanalyze_characters(user_id: str, book_id: str):
         except Exception as e:
             print(f"Error reanalizando personajes: {traceback.format_exc()}")
             raise
+
+
+# ── Fase 3b: personajes + resumen global + mapa mental ────────
+@celery_app.task(bind=True, name="process_phase3b_task")
+def process_phase3b_task(self, user_id: str, book_id: str):
+    return run_async(_phase3b(user_id, book_id))
+
+
+async def _phase3b(user_id: str, book_id: str):
+    from app.core.database import get_user_db
+    from app.models.book import Book, Chapter, Character
+    from app.services.ai_analyzer import analyze_characters, generate_global_summary, generate_mindmap
+    from sqlalchemy import select, delete
+    import traceback
+
+    async for db in get_user_db(user_id):
+        try:
+            result = await db.execute(select(Book).where(Book.id == book_id))
+            book = result.scalar_one_or_none()
+            if not book:
+                return
+
+            chaps = await db.execute(
+                select(Chapter).where(
+                    Chapter.book_id == book_id,
+                    Chapter.summary_status == "done"
+                ).order_by(Chapter.order)
+            )
+            chapters = chaps.scalars().all()
+            all_summaries = "\n\n".join(
+                f"[{c.title}]\n{c.summary}" for c in chapters if c.summary
+            )
+
+            if not all_summaries:
+                book.status = "error"
+                book.error_msg = "No hay resúmenes de capítulos disponibles"
+                await db.commit()
+                return
+
+            # Borrar personajes existentes y reanalizar
+            await db.execute(delete(Character).where(Character.book_id == book_id))
+            await db.commit()
+
+            characters_data = await analyze_characters(all_summaries, book.title)
+            for char_data in characters_data:
+                char = Character(book_id=book_id, name=char_data["name"])
+                db.add(char)
+                for k, v in char_data.items():
+                    if hasattr(char, k) and k != "name":
+                        setattr(char, k, v)
+
+            book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
+            book.mindmap_data = await generate_mindmap(all_summaries, book.title)
+            book.phase3_done = True
+            book.status = "analyzed"
+            await db.commit()
+            print(f"Phase 3b complete for {book.title}: {len(characters_data)} characters")
+
+        except Exception as e:
+            book.status = "error"
+            book.error_msg = traceback.format_exc()
+            await db.commit()
+            raise

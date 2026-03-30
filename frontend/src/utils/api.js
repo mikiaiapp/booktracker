@@ -51,6 +51,8 @@ export const analysisAPI = {
   triggerPhase1: (bookId) => api.post(`/analysis/${bookId}/phase1`),
   triggerPhase2: (bookId) => api.post(`/analysis/${bookId}/phase2`),
   triggerPhase3: (bookId) => api.post(`/analysis/${bookId}/phase3`),
+  triggerPhase3b: (bookId) => api.post(`/analysis/${bookId}/phase3b`),
+  cancel: (bookId) => api.post(`/analysis/${bookId}/cancel`),
   triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
 }

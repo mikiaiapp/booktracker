@@ -143,11 +143,11 @@ async def get_book(
     # Otros libros del mismo autor (ordenados por año desc)
     other_books = []
     if book.author:
-        from sqlalchemy import func as sqlfunc
+        from sqlalchemy import case
         others_result = await db.execute(
             select(Book)
             .where(Book.author == book.author, Book.id != book_id)
-            .order_by(Book.year.desc().nulls_last(), Book.title)
+            .order_by(case((Book.year == None, 0), else_=1).desc(), Book.year.desc(), Book.title)
         )
         other_books = [
             {

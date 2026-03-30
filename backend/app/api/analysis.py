@@ -325,6 +325,29 @@ async def reanalyze_characters(
     return {"task_id": task.id, "status": "processing"}
 
 
+# ── Fase 3b: solo personajes + resumen global + mapa mental ──
+@router.post("/{book_id}/phase3b")
+async def trigger_phase3b(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if not book.phase2_done:
+        raise HTTPException(400, "Phase 2 not complete")
+
+    from app.workers.tasks import process_phase3b_task
+    task = process_phase3b_task.delay(current_user.id, book_id)
+    book.task_id = task.id
+    book.status = "summarizing"
+    book.error_msg = None
+    await db.commit()
+    return {"task_id": task.id}
+
+
 # ── Cancelar proceso en curso ──────────────────────────────────
 @router.post("/{book_id}/cancel")
 async def cancel_processing(
