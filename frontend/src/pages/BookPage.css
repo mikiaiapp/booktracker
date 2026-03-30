@@ -131,7 +131,7 @@
 }
 
 .trigger-btn {
-  margin-left: auto;
+  margin-left: 0.5rem;
   padding: 0.2rem 0.75rem;
   background: var(--gold);
   color: var(--ink);

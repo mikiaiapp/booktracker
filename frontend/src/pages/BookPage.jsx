@@ -55,17 +55,24 @@ export default function BookPage() {
   }
 
   const pauseTTS = () => {
-    window.speechSynthesis.pause()
+    // Cancel current speech but keep position saved in localStorage
+    window.speechSynthesis.cancel()
     setTtsPlaying(false)
-    // Keep ttsChapter so resume knows where we are
+    // ttsChapter stays set so UI shows "Continuar"
   }
 
   const resumeCurrentTTS = () => {
-    window.speechSynthesis.resume()
-    setTtsPlaying(true)
+    // Resume from saved position in queue
+    if (ttsQueueRef.current.length && ttsIndexRef.current >= 0) {
+      setTtsPlaying(true)
+      speakItem(ttsQueueRef.current, ttsIndexRef.current)
+    }
   }
 
-  const stopTTS = () => {
+  const stopTTS = (skipConfirm = false) => {
+    if (!skipConfirm && (ttsPlaying || ttsChapter)) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+    }
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
     setTtsChapter(null)
@@ -479,8 +486,8 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   if (!status) return null
   const steps = [
     { label: 'Fase 1: Identificación', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
-    { label: 'Fase 2: Estructura', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done && !status.phase2_done },
-    { label: 'Fase 3: Análisis IA', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done && !status.phase3_done },
+    { label: 'Fase 2: Estructura', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
+    { label: 'Fase 3: Análisis IA', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
     { label: 'Podcast', done: !!status.podcast_audio_path, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
 
@@ -609,8 +616,8 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                       : <Play size={12} />
                     }
                   </button>
-                  {/* Stop — para sin guardar avance */}
-                  <button className="ch-tts-btn stop" onClick={onStop} title="Parar y resetear">
+                  {/* Stop — para sin confirmación (capítulo individual) */}
+                  <button className="ch-tts-btn stop" onClick={() => onStop(true)} title="Parar reproducción">
                     <Square size={11} fill="currentColor" />
                   </button>
                   {/* Leer desde aquí en adelante */}
@@ -741,6 +748,4 @@ function CharactersTab({ characters, bookId, onReanalyzed, status }) {
       }
     </div>
   )
-}
-
 }
