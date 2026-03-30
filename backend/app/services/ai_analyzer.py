@@ -226,24 +226,28 @@ Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni bloques d
     user = f"""Libro: "{book_title}"
 
 Resúmenes de todos los capítulos:
-{all_summaries[:25000]}
+{all_summaries[:30000]}
 
-Identifica y analiza TODOS los personajes (mínimo 10 si aparecen). Incluye protagonistas, antagonistas, secundarios y personajes menores relevantes.
+Identifica y analiza TODOS los personajes con profundidad (mínimo 12 si aparecen). Incluye protagonistas, antagonistas, secundarios y personajes menores relevantes.
+Para los personajes principales (protagonist/antagonist), el análisis debe ser EXHAUSTIVO: mínimo 5 frases en personalidad y 5 frases en evolución.
+Para los secundarios, al menos 3 frases en cada campo.
+
 Devuelve un array JSON donde cada elemento tiene:
 {{
   "name": "nombre completo",
   "aliases": ["apodo1", "apodo2"],
   "role": "protagonist|antagonist|secondary|minor",
-  "description": "descripción física detallada, edad aproximada, contexto social",
-  "personality": "análisis profundo de personalidad, motivaciones, miedos, deseos (mínimo 3 frases)",
-  "arc": "evolución completa del personaje a lo largo del libro, cambios importantes",
-  "relationships": {{"nombre_personaje": "tipo y calidad de la relación"}},
-  "first_appearance": "nombre del capítulo donde aparece por primera vez",
-  "importance": "explicación de su importancia para la trama",
-  "quotes": ["frase o momento memorable del personaje"]
+  "description": "descripción física muy detallada: rasgos, edad, vestimenta habitual, expresión, contexto social y origen",
+  "personality": "análisis profundo: rasgos dominantes, virtudes y defectos, motivaciones profundas, miedos, deseos, contradicciones internas, forma de relacionarse con los demás",
+  "arc": "evolución detallada capítulo a capítulo: estado inicial, conflictos que enfrenta, momentos de cambio, estado final. Qué aprende o pierde a lo largo del libro",
+  "key_moments": ["momento crucial 1 con contexto", "momento crucial 2 con contexto", "momento crucial 3 con contexto"],
+  "relationships": {{"nombre_personaje": "descripción detallada de la relación y su evolución"}},
+  "first_appearance": "capítulo donde aparece por primera vez",
+  "importance": "rol concreto en la trama: qué mueve, qué bloquea, qué revela",
+  "quotes": ["cita o momento memorable que define al personaje"]
 }}"""
 
-    result = await _call_ai(system, user, max_tokens=6000)
+    result = await _call_ai(system, user, max_tokens=8000)
     try:
         data = _parse_json(result)
         return data if isinstance(data, list) else []
@@ -282,21 +286,73 @@ Responde ÚNICAMENTE con JSON válido, sin texto adicional ni bloques de código
 
     user = f"""Libro: "{book_title}"
 
-Resúmenes: {all_summaries[:15000]}
+Resúmenes completos: {all_summaries[:25000]}
 
-Genera un mapa mental en JSON con esta estructura exacta:
+Genera un mapa mental MUY DETALLADO en JSON con contenido 100% específico de este libro, sin frases genéricas.
+Cada rama debe tener 6-10 hijos concretos con nombres, eventos y detalles reales del libro.
+
+Estructura exacta (8 ramas obligatorias):
 {{
   "center": "{book_title}",
   "branches": [
-    {{"label": "Trama principal", "color": "#6366f1", "children": ["evento clave 1", "evento clave 2"]}},
-    {{"label": "Personajes", "color": "#f59e0b", "children": ["personaje: descripción breve"]}},
-    {{"label": "Temas", "color": "#10b981", "children": ["tema 1", "tema 2"]}},
-    {{"label": "Lugares", "color": "#ef4444", "children": ["lugar 1", "lugar 2"]}},
-    {{"label": "Desenlace", "color": "#8b5cf6", "children": ["punto 1", "punto 2"]}}
+    {{
+      "label": "Trama principal",
+      "color": "#6366f1",
+      "children": [
+        "Acto 1: [describe el arranque concreto con personajes y situación]",
+        "Detonante: [evento específico que cambia todo]",
+        "Nudo: [conflicto central desarrollado]",
+        "Giro 1: [primer giro importante]",
+        "Giro 2: [segundo giro si existe]",
+        "Clímax: [momento de máxima tensión, específico]",
+        "Desenlace: [resolución concreta]"
+      ]
+    }},
+    {{
+      "label": "Subtramas",
+      "color": "#06b6d4",
+      "children": ["[nombre personaje]: [conflicto/arco específico de la subtrama]", "...mínimo 4 subtramas"]
+    }},
+    {{
+      "label": "Personajes clave",
+      "color": "#f59e0b",
+      "children": ["[Nombre]: [rol] — [rasgo definitorio y arco en una frase]", "...todos los personajes importantes"]
+    }},
+    {{
+      "label": "Relaciones entre personajes",
+      "color": "#f97316",
+      "children": ["[Personaje A] ↔ [Personaje B]: [tipo de relación y cómo evoluciona]", "...mínimo 5 relaciones"]
+    }},
+    {{
+      "label": "Temas y mensajes",
+      "color": "#10b981",
+      "children": ["[Tema]: cómo se manifiesta concretamente en el libro", "...mínimo 5 temas"]
+    }},
+    {{
+      "label": "Escenarios y época",
+      "color": "#ef4444",
+      "children": ["[Lugar]: su función dramática en la historia", "Época: [contexto histórico y su impacto]", "...todos los escenarios relevantes"]
+    }},
+    {{
+      "label": "Símbolos y leitmotivs",
+      "color": "#ec4899",
+      "children": ["[Símbolo]: [su significado específico en este libro]", "...mínimo 5 símbolos o motivos recurrentes"]
+    }},
+    {{
+      "label": "Estilo y técnica narrativa",
+      "color": "#8b5cf6",
+      "children": [
+        "Narrador: [tipo y efecto]",
+        "Tiempo narrativo: [lineal, flashbacks, etc.]",
+        "Recursos: [metáforas, ironía, suspense... con ejemplos]",
+        "Ritmo: [descripción del ritmo narrativo]",
+        "Punto de vista: [perspectiva y su impacto]"
+      ]
+    }}
   ]
 }}"""
 
-    result = await _call_ai(system, user, max_tokens=2000)
+    result = await _call_ai(system, user, max_tokens=4000)
     try:
         return _parse_json(result)
     except Exception:

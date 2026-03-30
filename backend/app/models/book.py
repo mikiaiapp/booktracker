@@ -94,6 +94,7 @@ class Character(BookBase):
     first_appearance = Column(String, nullable=True)  # chapter title
     appearances = Column(JSON, nullable=True)  # list of chapter ids
     quotes = Column(JSON, nullable=True)  # notable quotes
+    key_moments = Column(JSON, nullable=True)  # crucial moments in the story
 
 
 class AnalysisJob(BookBase):

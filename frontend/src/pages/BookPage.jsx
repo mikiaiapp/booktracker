@@ -498,8 +498,9 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   const steps = [
     { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
     { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
-    { label: 'Fase 3: Análisis IA', sublabel: 'Resúmenes, personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
-    { label: 'Podcast', sublabel: 'Guión y audio', done: !!status.podcast_audio_path, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
+    { label: 'Fase 3a: Resúmenes', sublabel: 'Resumen de cada capítulo', done: status.chapters_summarized || status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
+    { label: 'Fase 3b: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.chapters_summarized || status.phase3_done },
+    { label: 'Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
 
   return (
@@ -775,9 +776,17 @@ function CharactersTab({ characters, bookId, onReanalyzed, status }) {
                       </ul>
                     </div>
                   )}
+                  {char.key_moments?.length > 0 && (
+                    <div className="char-section">
+                      <strong>Momentos clave</strong>
+                      {char.key_moments.map((q, j) => (
+                        <blockquote key={j} className="char-quote">{q}</blockquote>
+                      ))}
+                    </div>
+                  )}
                   {char.quotes?.length > 0 && (
                     <div className="char-section">
-                      <strong>Momentos destacados</strong>
+                      <strong>Citas y momentos memorables</strong>
                       {char.quotes.map((q, j) => (
                         <blockquote key={j} className="char-quote">{q}</blockquote>
                       ))}

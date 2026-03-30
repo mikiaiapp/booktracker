@@ -163,14 +163,23 @@ async def get_status(
     total_ch = len(chapters)
     done_ch = sum(1 for c in chapters if c.summary_status == "done")
 
+    # chapters_analyzed = fase 3 completó personajes+resumen+mapa (phase3_done)
+    # chapters_summarized = todos los capítulos tienen resumen (puede ser true antes de phase3_done)
+    chapters_summarized = total_ch > 0 and done_ch == total_ch
+
     return {
         "status": book.status,
         "phase1_done": book.phase1_done,
         "phase2_done": book.phase2_done,
         "phase3_done": book.phase3_done,
+        "chapters_summarized": chapters_summarized,
+        "has_global_summary": bool(book.global_summary),
+        "podcast_done": book.status == "complete" and bool(book.podcast_script),
         "error_msg": book.error_msg,
         "chapters_total": total_ch,
         "chapters_done": done_ch,
+        "podcast_audio_path": book.podcast_audio_path,
+        "podcast_script": bool(book.podcast_script),
         "jobs": [{"phase": j.phase, "status": j.status, "progress": j.progress, "detail": j.detail} for j in jobs],
     }
 
