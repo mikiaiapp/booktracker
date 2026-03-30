@@ -85,5 +85,6 @@ export const reanalyzeCharacters = (bookId) =>
 
 // Shell books (ficha sin archivo)
 export const shellAPI = {
-  create: (title, author, isbn = null) => api.post('/books/shell', { title, author, isbn }),
+  create: (title, author, isbn = null, year = null, cover_url = null, synopsis = null) => 
+    api.post('/books/shell', { title, author, isbn, year, cover_url, synopsis }),
 }

@@ -1,5 +1,26 @@
 # 📋 CHANGELOG
 
+## [2.0.1] - 2026-03-30
+
+### 🐛 Bugfixes
+
+#### Portadas faltantes en Bibliografía de Autores
+- **Problema:** En la página de Autores, los libros de la bibliografía no añadidos aparecían sin portada (placeholder), mientras que en "Otras obras del autor" sí tenían portada
+- **Causa:** Al crear fichas shell desde la bibliografía, se ignoraban los metadatos `year`, `cover_url` y `synopsis` que ya venían de Google Books
+- **Solución:** 
+  - Ampliado `CreateShellRequest` para aceptar metadatos adicionales
+  - Frontend pasa `year`, `cover_url` y `synopsis` al crear shells
+  - Visualización de bibliografía muestra portadas antes de añadir el libro
+- **Archivos modificados:** `books.py`, `api.js`, `AuthorsPage.jsx`
+- **Resultado:** Consistencia total entre vista de Autores y vista de libro individual
+
+### ✨ Mejoras menores
+- Año de publicación visible en libros no añadidos de la bibliografía
+- Sinopsis disponible desde la creación de la ficha shell
+- Mejor UX: usuario ve portadas antes de añadir libros
+
+---
+
 ## [2.0.0] - 2026-03-30
 
 ### 🎉 Simplificación mayor - Eliminación de overrides

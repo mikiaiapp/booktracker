@@ -88,10 +88,13 @@ export default function AuthorsPage() {
   const handleAddShell = async (item, authorName) => {
     const title = typeof item === 'string' ? item : item.title
     const isbn = typeof item === 'string' ? null : (item.isbn || null)
+    const year = typeof item === 'string' ? null : (item.year || null)
+    const cover_url = typeof item === 'string' ? null : (item.cover_url || null)
+    const synopsis = typeof item === 'string' ? null : (item.synopsis || null)
     const key = isbn || title
     setCreating(c => ({ ...c, [key]: true }))
     try {
-      const { data } = await shellAPI.create(title, authorName, isbn)
+      const { data } = await shellAPI.create(title, authorName, isbn, year, cover_url, synopsis)
       toast.success(`"${title}" añadida`)
       await load()
       navigate(`/book/${data.id}`)
@@ -281,14 +284,20 @@ export default function AuthorsPage() {
                   }).map((item, i) => {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
+                    const year = typeof item === 'string' ? null : item.year
+                    const cover_url = typeof item === 'string' ? null : item.cover_url
                     const key = isbn || title
                     const isCreating = creating[key]
                     return (
                       <div key={i} className="biblio-cover-card is-missing" title={title}>
                         <div className="biblio-cover-img">
-                          <div className="biblio-cover-ph">
-                            <BookOpen size={18} strokeWidth={1} />
-                          </div>
+                          {cover_url ? (
+                            <img src={cover_url} alt={title} />
+                          ) : (
+                            <div className="biblio-cover-ph">
+                              <BookOpen size={18} strokeWidth={1} />
+                            </div>
+                          )}
                           <button
                             className="biblio-add-btn"
                             onClick={() => handleAddShell(item, selected.name)}
@@ -299,6 +308,7 @@ export default function AuthorsPage() {
                           </button>
                         </div>
                         <span className="biblio-cover-title">{title}</span>
+                        {year && <span className="biblio-cover-year">{year}</span>}
                       </div>
                     )
                   })}

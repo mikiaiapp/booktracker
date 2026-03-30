@@ -224,6 +224,9 @@ class CreateShellRequest(BaseModel):
     title: str
     author: Optional[str] = None
     isbn: Optional[str] = None
+    year: Optional[int] = None
+    cover_url: Optional[str] = None
+    synopsis: Optional[str] = None
 
 
 @router.post("/shell", status_code=201)
@@ -254,6 +257,9 @@ async def create_shell_book(
         title=req.title,
         author=req.author,
         isbn=req.isbn,
+        year=req.year,
+        cover_url=req.cover_url,
+        synopsis=req.synopsis,
         file_type=None,
         file_path=None,
         status="shell",          # sin archivo, solo ficha
