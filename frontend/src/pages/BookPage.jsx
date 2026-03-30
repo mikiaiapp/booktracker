@@ -742,5 +742,3 @@ function CharactersTab({ characters, bookId, onReanalyzed, status }) {
     </div>
   )
 }
-
-}
