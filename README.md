@@ -8,6 +8,47 @@
 ![Stack](https://img.shields.io/badge/IA-Gemini%202.0%20Flash-4285F4?style=flat-square)
 ![Stack](https://img.shields.io/badge/Deploy-Docker%20%2B%20Portainer-2496ED?style=flat-square)
 
+**🚀 [Guía rápida de despliegue →](QUICKSTART.md)**
+
+---
+
+## ✨ Características principales
+
+### 📖 Gestión de biblioteca
+- Sube PDFs y EPUBs para análisis automático
+- Fichas de libros sin archivo (shell books)
+- Metadatos automáticos desde Open Library y Google Books
+- Portadas descargadas automáticamente
+- Estados de lectura: por leer / leyendo / leído
+- Valoraciones y notas personales
+
+### 🤖 Análisis con IA (Gemini 2.0 Flash - gratuito)
+- **Fase 1:** Identificación y metadatos (autor, sinopsis, año, ISBN)
+- **Fase 2:** Detección de estructura (partes, capítulos, páginas)
+- **Fase 3:** Resúmenes por capítulo + análisis global
+- Extracción de personajes con descripción, rol y arcos narrativos
+- Mapa mental interactivo de conceptos clave
+- Generación de podcasts (guión + audio TTS)
+
+### 👥 Multiusuario con seguridad
+- Registro e inicio de sesión
+- 2FA opcional (TOTP / Email OTP)
+- Recuperación de contraseña por email
+- Bases de datos SQLite independientes por usuario
+- Sesiones con JWT
+
+### 📚 Sección de autores
+- Agrupación automática por autor
+- Biografías desde Wikipedia
+- Bibliografía completa desde Google Books
+- Vista de todos los libros del mismo autor
+
+### 🎯 Despliegue simplificado
+- Stack Docker completo listo para Portainer
+- Configuración mediante variables de entorno
+- Todo el código en el repositorio (sin archivos externos)
+- Actualizaciones con un clic: "Pull and redeploy"
+
 ---
 
 ## Despliegue en Synology NAS con Portainer

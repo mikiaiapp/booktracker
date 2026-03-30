@@ -845,3 +845,296 @@
   opacity: 0.65;
   font-size: 0.75em;
 }
+
+/* ── Podcast Tab ─────────────────────────────────────────────── */
+.podcast-tab {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.podcast-player {
+  background: var(--paper-dark);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.podcast-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--gold);
+  color: var(--ink);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 1rem 2rem;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all var(--transition);
+  box-shadow: var(--shadow);
+}
+
+.podcast-play-btn:hover {
+  background: var(--gold-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.podcast-script {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow);
+}
+
+.podcast-script h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--ink);
+  margin-bottom: 1.5rem;
+  font-size: 1.25rem;
+}
+
+.script-content {
+  color: var(--slate);
+  line-height: 1.8;
+}
+
+.script-content p {
+  margin-bottom: 1rem;
+}
+
+.script-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Mobile Responsive ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .book-hero {
+    padding: 1rem 1.25rem 1.5rem;
+  }
+
+  .hero-content {
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .hero-cover {
+    width: 120px;
+    align-self: center;
+  }
+
+  .hero-cover img,
+  .cover-ph-lg {
+    width: 120px;
+    height: 170px;
+  }
+
+  .hero-info {
+    text-align: center;
+  }
+
+  .hero-info h1 {
+    font-size: 1.5rem;
+  }
+
+  .hero-author {
+    font-size: 0.95rem;
+  }
+
+  .hero-meta {
+    justify-content: center;
+  }
+
+  .star-rating {
+    justify-content: center;
+  }
+
+  .tabs-nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    min-width: auto;
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .tab-content {
+    padding: 1.25rem;
+  }
+
+  .pipeline {
+    gap: 1rem;
+  }
+
+  .pipeline-step {
+    font-size: 0.85rem;
+    padding: 0.75rem;
+  }
+
+  .trigger-btn,
+  .cancel-btn {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.65rem;
+  }
+
+  .chapter-card {
+    padding: 1rem;
+  }
+
+  .chapter-header h3 {
+    font-size: 1.1rem;
+  }
+
+  .chapter-num {
+    font-size: 0.7rem;
+  }
+
+  .tts-btn {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+  }
+
+  .char-card {
+    padding: 1rem;
+  }
+
+  .char-avatar {
+    width: 50px;
+    height: 50px;
+    font-size: 1.25rem;
+  }
+
+  .char-name {
+    font-size: 1.1rem;
+  }
+
+  .other-books-grid {
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+  }
+
+  .podcast-player {
+    padding: 1.5rem;
+  }
+
+  .podcast-play-btn {
+    padding: 0.85rem 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  .podcast-script {
+    padding: 1.25rem;
+  }
+
+  .podcast-script h3 {
+    font-size: 1.1rem;
+  }
+
+  .script-content {
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .book-hero {
+    padding: 1rem 1rem 1.25rem;
+  }
+
+  .hero-cover {
+    width: 100px;
+  }
+
+  .hero-cover img,
+  .cover-ph-lg {
+    width: 100px;
+    height: 140px;
+  }
+
+  .hero-info h1 {
+    font-size: 1.25rem;
+  }
+
+  .hero-author {
+    font-size: 0.85rem;
+  }
+
+  .hero-meta span {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+  }
+
+  .tabs-nav {
+    gap: 0.25rem;
+  }
+
+  .tab-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .tab-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tab-content {
+    padding: 1rem;
+  }
+
+  .pipeline-step {
+    font-size: 0.8rem;
+    padding: 0.65rem;
+    gap: 0.4rem;
+  }
+
+  .chapter-card {
+    padding: 0.85rem;
+  }
+
+  .chapter-header {
+    gap: 0.5rem;
+  }
+
+  .chapter-header h3 {
+    font-size: 1rem;
+  }
+
+  .chapter-num {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.5rem;
+  }
+
+  .char-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 1rem;
+  }
+
+  .char-avatar {
+    width: 60px;
+    height: 60px;
+    font-size: 1.5rem;
+  }
+
+  .other-books-grid {
+    gap: 0.75rem;
+  }
+
+  .other-book-cover {
+    width: 60px;
+    height: 85px;
+  }
+
+  .other-book-title {
+    font-size: 9px;
+    max-width: 65px;
+  }
+}

@@ -430,18 +430,23 @@ async def _fetch_shell(user_id: str, book_id: str):
                     except Exception as e:
                         print(f"Error setting {field}: {e}")
 
-            # Descargar portada
-            if metadata.get("cover_url"):
+            # Descargar portada: priorizar cover_url ya existente (de bibliografía)
+            # Si no existe, usar el que venga de metadata
+            cover_url_to_use = book.cover_url or metadata.get("cover_url")
+            
+            if cover_url_to_use and not book.cover_local:
                 cover_dir = os.path.join(settings.COVERS_DIR, user_id)
                 os.makedirs(cover_dir, exist_ok=True)
                 fake_path = os.path.join(settings.UPLOADS_DIR, user_id, f"{book_id}.pdf")
-                local_cover = await download_cover(metadata["cover_url"], fake_path)
+                local_cover = await download_cover(cover_url_to_use, fake_path)
                 if local_cover:
                     book.cover_local = local_cover
+                    print(f"Portada descargada para {book.title}")
 
             book.phase1_done = True
             book.status = "shell"
             await db.commit()
+            print(f"Shell metadata fetched for {book.title}")
 
         except Exception as e:
             try:
@@ -475,7 +480,7 @@ async def _reidentify_author(user_id: str, author_name: str):
                 bio_data = await search_wikipedia_author(client, author_name)
                 new_bio = bio_data.get("author_bio")
 
-                # 2. Obtener bibliografía actualizada de Google Books
+                # 2. Obtener bibliografía actualizada de Google Books (con metadatos completos)
                 new_biblio = await get_author_bibliography(author_name)
 
                 # 3. Actualizar todos los libros del autor con nueva bio y bibliografía
@@ -494,8 +499,15 @@ async def _reidentify_author(user_id: str, author_name: str):
                 import uuid
                 created = 0
                 for item in (new_biblio or []):
-                    b_title = item.get("title") if isinstance(item, dict) else item
-                    b_isbn = item.get("isbn") if isinstance(item, dict) else None
+                    if not isinstance(item, dict):
+                        continue
+                    
+                    b_title = item.get("title")
+                    b_isbn = item.get("isbn")
+                    b_year = item.get("year")
+                    b_cover_url = item.get("cover_url")
+                    b_synopsis = item.get("synopsis")
+                    
                     if not b_title:
                         continue
 
@@ -512,13 +524,16 @@ async def _reidentify_author(user_id: str, author_name: str):
                     if existing.scalar_one_or_none():
                         continue
 
-                    # Crear ficha shell
+                    # Crear ficha shell con metadatos completos desde bibliografía
                     book_id = str(uuid.uuid4())
                     shell = Book(
                         id=book_id,
                         title=b_title,
                         author=author_name,
                         isbn=b_isbn,
+                        year=b_year,
+                        synopsis=b_synopsis,
+                        cover_url=b_cover_url,
                         author_bio=new_bio,
                         author_bibliography=new_biblio,
                         status="shell",
@@ -527,10 +542,10 @@ async def _reidentify_author(user_id: str, author_name: str):
                     db.add(shell)
                     await db.commit()
 
-                    # Buscar metadatos en background (portada, sinopsis, ISBN)
+                    # Buscar metadatos adicionales y descargar portada en background
                     fetch_shell_metadata.delay(user_id, book_id)
                     created += 1
-                    print(f"Shell creado: {b_title} ({b_isbn})")
+                    print(f"Shell creado: {b_title} ({b_isbn}) - año: {b_year}")
 
                 # 5. Relanzar fetch_shell_metadata en fichas existentes sin portada o sinopsis
                 updated = 0

@@ -22,7 +22,6 @@ const TABS = [
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
-const COMPLETE_STATUSES = ['complete', 'analyzed', 'error']
 
 export default function BookPage() {
   const { id } = useParams()
@@ -182,21 +181,16 @@ export default function BookPage() {
 
   const load = async () => {
     try {
-      const bookRes = await booksAPI.get(id)
+      const [bookRes, statusRes] = await Promise.all([
+        booksAPI.get(id),
+        analysisAPI.status(id),
+      ])
       setData(bookRes.data)
+      setStatus(statusRes.data)
       setRating(bookRes.data.book?.rating || 0)
-      try {
-        const statusRes = await analysisAPI.status(id)
-        setStatus(statusRes.data)
-      } catch {
-        // Status error — keep current status, don't navigate away
-      }
-    } catch (err) {
-      if (err.response?.status === 404) {
-        toast.error('No se encontró el libro')
-        navigate('/')
-      }
-      // Other errors — keep showing what we have
+    } catch {
+      toast.error('No se encontró el libro')
+      navigate('/')
     } finally {
       setLoading(false)
     }
@@ -229,7 +223,6 @@ export default function BookPage() {
       if (phase === 1) await analysisAPI.triggerPhase1(id)
       if (phase === 2) await analysisAPI.triggerPhase2(id)
       if (phase === 3) await analysisAPI.triggerPhase3(id)
-      if (phase === '3b') await analysisAPI.triggerPhase3b(id)
       if (phase === 'podcast') await analysisAPI.triggerPodcast(id)
       toast.success('Proceso iniciado')
       load()
@@ -500,13 +493,13 @@ export default function BookPage() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = {} }) {
+function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   if (!status) return null
   const steps = [
     { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
     { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
     { label: 'Fase 3a: Resúmenes', sublabel: 'Resumen de cada capítulo', done: status.chapters_summarized || status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
-    { label: 'Fase 3b: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger('3b'), canTrigger: status.chapters_summarized || status.phase3_done },
+    { label: 'Fase 3b: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.chapters_summarized || status.phase3_done },
     { label: 'Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
 
@@ -804,6 +797,48 @@ function CharactersTab({ characters, bookId, onReanalyzed, status }) {
             ))}
           </div>
       }
+    </div>
+  )
+}
+
+function PodcastTab({ book, playing, onToggle }) {
+  const hasScript = book?.podcast_script
+  const hasAudio = book?.podcast_audio_path
+
+  if (!hasScript && !hasAudio) {
+    return (
+      <div className="empty-tab">
+        <Mic size={48} strokeWidth={1} />
+        <p>El podcast aún no ha sido generado</p>
+        <p className="empty-subtitle">Lanza la fase de Podcast desde el Pipeline arriba</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="podcast-tab">
+      {hasAudio && (
+        <div className="podcast-player">
+          <button className="podcast-play-btn" onClick={onToggle}>
+            {playing ? <Pause size={24} /> : <Play size={24} />}
+            <span>{playing ? 'Pausar podcast' : 'Reproducir podcast'}</span>
+          </button>
+        </div>
+      )}
+      
+      {hasScript && (
+        <div className="podcast-script">
+          <h3>
+            <Volume2 size={18} />
+            Guión del podcast
+          </h3>
+          <div className="script-content">
+            {book.podcast_script.split('\n').map((line, i) => (
+              <p key={i}>{line}</p>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

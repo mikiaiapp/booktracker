@@ -208,7 +208,7 @@ async def list_authors(
     result = await db.execute(
         select(Book.author, Book.author_bio, Book.author_bibliography,
                Book.id, Book.title, Book.cover_local, Book.year, Book.status,
-               Book.phase3_done, Book.isbn)
+               Book.phase3_done, Book.isbn, Book.synopsis)
         .where(Book.author.isnot(None))
         .order_by(Book.author)
     )
@@ -221,14 +221,29 @@ async def list_authors(
         if not author:
             continue
         if author not in authors:
-            # Normalizar bibliografía: acepta tanto strings como {title, isbn}
+            # Normalizar bibliografía: acepta tanto strings como {title, isbn, year, cover_url, synopsis}
             raw_biblio = row.author_bibliography or []
             biblio = []
             for item in raw_biblio:
                 if isinstance(item, str):
-                    biblio.append({"title": item, "isbn": None})
+                    biblio.append({
+                        "title": item,
+                        "isbn": None,
+                        "year": None,
+                        "cover_url": None,
+                        "synopsis": None
+                    })
                 elif isinstance(item, dict):
-                    biblio.append({"title": item.get("title", ""), "isbn": item.get("isbn")})
+                    biblio.append({
+                        "title": item.get("title", ""),
+                        "isbn": item.get("isbn"),
+                        "year": item.get("year"),
+                        "cover_url": item.get("cover_url"),
+                        "synopsis": item.get("synopsis")
+                    })
+            # Ordenar bibliografía por año descendente (más reciente primero)
+            biblio.sort(key=lambda x: x.get("year") or 0, reverse=True)
+            
             authors[author] = {
                 "name": author,
                 "bio": row.author_bio,
@@ -243,9 +258,10 @@ async def list_authors(
             "status": row.status,
             "phase3_done": row.phase3_done,
             "isbn": row.isbn,
+            "synopsis": row.synopsis,
         })
 
-    # Sort books within each author by year desc
+    # Ordenar libros de cada autor por año descendente (más reciente primero)
     for author_data in authors.values():
         author_data["books"].sort(
             key=lambda b: (b.get("year") or 0),

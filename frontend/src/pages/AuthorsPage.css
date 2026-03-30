@@ -279,3 +279,157 @@
 }
 .biblio-refresh-btn:hover:not(:disabled) { color: #c9a96e; }
 .biblio-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Mobile Responsive ──────────────────────────────────────── */
+@media (max-width: 768px) {
+  .authors-page {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .page-header h1 {
+    font-size: 20px;
+  }
+
+  .authors-layout {
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+  }
+
+  .authors-list {
+    position: static;
+    max-height: 250px;
+    overflow-y: auto;
+  }
+
+  .author-detail {
+    padding: 1.25rem;
+  }
+
+  .author-detail-header {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 0.75rem;
+  }
+
+  .author-avatar-lg {
+    width: 48px;
+    height: 48px;
+    font-size: 20px;
+  }
+
+  .author-detail-header h2 {
+    font-size: 18px;
+  }
+
+  .author-section {
+    margin-bottom: 1.5rem;
+  }
+
+  .author-section h3 {
+    font-size: 10px;
+  }
+
+  .author-section > p {
+    font-size: 12px;
+  }
+
+  .biblio-covers-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.85rem;
+  }
+
+  .biblio-cover-img {
+    width: 70px;
+    height: 100px;
+  }
+
+  .biblio-title {
+    font-size: 10px;
+    -webkit-line-clamp: 2;
+  }
+
+  .biblio-year {
+    font-size: 9px;
+  }
+
+  .biblio-status-badge {
+    font-size: 7px;
+    padding: 2px 5px;
+  }
+
+  .reidentify-author-btn {
+    font-size: 12px;
+    padding: 8px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .authors-page {
+    padding: 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 18px;
+  }
+
+  .page-sub {
+    font-size: 12px;
+  }
+
+  .authors-list {
+    max-height: 200px;
+  }
+
+  .author-item {
+    padding: 10px 12px;
+  }
+
+  .author-avatar-sm {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+
+  .author-item-name {
+    font-size: 12px;
+  }
+
+  .author-item-count {
+    font-size: 10px;
+  }
+
+  .author-detail {
+    padding: 1rem;
+  }
+
+  .author-avatar-lg {
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+
+  .author-detail-header h2 {
+    font-size: 16px;
+  }
+
+  .biblio-covers-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+  }
+
+  .biblio-cover-img {
+    width: 100%;
+    aspect-ratio: 0.7;
+    height: auto;
+  }
+
+  .biblio-title {
+    font-size: 9px;
+  }
+
+  .reidentify-author-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

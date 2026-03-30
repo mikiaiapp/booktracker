@@ -162,8 +162,8 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
 
 
 async def get_author_bibliography(author_name: str) -> list:
-    """Obtiene bibliografía del autor via Google Books, deduplicada por ISBN."""
-    url = f"https://www.googleapis.com/books/v1/volumes?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=relevance"
+    """Obtiene bibliografía del autor via Google Books con metadatos completos."""
+    url = f"https://www.googleapis.com/books/v1/volumes?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=newest"
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
             r = await c.get(url)
@@ -182,12 +182,14 @@ async def get_author_bibliography(author_name: str) -> list:
             # Solo libros donde el autor es el principal
             if author_name.lower() not in " ".join(authors).lower():
                 continue
+            
             # Extraer ISBN
             isbn = None
             for ident in info.get("industryIdentifiers", []):
                 if ident.get("type") in ("ISBN_13", "ISBN_10"):
                     isbn = ident.get("identifier")
                     break
+            
             # Deduplicar por ISBN primero, luego por título normalizado
             title_key = title.lower()
             if isbn:
@@ -198,9 +200,44 @@ async def get_author_bibliography(author_name: str) -> list:
                 if title_key in seen_title:
                     continue
             seen_title.add(title_key)
-            results.append({"title": title, "isbn": isbn})
+            
+            # Extraer año de publicación
+            year = None
+            if info.get("publishedDate"):
+                try:
+                    year_str = info["publishedDate"][:4]
+                    if year_str.isdigit():
+                        year = int(year_str)
+                except:
+                    pass
+            
+            # Extraer portada (preferir thumbnail grande)
+            cover_url = None
+            if info.get("imageLinks"):
+                cover_url = (
+                    info["imageLinks"].get("large") or
+                    info["imageLinks"].get("medium") or
+                    info["imageLinks"].get("thumbnail")
+                )
+                if cover_url:
+                    cover_url = cover_url.replace("http://", "https://")
+            
+            # Extraer sinopsis
+            synopsis = info.get("description", "")
+            
+            results.append({
+                "title": title,
+                "isbn": isbn,
+                "year": year,
+                "cover_url": cover_url,
+                "synopsis": synopsis[:500] if synopsis else None  # Limitar a 500 chars
+            })
+        
+        # Ordenar por año descendente (más reciente primero)
+        results.sort(key=lambda x: x.get("year") or 0, reverse=True)
+        
         print(f"Google Books bibliography: {len(results)} titles for {author_name}")
-        return results[:20]
+        return results  # Sin límite - devolver todos los libros encontrados
     except Exception as e:
         print(f"Google Books bibliography error: {e}")
         return []
