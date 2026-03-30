@@ -96,6 +96,14 @@ export default function BookPage() {
     window.speechSynthesis.speak(utterance)
   }
 
+  const chapterToText = (c) => {
+    let text = `${c.title}. ${c.summary || ''}`
+    if (c.key_events?.length > 0) {
+      text += '. Eventos clave: ' + c.key_events.join('. ')
+    }
+    return text
+  }
+
   const buildQueue = (book, chapters, fromIdx = 0) => {
     const queue = []
     if (fromIdx === 0 && book.synopsis) {
@@ -118,14 +126,6 @@ export default function BookPage() {
     setTtsIndex(0)
     setTtsPlaying(true)
     speakItem(queue, 0)
-  }
-
-  const chapterToText = (c) => {
-    let text = `${c.title}. ${c.summary || ''}`
-    if (c.key_events?.length > 0) {
-      text += '. Eventos clave: ' + c.key_events.join('. ')
-    }
-    return text
   }
 
   const playFromChapter = (chapter, chapters) => {
