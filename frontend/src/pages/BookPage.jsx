@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
-  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX
+  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
@@ -39,6 +39,15 @@ export default function BookPage() {
   const ttsQueueRef = React.useRef([])
   const ttsIndexRef = React.useRef(0)
   const storageKey = `tts_pos_${id}`
+
+  // TTS state for characters
+  const [ttsCharPlaying, setTtsCharPlaying] = useState(false)
+  const [ttsCharacter, setTtsCharacter] = useState(null)
+  const [ttsCharQueue, setTtsCharQueue] = useState([])
+  const [ttsCharIndex, setTtsCharIndex] = useState(0)
+  const ttsCharQueueRef = React.useRef([])
+  const ttsCharIndexRef = React.useRef(0)
+  const charStorageKey = `tts_char_pos_${id}`
 
   // Guardar posición en localStorage
   const saveTTSPos = (idx, queue) => {
@@ -171,6 +180,102 @@ export default function BookPage() {
     try { return !!localStorage.getItem(storageKey) } catch { return false }
   }
 
+  // ── TTS for Characters ──────────────────────────────────────────────────────────
+  const characterToText = (char) => {
+    let text = `Personaje: ${char.name}.`
+    if (char.role) text += ` Rol: ${char.role}.`
+    if (char.description) text += ` ${char.description}.`
+    if (char.personality) text += ` Personalidad: ${char.personality}.`
+    if (char.arc) text += ` Evolución: ${char.arc}.`
+    if (char.relationships && Object.keys(char.relationships).length > 0) {
+      text += ` Relaciones: ${Object.entries(char.relationships).map(([n, r]) => `${n}, ${r}`).join('. ')}.`
+    }
+    if (char.key_moments?.length > 0) {
+      text += ` Momentos clave: ${char.key_moments.join('. ')}.`
+    }
+    return text
+  }
+
+  const saveCharTTSPos = (idx, queue) => {
+    try {
+      localStorage.setItem(charStorageKey, JSON.stringify({ idx, charName: queue[idx]?.name }))
+    } catch {}
+  }
+
+  const loadCharTTSPos = () => {
+    try {
+      const saved = localStorage.getItem(charStorageKey)
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  }
+
+  const pauseCharTTS = () => {
+    window.speechSynthesis.cancel()
+    setTtsCharPlaying(false)
+  }
+
+  const stopCharTTS = (skipConfirm = false) => {
+    if (!skipConfirm && (ttsCharPlaying || ttsCharacter)) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+    }
+    window.speechSynthesis.cancel()
+    setTtsCharPlaying(false)
+    setTtsCharacter(null)
+    localStorage.removeItem(charStorageKey)
+  }
+
+  const speakCharItem = (queue, idx) => {
+    if (idx >= queue.length) {
+      setTtsCharPlaying(false)
+      setTtsCharacter(null)
+      localStorage.removeItem(charStorageKey)
+      return
+    }
+    const item = queue[idx]
+    ttsCharIndexRef.current = idx
+    ttsCharQueueRef.current = queue
+    saveCharTTSPos(idx, queue)
+    setTtsCharIndex(idx)
+    setTtsCharacter(item.name)
+
+    const utterance = new SpeechSynthesisUtterance(item.text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted') speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+    }
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const playCharacter = (char) => {
+    stopCharTTS()
+    stopTTS()
+    const queue = [{ name: char.name, text: characterToText(char) }]
+    ttsCharQueueRef.current = queue
+    ttsCharIndexRef.current = 0
+    setTtsCharQueue(queue)
+    setTtsCharIndex(0)
+    setTtsCharPlaying(true)
+    speakCharItem(queue, 0)
+  }
+
+  const playFromCharacter = (char, characters) => {
+    stopCharTTS()
+    stopTTS()
+    const idx = characters.findIndex(c => c.name === char.name)
+    const queue = characters
+      .slice(idx < 0 ? 0 : idx)
+      .map(c => ({ name: c.name, text: characterToText(c) }))
+    if (!queue.length) return
+    ttsCharQueueRef.current = queue
+    ttsCharIndexRef.current = 0
+    setTtsCharQueue(queue)
+    setTtsCharIndex(0)
+    setTtsCharPlaying(true)
+    speakCharItem(queue, 0)
+  }
+
   // Limpiar TTS al desmontar
   React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
   const [tab, setTab] = useState('info')
@@ -272,6 +377,253 @@ export default function BookPage() {
     } else {
       if (audioPlaying) { audioEl.pause(); setAudioPlaying(false) }
       else { audioEl.play(); setAudioPlaying(true) }
+    }
+  }
+
+  // ── Export to PDF ──────────────────────────────────────────────────────────────
+  const exportToPDF = async () => {
+    if (!book) return
+    
+    toast('Generando PDF...', { icon: '📄', duration: 3000 })
+    
+    try {
+      // Cargar jsPDF dinámicamente desde CDN
+      const script = document.createElement('script')
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+      document.head.appendChild(script)
+      
+      await new Promise((resolve, reject) => {
+        script.onload = resolve
+        script.onerror = reject
+      })
+      
+      const { jsPDF } = window.jspdf
+      const doc = new jsPDF()
+      let y = 20
+      const pageHeight = doc.internal.pageSize.height
+      const margin = 20
+      const maxWidth = 170
+      
+      // Helper para añadir nueva página si es necesario
+      const checkPage = (needed = 20) => {
+        if (y + needed > pageHeight - 20) {
+          doc.addPage()
+          y = 20
+        }
+      }
+      
+      // Helper para texto con wrap
+      const addText = (text, size = 10, weight = 'normal') => {
+        doc.setFontSize(size)
+        doc.setFont('helvetica', weight)
+        const lines = doc.splitTextToSize(text || '', maxWidth)
+        lines.forEach(line => {
+          checkPage()
+          doc.text(line, margin, y)
+          y += size * 0.4
+        })
+        y += 3
+      }
+      
+      // Portada
+      doc.setFillColor(13, 13, 13)
+      doc.rect(0, 0, 210, 297, 'F')
+      doc.setTextColor(201, 169, 110)
+      doc.setFontSize(28)
+      doc.setFont('helvetica', 'bold')
+      const titleLines = doc.splitTextToSize(book.title, 170)
+      titleLines.forEach((line, i) => {
+        doc.text(line, 105, 100 + (i * 12), { align: 'center' })
+      })
+      
+      if (book.author) {
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'normal')
+        doc.text(book.author, 105, 130, { align: 'center' })
+      }
+      
+      doc.setFontSize(10)
+      doc.text('Análisis generado por BookTracker', 105, 280, { align: 'center' })
+      doc.text(new Date().toLocaleDateString('es-ES'), 105, 286, { align: 'center' })
+      
+      // Nueva página - Información general
+      doc.addPage()
+      doc.setTextColor(0, 0, 0)
+      y = 20
+      
+      doc.setFontSize(18)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(201, 169, 110)
+      doc.text('Información General', margin, y)
+      y += 12
+      doc.setTextColor(0, 0, 0)
+      
+      if (book.isbn) addText(`ISBN: ${book.isbn}`, 11, 'bold')
+      if (book.year) addText(`Año: ${book.year}`, 11, 'bold')
+      if (book.genre) addText(`Género: ${book.genre}`, 11, 'bold')
+      if (book.pages) addText(`Páginas: ${book.pages}`, 11, 'bold')
+      if (book.language) addText(`Idioma: ${book.language}`, 11, 'bold')
+      
+      y += 5
+      
+      // Sinopsis
+      if (book.synopsis) {
+        checkPage(30)
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(201, 169, 110)
+        doc.text('Sinopsis', margin, y)
+        y += 10
+        doc.setTextColor(0, 0, 0)
+        addText(book.synopsis, 10)
+      }
+      
+      // Sobre el autor
+      if (book.author_bio) {
+        checkPage(30)
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(201, 169, 110)
+        doc.text('Sobre el autor', margin, y)
+        y += 10
+        doc.setTextColor(0, 0, 0)
+        addText(book.author_bio, 10)
+      }
+      
+      // Bibliografía del autor
+      if (book.author_bibliography?.length > 0) {
+        checkPage(30)
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(201, 169, 110)
+        doc.text('Otras obras del autor', margin, y)
+        y += 10
+        doc.setTextColor(0, 0, 0)
+        
+        book.author_bibliography.slice(0, 15).forEach((item) => {
+          const title = typeof item === 'string' ? item : item.title
+          const year = typeof item === 'object' ? item.year : null
+          const text = year ? `• ${title} (${year})` : `• ${title}`
+          addText(text, 9)
+        })
+      }
+      
+      // Resumen global
+      if (book.global_summary) {
+        checkPage(30)
+        doc.setFontSize(16)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(201, 169, 110)
+        doc.text('Resumen Global', margin, y)
+        y += 10
+        doc.setTextColor(0, 0, 0)
+        addText(book.global_summary, 10)
+      }
+      
+      // Capítulos
+      if (chapters.length > 0) {
+        doc.addPage()
+        y = 20
+        doc.setFontSize(18)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(201, 169, 110)
+        doc.text('Capítulos', margin, y)
+        y += 12
+        doc.setTextColor(0, 0, 0)
+        
+        chapters.forEach((ch, i) => {
+          checkPage(25)
+          doc.setFontSize(12)
+          doc.setFont('helvetica', 'bold')
+          doc.setTextColor(201, 169, 110)
+          doc.text(`${i + 1}. ${ch.title}`, margin, y)
+          y += 7
+          doc.setTextColor(0, 0, 0)
+          
+          if (ch.summary) {
+            addText(ch.summary, 9)
+          }
+          
+          if (ch.key_events?.length > 0) {
+            doc.setFont('helvetica', 'italic')
+            addText('Eventos clave: ' + ch.key_events.join(', '), 8)
+          }
+          
+          y += 3
+        })
+      }
+      
+      // Personajes
+      if (characters.length > 0) {
+        doc.addPage()
+        y = 20
+        doc.setFontSize(18)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(201, 169, 110)
+        doc.text('Personajes', margin, y)
+        y += 12
+        doc.setTextColor(0, 0, 0)
+        
+        characters.forEach((char) => {
+          checkPage(30)
+          doc.setFontSize(14)
+          doc.setFont('helvetica', 'bold')
+          doc.setTextColor(201, 169, 110)
+          doc.text(char.name, margin, y)
+          y += 7
+          doc.setTextColor(0, 0, 0)
+          
+          if (char.role) {
+            doc.setFontSize(9)
+            doc.setFont('helvetica', 'italic')
+            doc.text(`Rol: ${char.role}`, margin, y)
+            y += 5
+          }
+          
+          if (char.description) addText(char.description, 9)
+          if (char.personality) {
+            doc.setFont('helvetica', 'bold')
+            addText('Personalidad:', 9, 'bold')
+            doc.setFont('helvetica', 'normal')
+            addText(char.personality, 9)
+          }
+          if (char.arc) {
+            doc.setFont('helvetica', 'bold')
+            addText('Evolución:', 9, 'bold')
+            doc.setFont('helvetica', 'normal')
+            addText(char.arc, 9)
+          }
+          
+          if (char.relationships && Object.keys(char.relationships).length > 0) {
+            doc.setFont('helvetica', 'bold')
+            addText('Relaciones:', 9, 'bold')
+            doc.setFont('helvetica', 'normal')
+            Object.entries(char.relationships).forEach(([name, rel]) => {
+              addText(`• ${name}: ${rel}`, 8)
+            })
+          }
+          
+          if (char.key_moments?.length > 0) {
+            doc.setFont('helvetica', 'bold')
+            addText('Momentos clave:', 9, 'bold')
+            doc.setFont('helvetica', 'italic')
+            char.key_moments.forEach(moment => {
+              addText(`"${moment}"`, 8)
+            })
+          }
+          
+          y += 5
+        })
+      }
+      
+      // Guardar PDF
+      const filename = `${book.title.replace(/[^a-z0-9]/gi, '_')}_analisis.pdf`
+      doc.save(filename)
+      
+      toast.success('PDF generado correctamente')
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      toast.error('Error al generar el PDF')
     }
   }
 
@@ -393,6 +745,14 @@ export default function BookPage() {
               ))}
             </div>
 
+            {/* Export PDF button */}
+            {status?.phase3_done && (
+              <button className="export-pdf-btn" onClick={exportToPDF} title="Exportar análisis completo">
+                <FileText size={16} />
+                Exportar a PDF
+              </button>
+            )}
+
             {/* Status pipeline */}
             {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={cancelProcess} book={book} />}
             {isShell && (
@@ -461,7 +821,7 @@ export default function BookPage() {
               <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => playTTS(chapterToText(ch), ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
-            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} />}
+            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}
 
             {tab === 'summary' && (
               <div className="prose-content">
@@ -700,7 +1060,7 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   )
 }
 
-function CharactersTab({ characters, bookId, onReanalyzed, status }) {
+function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause }) {
   const [reanalyzing, setReanalyzing] = React.useState(false)
 
   const handleReanalyze = async () => {
@@ -721,80 +1081,123 @@ function CharactersTab({ characters, bookId, onReanalyzed, status }) {
   return (
     <div className="characters-tab">
       <div className="characters-header">
-        <span className="characters-count">
-          {characters.length} personaje{characters.length !== 1 ? 's' : ''}
-        </span>
-        {status?.phase3_done && (
-          <button
-            className="reanalyze-chars-btn"
-            onClick={handleReanalyze}
-            disabled={reanalyzing}
-          >
-            {reanalyzing ? '⏳ Reanalizando…' : '↻ Reanalizar'}
-          </button>
-        )}
+        <div className="characters-info">
+          <span className="characters-count">
+            {characters.length} personaje{characters.length !== 1 ? 's' : ''}
+          </span>
+          {ttsPlaying && ttsCharacter && (
+            <span className="tts-indicator">
+              <Volume2 size={14} className="pulse" />
+              Reproduciendo personajes
+            </span>
+          )}
+        </div>
+        <div className="characters-actions">
+          {ttsPlaying && (
+            <>
+              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
+                <Pause size={16} />
+              </button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
+                <Square size={16} />
+              </button>
+            </>
+          )}
+          {status?.phase3_done && (
+            <button
+              className="reanalyze-chars-btn"
+              onClick={handleReanalyze}
+              disabled={reanalyzing}
+            >
+              {reanalyzing ? '⏳ Reanalizando…' : '↻ Reanalizar'}
+            </button>
+          )}
+        </div>
       </div>
       {!characters.length
         ? <p className="empty-tab">No se encontraron personajes. Pulsa ↻ Reanalizar para generarlos.</p>
         : <div className="characters-grid">
-            {characters.map((char, i) => (
-              <div key={i} className="char-card">
-                <div className="char-avatar">
-                  {char.name?.[0]?.toUpperCase() || '?'}
-                </div>
-                <div className="char-info">
-                  <h3 className="char-name">{char.name}</h3>
-                  {char.role && (
-                    <span className={`char-role role-${char.role}`}>{char.role}</span>
-                  )}
-                  {char.description && <p className="char-desc">{char.description}</p>}
-                  {char.personality && (
-                    <div className="char-section">
-                      <strong>Personalidad</strong>
-                      <p>{char.personality}</p>
+            {characters.map((char, i) => {
+              const isPlaying = ttsPlaying && ttsCharacter === char.name
+              return (
+                <div key={i} className={`char-card ${isPlaying ? 'char-playing' : ''}`}>
+                  <div className="char-avatar">
+                    {char.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div className="char-info">
+                    <div className="char-header">
+                      <h3 className="char-name">{char.name}</h3>
+                      <div className="char-tts-btns">
+                        <button
+                          className="char-tts-btn"
+                          onClick={() => onPlayCharacter(char)}
+                          disabled={ttsPlaying}
+                          title="Reproducir este personaje"
+                        >
+                          {isPlaying ? <Volume2 size={14} className="pulse" /> : <Play size={14} />}
+                        </button>
+                        <button
+                          className="char-tts-btn from-here"
+                          onClick={() => onPlayFromCharacter(char, characters)}
+                          disabled={ttsPlaying}
+                          title="Reproducir desde aquí"
+                        >
+                          <PlayCircle size={14} />
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {char.arc && (
-                    <div className="char-section">
-                      <strong>Evolución</strong>
-                      <p>{char.arc}</p>
-                    </div>
-                  )}
-                  {char.importance && (
-                    <div className="char-section">
-                      <strong>Importancia</strong>
-                      <p>{char.importance}</p>
-                    </div>
-                  )}
-                  {char.relationships && Object.keys(char.relationships).length > 0 && (
-                    <div className="char-section">
-                      <strong>Relaciones</strong>
-                      <ul className="char-relations">
-                        {Object.entries(char.relationships).map(([name, rel], j) => (
-                          <li key={j}><em>{name}</em>: {rel}</li>
+                    {char.role && (
+                      <span className={`char-role role-${char.role}`}>{char.role}</span>
+                    )}
+                    {char.description && <p className="char-desc">{char.description}</p>}
+                    {char.personality && (
+                      <div className="char-section">
+                        <strong>Personalidad</strong>
+                        <p>{char.personality}</p>
+                      </div>
+                    )}
+                    {char.arc && (
+                      <div className="char-section">
+                        <strong>Evolución</strong>
+                        <p>{char.arc}</p>
+                      </div>
+                    )}
+                    {char.importance && (
+                      <div className="char-section">
+                        <strong>Importancia</strong>
+                        <p>{char.importance}</p>
+                      </div>
+                    )}
+                    {char.relationships && Object.keys(char.relationships).length > 0 && (
+                      <div className="char-section">
+                        <strong>Relaciones</strong>
+                        <ul className="char-relations">
+                          {Object.entries(char.relationships).map(([name, rel], j) => (
+                            <li key={j}><em>{name}</em>: {rel}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {char.key_moments?.length > 0 && (
+                      <div className="char-section">
+                        <strong>Momentos clave</strong>
+                        {char.key_moments.map((q, j) => (
+                          <blockquote key={j} className="char-quote">{q}</blockquote>
                         ))}
-                      </ul>
-                    </div>
-                  )}
-                  {char.key_moments?.length > 0 && (
-                    <div className="char-section">
-                      <strong>Momentos clave</strong>
-                      {char.key_moments.map((q, j) => (
-                        <blockquote key={j} className="char-quote">{q}</blockquote>
-                      ))}
-                    </div>
-                  )}
-                  {char.quotes?.length > 0 && (
-                    <div className="char-section">
-                      <strong>Citas y momentos memorables</strong>
-                      {char.quotes.map((q, j) => (
-                        <blockquote key={j} className="char-quote">{q}</blockquote>
-                      ))}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                    {char.quotes?.length > 0 && (
+                      <div className="char-section">
+                        <strong>Citas y momentos memorables</strong>
+                        {char.quotes.map((q, j) => (
+                          <blockquote key={j} className="char-quote">{q}</blockquote>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
       }
     </div>
