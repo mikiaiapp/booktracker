@@ -1,8 +1,27 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
+import { ChevronDown, ChevronRight, Maximize2, Minimize2 } from 'lucide-react'
 
 export default function MindMap({ data }) {
   const ref = useRef()
+  const [collapsedNodes, setCollapsedNodes] = useState(new Set())
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  const toggleNode = (nodeId) => {
+    setCollapsedNodes(prev => {
+      const next = new Set(prev)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      } else {
+        next.add(nodeId)
+      }
+      return next
+    })
+  }
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen)
+  }
 
   useEffect(() => {
     if (!data || !ref.current) return
@@ -10,7 +29,7 @@ export default function MindMap({ data }) {
     el.innerHTML = ''
 
     const width = el.clientWidth || 800
-    const height = 560
+    const height = isFullscreen ? window.innerHeight - 100 : 600
     const cx = width / 2
     const cy = height / 2
 
@@ -19,37 +38,70 @@ export default function MindMap({ data }) {
       .attr('width', width)
       .attr('height', height)
       .style('font-family', 'var(--font-body)')
+      .style('cursor', 'grab')
+      .on('mousedown', function() {
+        d3.select(this).style('cursor', 'grabbing')
+      })
+      .on('mouseup', function() {
+        d3.select(this).style('cursor', 'grab')
+      })
 
     const g = svg.append('g').attr('transform', `translate(${cx},${cy})`)
 
-    // Build hierarchy
+    // Build hierarchy with IDs for tracking collapsed state
     const root = {
       name: data.center,
-      children: (data.branches || []).map(b => ({
+      id: 'root',
+      children: (data.branches || []).map((b, i) => ({
         name: b.label,
+        id: `branch-${i}`,
         color: b.color || '#6366f1',
-        children: (b.children || []).map(c => ({ name: c, leaf: true }))
+        children: (b.children || []).map((c, j) => ({ 
+          name: c, 
+          id: `leaf-${i}-${j}`,
+          leaf: true 
+        }))
       }))
     }
 
-    const hierarchy = d3.hierarchy(root)
+    // Filter collapsed nodes
+    const filterCollapsed = (node) => {
+      if (collapsedNodes.has(node.id) && node.children) {
+        return { ...node, children: null, _children: node.children }
+      }
+      if (node.children) {
+        return {
+          ...node,
+          children: node.children.map(filterCollapsed)
+        }
+      }
+      return node
+    }
+
+    const filteredRoot = filterCollapsed(root)
+    const hierarchy = d3.hierarchy(filteredRoot)
     const treeLayout = d3.tree()
-      .size([2 * Math.PI, Math.min(cx, cy) - 80])
+      .size([2 * Math.PI, Math.min(cx, cy) - 100])
       .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth)
 
     const tree = treeLayout(hierarchy)
 
-    // Links
-    g.append('g').attr('fill', 'none')
+    // Links with smooth animation
+    const links = g.append('g')
+      .attr('fill', 'none')
+      .attr('stroke-linecap', 'round')
       .selectAll('path')
       .data(tree.links())
       .join('path')
       .attr('stroke', d => d.target.data.color || d.source.data.color || '#c9a96e')
-      .attr('stroke-opacity', 0.5)
-      .attr('stroke-width', d => d.target.depth === 1 ? 2 : 1)
+      .attr('stroke-opacity', 0)
+      .attr('stroke-width', d => d.target.depth === 1 ? 3 : 1.5)
       .attr('d', d3.linkRadial()
         .angle(d => d.x)
         .radius(d => d.y))
+      .transition()
+      .duration(600)
+      .attr('stroke-opacity', d => d.target.depth === 1 ? 0.6 : 0.4)
 
     // Nodes
     const node = g.append('g')
@@ -57,48 +109,187 @@ export default function MindMap({ data }) {
       .data(tree.descendants())
       .join('g')
       .attr('transform', d => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
-
-    node.append('circle')
-      .attr('fill', d => d.depth === 0 ? '#0d0d0d' : d.data.color || '#c9a96e')
-      .attr('r', d => d.depth === 0 ? 10 : d.depth === 1 ? 6 : 4)
-      .attr('stroke', 'white')
-      .attr('stroke-width', 1.5)
-
-    node.append('text')
-      .attr('dy', '0.31em')
-      .attr('x', d => d.x < Math.PI === !d.children ? 8 : -8)
-      .attr('text-anchor', d => d.x < Math.PI === !d.children ? 'start' : 'end')
-      .attr('transform', d => d.x >= Math.PI ? 'rotate(180)' : null)
-      .attr('font-size', d => d.depth === 0 ? 14 : d.depth === 1 ? 12 : 10)
-      .attr('font-weight', d => d.depth <= 1 ? '500' : '400')
-      .attr('fill', '#0d0d0d')
-      .text(d => {
-        const name = d.data.name || ''
-        return name.length > 30 ? name.slice(0, 28) + '…' : name
+      .attr('opacity', 0)
+      .style('cursor', d => (d.depth > 0 && d.data._children) || d.children ? 'pointer' : 'default')
+      .on('click', (event, d) => {
+        if (d.depth > 0 && (d.children || d.data._children)) {
+          event.stopPropagation()
+          toggleNode(d.data.id)
+        }
       })
 
-    // Zoom
-    svg.call(d3.zoom()
-      .scaleExtent([0.4, 2])
-      .on('zoom', e => g.attr('transform', `translate(${cx},${cy}) scale(${e.transform.k}) translate(${e.transform.x / e.transform.k},${e.transform.y / e.transform.k})`))
-    )
-  }, [data])
+    // Animate node entrance
+    node.transition()
+      .duration(600)
+      .delay((d, i) => i * 20)
+      .attr('opacity', 1)
+
+    // Node circles with glow effect
+    node.append('circle')
+      .attr('fill', d => {
+        if (d.depth === 0) return '#0d0d0d'
+        if (d.depth === 1) return d.data.color || '#c9a96e'
+        return d.data.leaf ? '#f8f9fa' : d.parent.data.color || '#c9a96e'
+      })
+      .attr('r', d => d.depth === 0 ? 12 : d.depth === 1 ? 8 : 5)
+      .attr('stroke', d => {
+        if (d.depth === 0) return '#c9a96e'
+        if (d.depth === 1) return d.data.color || '#c9a96e'
+        return 'white'
+      })
+      .attr('stroke-width', d => d.depth === 0 ? 3 : 2)
+      .attr('filter', d => d.depth <= 1 ? 'url(#glow)' : null)
+      .on('mouseenter', function(event, d) {
+        if (d.children || d.data._children) {
+          d3.select(this)
+            .transition()
+            .duration(200)
+            .attr('r', d => d.depth === 0 ? 14 : d.depth === 1 ? 10 : 6)
+        }
+      })
+      .on('mouseleave', function(event, d) {
+        d3.select(this)
+          .transition()
+          .duration(200)
+          .attr('r', d => d.depth === 0 ? 12 : d.depth === 1 ? 8 : 5)
+      })
+
+    // Collapse indicator for branches
+    node.filter(d => d.depth === 1)
+      .append('circle')
+      .attr('r', 3)
+      .attr('fill', 'white')
+      .attr('stroke', d => d.data.color || '#c9a96e')
+      .attr('stroke-width', 1.5)
+      .attr('cx', 12)
+      .attr('cy', 0)
+      .attr('opacity', d => (d.children || d.data._children) ? 1 : 0)
+
+    // Node labels with better positioning
+    node.append('text')
+      .attr('dy', '0.31em')
+      .attr('x', d => {
+        const hasChildren = d.children || d.data._children
+        const offset = d.depth === 0 ? 18 : d.depth === 1 ? 14 : 8
+        return d.x < Math.PI === !hasChildren ? offset : -offset
+      })
+      .attr('text-anchor', d => d.x < Math.PI === !d.children ? 'start' : 'end')
+      .attr('transform', d => d.x >= Math.PI ? 'rotate(180)' : null)
+      .attr('font-size', d => d.depth === 0 ? 16 : d.depth === 1 ? 13 : 11)
+      .attr('font-weight', d => d.depth <= 1 ? '600' : '400')
+      .attr('fill', d => d.depth === 0 ? '#0d0d0d' : d.depth === 1 ? (d.data.color || '#0d0d0d') : '#495057')
+      .text(d => {
+        const name = d.data.name || ''
+        const maxLen = d.depth === 0 ? 40 : d.depth === 1 ? 35 : 30
+        return name.length > maxLen ? name.slice(0, maxLen - 1) + '…' : name
+      })
+      .style('text-shadow', d => d.depth === 0 ? '0 0 8px rgba(255,255,255,0.8)' : 'none')
+
+    // Glow filter for central nodes
+    const defs = svg.append('defs')
+    const filter = defs.append('filter')
+      .attr('id', 'glow')
+      .attr('x', '-50%')
+      .attr('y', '-50%')
+      .attr('width', '200%')
+      .attr('height', '200%')
+
+    filter.append('feGaussianBlur')
+      .attr('stdDeviation', '3')
+      .attr('result', 'coloredBlur')
+
+    const feMerge = filter.append('feMerge')
+    feMerge.append('feMergeNode').attr('in', 'coloredBlur')
+    feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
+
+    // Enhanced zoom and pan
+    const zoom = d3.zoom()
+      .scaleExtent([0.3, 3])
+      .on('zoom', e => {
+        g.attr('transform', `translate(${cx + e.transform.x},${cy + e.transform.y}) scale(${e.transform.k})`)
+      })
+
+    svg.call(zoom)
+
+    // Reset view button
+    const resetBtn = svg.append('g')
+      .attr('transform', 'translate(20, 20)')
+      .style('cursor', 'pointer')
+      .on('click', () => {
+        svg.transition()
+          .duration(750)
+          .call(zoom.transform, d3.zoomIdentity)
+      })
+
+    resetBtn.append('rect')
+      .attr('width', 80)
+      .attr('height', 32)
+      .attr('rx', 6)
+      .attr('fill', 'white')
+      .attr('stroke', '#dee2e6')
+      .attr('stroke-width', 1)
+
+    resetBtn.append('text')
+      .attr('x', 40)
+      .attr('y', 20)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 12)
+      .attr('fill', '#495057')
+      .text('Centrar')
+
+  }, [data, collapsedNodes, isFullscreen])
+
+  if (!data) return null
 
   return (
-    <div>
-      <h2 style={{ marginBottom: '1rem' }}>Mapa mental</h2>
-      <p style={{ fontSize: '0.8rem', color: 'var(--mist)', marginBottom: '1rem' }}>
-        Usa la rueda del ratón para hacer zoom · Arrastra para mover
-      </p>
+    <div style={{ position: 'relative' }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: '1rem'
+      }}>
+        <div>
+          <h2 style={{ marginBottom: '0.25rem' }}>Mapa mental interactivo</h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--mist)' }}>
+            Haz clic en las ramas para expandir/colapsar · Arrastra y usa zoom
+          </p>
+        </div>
+        <button
+          onClick={toggleFullscreen}
+          style={{
+            background: 'var(--gold)',
+            border: 'none',
+            borderRadius: 'var(--radius)',
+            padding: '0.5rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            cursor: 'pointer',
+            fontSize: '0.9rem',
+            color: 'var(--ink)',
+            fontWeight: '500'
+          }}
+        >
+          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          {isFullscreen ? 'Salir' : 'Pantalla completa'}
+        </button>
+      </div>
       <div
         ref={ref}
         style={{
           width: '100%',
-          height: 560,
-          background: 'var(--white)',
-          border: '1.5px solid var(--paper-dark)',
+          height: isFullscreen ? 'calc(100vh - 100px)' : 600,
+          background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+          border: '2px solid var(--paper-dark)',
           borderRadius: 'var(--radius-lg)',
           overflow: 'hidden',
+          boxShadow: isFullscreen ? 'var(--shadow-xl)' : 'var(--shadow)',
+          position: isFullscreen ? 'fixed' : 'relative',
+          top: isFullscreen ? '50px' : 'auto',
+          left: isFullscreen ? '0' : 'auto',
+          right: isFullscreen ? '0' : 'auto',
+          zIndex: isFullscreen ? 1000 : 'auto',
         }}
       />
     </div>

@@ -815,6 +815,66 @@ function PodcastTab({ book, playing, onToggle }) {
     )
   }
 
+  // Procesar el guion para detectar secciones y formatear
+  const processScript = (script) => {
+    const lines = script.split('\n').filter(l => l.trim())
+    const sections = []
+    let currentSection = null
+
+    lines.forEach(line => {
+      const trimmed = line.trim()
+      
+      // Detectar títulos de sección (en mayúsculas o con marcadores)
+      if (
+        trimmed === trimmed.toUpperCase() && trimmed.length > 3 ||
+        /^(INTRODUCCIÓN|CAPÍTULO|PARTE|PERSONAJES|CONCLUSIÓN|ANÁLISIS)/i.test(trimmed) ||
+        /^(#|##|\*\*|__|=)/.test(trimmed)
+      ) {
+        if (currentSection) sections.push(currentSection)
+        currentSection = {
+          type: 'section',
+          title: trimmed.replace(/^[#*_=]+\s*/, '').replace(/[#*_=]+$/, ''),
+          content: []
+        }
+      }
+      // Detectar diálogos (líneas que empiezan con - o •)
+      else if (/^[-•]\s/.test(trimmed)) {
+        if (!currentSection) {
+          currentSection = { type: 'default', content: [] }
+        }
+        currentSection.content.push({
+          type: 'dialogue',
+          text: trimmed.substring(2)
+        })
+      }
+      // Detectar preguntas
+      else if (trimmed.endsWith('?')) {
+        if (!currentSection) {
+          currentSection = { type: 'default', content: [] }
+        }
+        currentSection.content.push({
+          type: 'question',
+          text: trimmed
+        })
+      }
+      // Párrafo normal
+      else if (trimmed) {
+        if (!currentSection) {
+          currentSection = { type: 'default', content: [] }
+        }
+        currentSection.content.push({
+          type: 'paragraph',
+          text: trimmed
+        })
+      }
+    })
+
+    if (currentSection) sections.push(currentSection)
+    return sections
+  }
+
+  const sections = hasScript ? processScript(book.podcast_script) : []
+
   return (
     <div className="podcast-tab">
       {hasAudio && (
@@ -832,9 +892,35 @@ function PodcastTab({ book, playing, onToggle }) {
             <Volume2 size={18} />
             Guión del podcast
           </h3>
-          <div className="script-content">
-            {book.podcast_script.split('\n').map((line, i) => (
-              <p key={i}>{line}</p>
+          <div className="script-content-enhanced">
+            {sections.map((section, i) => (
+              <div key={i} className={`script-section ${section.type}`}>
+                {section.title && (
+                  <h4 className="section-title">
+                    <span className="section-marker">▸</span>
+                    {section.title}
+                  </h4>
+                )}
+                {section.content.map((item, j) => {
+                  if (item.type === 'dialogue') {
+                    return (
+                      <p key={j} className="script-dialogue">
+                        <span className="dialogue-marker">•</span>
+                        {item.text}
+                      </p>
+                    )
+                  }
+                  if (item.type === 'question') {
+                    return (
+                      <p key={j} className="script-question">
+                        <span className="question-marker">?</span>
+                        {item.text}
+                      </p>
+                    )
+                  }
+                  return <p key={j} className="script-paragraph">{item.text}</p>
+                })}
+              </div>
             ))}
           </div>
         </div>

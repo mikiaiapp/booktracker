@@ -897,6 +897,85 @@
   font-size: 1.25rem;
 }
 
+/* Guion mejorado con secciones */
+.script-content-enhanced {
+  color: var(--slate);
+  line-height: 1.8;
+}
+
+.script-section {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--paper-dark);
+}
+
+.script-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.script-section.default {
+  border-bottom: none;
+  padding-bottom: 1rem;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--gold);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--gold-light);
+}
+
+.section-marker {
+  color: var(--gold);
+  font-size: 0.9rem;
+}
+
+.script-paragraph {
+  margin-bottom: 1rem;
+  text-align: justify;
+}
+
+.script-dialogue {
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+  position: relative;
+  font-style: italic;
+  color: var(--slate-light);
+}
+
+.dialogue-marker {
+  position: absolute;
+  left: 0;
+  color: var(--gold);
+  font-weight: bold;
+}
+
+.script-question {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem 0.75rem 2.5rem;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.02));
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  position: relative;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.question-marker {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--gold);
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
 .script-content {
   color: var(--slate);
   line-height: 1.8;
