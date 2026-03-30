@@ -181,7 +181,7 @@ export default function AuthorsPage() {
                 disabled={reidentifying}
                 title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
               >
-                {reidentifying ? '⏳ Actualizando…' : '↻ Reidentificar'}
+                {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
               </button>
             </div>
 

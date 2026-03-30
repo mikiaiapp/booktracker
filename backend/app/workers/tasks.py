@@ -554,3 +554,61 @@ async def _reidentify_author(user_id: str, author_name: str):
         except Exception as e:
             print(f"Error reidentifying author {author_name}: {traceback.format_exc()}")
             raise
+
+
+# ── Reanalizar personajes ──────────────────────────────────────
+@celery_app.task(bind=True, name="reanalyze_characters_task")
+def reanalyze_characters_task(self, user_id: str, book_id: str):
+    return run_async(_reanalyze_characters(user_id, book_id))
+
+
+async def _reanalyze_characters(user_id: str, book_id: str):
+    from app.core.database import get_user_db
+    from app.models.book import Book, Chapter, Character
+    from app.services.ai_analyzer import analyze_characters
+    from sqlalchemy import select, delete
+    import traceback
+
+    async for db in get_user_db(user_id):
+        try:
+            result = await db.execute(select(Book).where(Book.id == book_id))
+            book = result.scalar_one_or_none()
+            if not book:
+                return
+
+            # Obtener todos los resúmenes de capítulos
+            chaps = await db.execute(
+                select(Chapter).where(
+                    Chapter.book_id == book_id,
+                    Chapter.summary_status == "done"
+                ).order_by(Chapter.order)
+            )
+            chapters = chaps.scalars().all()
+            all_summaries = "\n\n".join(
+                f"[{c.title}]\n{c.summary}" for c in chapters if c.summary
+            )
+
+            if not all_summaries:
+                print(f"No hay resúmenes disponibles para {book.title}")
+                return
+
+            # Borrar personajes existentes
+            await db.execute(delete(Character).where(Character.book_id == book_id))
+            await db.commit()
+
+            # Reanalizar con el nuevo prompt mejorado
+            characters_data = await analyze_characters(all_summaries, book.title)
+
+            for char_data in characters_data:
+                char = Character(book_id=book_id, name=char_data["name"])
+                db.add(char)
+                for k, v in char_data.items():
+                    if hasattr(char, k) and k != "name":
+                        setattr(char, k, v)
+
+            await db.commit()
+            print(f"Personajes reanalizados para {book.title}: {len(characters_data)} personajes")
+
+        except Exception as e:
+            print(f"Error reanalizando personajes: {traceback.format_exc()}")
+            raise

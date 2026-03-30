@@ -160,30 +160,54 @@
 .delete-btn:hover { color: var(--rust); }
 
 /* Tabs */
-.book-tabs { padding: 0 2.5rem 3rem; }
+.book-tabs {
+  padding: 0 2.5rem 3rem;
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+}
 
 .tabs-bar {
-  display: flex; gap: 0; border-bottom: 2px solid var(--paper-dark);
-  margin-bottom: 2rem; overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  width: 160px;
+  position: sticky;
+  top: 1rem;
+  background: white;
+  border: 1.5px solid var(--paper-dark);
+  border-radius: 8px;
+  padding: 6px;
 }
 
 .tab-btn {
   display: flex; align-items: center; gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
-  background: none; border: none;
-  font-size: 0.85rem; font-weight: 500;
+  padding: 0.6rem 0.9rem;
+  background: none; border: none; border-radius: 6px;
+  font-size: 0.82rem; font-weight: 500;
   color: var(--slate);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
   white-space: nowrap;
   transition: all var(--transition);
+  text-align: left; width: 100%;
+  cursor: pointer;
 }
 
-.tab-btn:hover:not(:disabled) { color: var(--ink); }
-.tab-btn.active { color: var(--ink); border-bottom-color: var(--gold); }
+.tab-btn:hover:not(:disabled) { background: var(--paper-dark); color: var(--ink); }
+.tab-btn.active { background: rgba(201,169,110,0.12); color: var(--ink); font-weight: 600; }
+.tab-btn.active svg { color: var(--gold); }
 .tab-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.tab-content { animation: fadeIn 0.25s ease; }
+.tab-content { flex: 1; min-width: 0; animation: fadeIn 0.25s ease; }
+
+@media (max-width: 768px) {
+  .book-tabs { flex-direction: column; gap: 0; padding: 0 1rem 3rem; }
+  .tabs-bar {
+    flex-direction: row; width: 100%; position: static;
+    overflow-x: auto; border-radius: 8px; margin-bottom: 1rem;
+  }
+  .tab-btn { white-space: nowrap; flex: none; }
+}
 
 /* Info tab */
 .info-tab { display: flex; flex-direction: column; gap: 2rem; max-width: 720px; }
@@ -671,4 +695,79 @@
     padding: 10px 20px;
     font-size: 14px;
   }
+}
+
+/* ── Characters Tab mejorado ─────────────────────────────────── */
+.characters-tab { padding: 0.25rem 0; }
+
+.characters-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.25rem; padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f5f0e8;
+}
+.characters-count { font-size: 12px; color: #8a9aaa; }
+
+.reanalyze-chars-btn {
+  background: none; border: 1.5px solid #c9a96e;
+  color: #c9a96e; padding: 5px 14px; border-radius: 6px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: all 0.15s;
+}
+.reanalyze-chars-btn:hover:not(:disabled) { background: #c9a96e; color: #0d0d0d; }
+.reanalyze-chars-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.characters-grid { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.char-card {
+  display: flex; gap: 1rem; padding: 1.25rem;
+  background: #faf7f2; border: 1.5px solid #ede6d6;
+  border-radius: 8px;
+}
+
+.char-avatar {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: #0d0d0d; color: #c9a96e;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 500; flex-shrink: 0;
+}
+
+.char-info { flex: 1; min-width: 0; }
+.char-name { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+
+.char-role {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 8px; border-radius: 20px; margin-bottom: 8px;
+}
+.role-protagonist { background: rgba(201,169,110,0.2); color: #a07830; }
+.role-antagonist { background: rgba(180,60,60,0.15); color: #a04040; }
+.role-secondary { background: rgba(100,140,200,0.15); color: #4a6a9a; }
+.role-minor { background: #f0ece4; color: #8a9aaa; }
+
+.char-desc { font-size: 13px; color: #4a5568; margin-bottom: 8px; line-height: 1.5; }
+
+.char-section { margin-top: 10px; }
+.char-section strong { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a9aaa; display: block; margin-bottom: 4px; }
+.char-section p { font-size: 13px; color: #4a5568; line-height: 1.6; }
+
+.char-relations { font-size: 12px; color: #4a5568; padding-left: 1rem; }
+.char-relations li { margin-bottom: 3px; }
+
+.char-quote {
+  font-size: 12px; font-style: italic; color: #6a7888;
+  border-left: 3px solid #c9a96e; padding-left: 10px;
+  margin: 6px 0;
+}
+
+/* ── TTS hero pause button ───────────────────────────────────── */
+.tts-hero-btn.tts-hero-pause {
+  background: rgba(201,169,110,0.85); color: #0d0d0d; border-color: #c9a96e;
+}
+.tts-bar-btn.tts-bar-pause {
+  background: rgba(255,255,255,0.12);
+}
+
+/* ── Chapter TTS pause button ────────────────────────────────── */
+.ch-tts-btn.pause {
+  background: rgba(201,169,110,0.2); color: #c9a96e;
 }

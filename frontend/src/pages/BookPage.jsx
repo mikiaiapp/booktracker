@@ -7,7 +7,7 @@ import {
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX
 } from 'lucide-react'
-import { booksAPI, analysisAPI, chapterAPI, uploadToShell } from '../utils/api'
+import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
 import './BookPage.css'
 
@@ -54,10 +54,22 @@ export default function BookPage() {
     } catch { return null }
   }
 
+  const pauseTTS = () => {
+    window.speechSynthesis.pause()
+    setTtsPlaying(false)
+    // Keep ttsChapter so resume knows where we are
+  }
+
+  const resumeCurrentTTS = () => {
+    window.speechSynthesis.resume()
+    setTtsPlaying(true)
+  }
+
   const stopTTS = () => {
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
     setTtsChapter(null)
+    localStorage.removeItem(storageKey)
   }
 
   const speakItem = (queue, idx) => {
@@ -92,7 +104,7 @@ export default function BookPage() {
     chapters
       .filter(c => c.summary && c.summary_status === 'done')
       .slice(fromIdx === 0 ? 0 : undefined)
-      .forEach(c => queue.push({ id: c.id, title: c.title, text: `${c.title}. ${c.summary}` }))
+      .forEach(c => queue.push({ id: c.id, title: c.title, text: chapterToText(c) }))
     return queue
   }
 
@@ -108,13 +120,21 @@ export default function BookPage() {
     speakItem(queue, 0)
   }
 
+  const chapterToText = (c) => {
+    let text = `${c.title}. ${c.summary || ''}`
+    if (c.key_events?.length > 0) {
+      text += '. Eventos clave: ' + c.key_events.join('. ')
+    }
+    return text
+  }
+
   const playFromChapter = (chapter, chapters) => {
     stopTTS()
     const doneChapters = chapters.filter(c => c.summary && c.summary_status === 'done')
     const idx = doneChapters.findIndex(c => c.id === chapter.id)
     const queue = doneChapters
       .slice(idx < 0 ? 0 : idx)
-      .map(c => ({ id: c.id, title: c.title, text: `${c.title}. ${c.summary}` }))
+      .map(c => ({ id: c.id, title: c.title, text: chapterToText(c) }))
     if (!queue.length) return
     ttsQueueRef.current = queue
     ttsIndexRef.current = 0
@@ -203,9 +223,30 @@ export default function BookPage() {
     load()
   }
 
-  const toggleAudio = () => {
+  const [audioUrl, setAudioUrl] = useState(null)
+
+  const loadAudio = async () => {
+    try {
+      const token = localStorage.getItem('bt_token')
+      const resp = await fetch(analysisAPI.podcastAudioUrl(id), {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!resp.ok) throw new Error('Audio not found')
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      setAudioUrl(url)
+      return url
+    } catch (err) {
+      toast.error('Error al cargar el audio')
+      return null
+    }
+  }
+
+  const toggleAudio = async () => {
     if (!audioEl) {
-      const el = new Audio(analysisAPI.podcastAudioUrl(id))
+      const url = audioUrl || await loadAudio()
+      if (!url) return
+      const el = new Audio(url)
       el.onended = () => setAudioPlaying(false)
       setAudioEl(el)
       el.play()
@@ -271,27 +312,34 @@ export default function BookPage() {
               </p>
             )}
 
-            {/* Botón TTS en cabecera */}
+            {/* Botones TTS en cabecera: Play/Pausa + Stop */}
             {(book.synopsis || chapters.some(c => c.summary_status === 'done')) && (
               <div className="hero-tts">
-                {ttsPlaying ? (
-                  <button className="tts-hero-btn tts-hero-stop" onClick={stopTTS}>
-                    <Square size={14} fill="currentColor" /> Detener lectura
+                <div className="tts-hero-group">
+                  {/* Play / Pausa — guarda avance */}
+                  <button
+                    className={`tts-hero-btn ${ttsPlaying ? 'tts-hero-pause' : ''}`}
+                    onClick={() => {
+                      if (ttsPlaying) pauseTTS()
+                      else if (ttsChapter) resumeCurrentTTS()
+                      else if (hasSavedPos()) resumeTTS(book, chapters)
+                      else playFromBeginning(book, chapters)
+                    }}
+                  >
+                    {ttsPlaying
+                      ? <><Pause size={14} /> Pausar</>
+                      : ttsChapter || hasSavedPos()
+                        ? <><Play size={14} /> Continuar</>
+                        : <><Volume2 size={14} /> Leer análisis</>
+                    }
                   </button>
-                ) : hasSavedPos() ? (
-                  <div className="tts-hero-group">
-                    <button className="tts-hero-btn" onClick={() => resumeTTS(book, chapters)}>
-                      <Play size={14} /> Continuar
+                  {/* Stop — para y resetea avance */}
+                  {(ttsPlaying || ttsChapter || hasSavedPos()) && (
+                    <button className="tts-hero-btn tts-hero-stop" onClick={stopTTS} title="Parar y resetear avance">
+                      <Square size={14} fill="currentColor" />
                     </button>
-                    <button className="tts-hero-btn tts-hero-restart" onClick={() => { localStorage.removeItem(storageKey); playFromBeginning(book, chapters) }} title="Empezar desde el principio">
-                      <Volume2 size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <button className="tts-hero-btn" onClick={() => playFromBeginning(book, chapters)}>
-                    <Volume2 size={14} /> Leer análisis
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
@@ -392,10 +440,10 @@ export default function BookPage() {
             {tab === 'info' && <InfoTab book={book} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} onPlayChapter={(ch) => playTTS(`${ch.title}. ${ch.summary}`, ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} onPlayChapter={(ch) => playTTS(chapterToText(ch), ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
-            {tab === 'characters' && <CharactersTab characters={characters} />}
+            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} />}
 
             {tab === 'summary' && (
               <div className="prose-content">
@@ -449,7 +497,7 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
           <span>{s.label}</span>
           {s.canTrigger && !isProcessing && (
             <button className="trigger-btn" onClick={s.trigger}>
-              {s.done ? 'Reidentificar' : s.resumable ? 'Reanudar' : 'Iniciar'}
+              {s.done ? 'Repetir' : s.resumable ? 'Reanudar' : 'Iniciar'}
             </button>
           )}
         </div>
@@ -496,7 +544,7 @@ function InfoTab({ book }) {
   )
 }
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, onPlayChapter, onPlayFromChapter, onStop }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, onPlayChapter, onPlayFromChapter, onStop, onPause }) {
   const [summarizing, setSummarizing] = React.useState({})
 
   const handleSummarize = async (e, chapter) => {
@@ -550,20 +598,25 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
               }
               {ch.summary_status === 'done' && (
                 <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
-                  {ttsPlaying && ttsChapter === ch.id ? (
-                    <button className="ch-tts-btn stop" onClick={onStop} title="Detener">
-                      <Square size={12} fill="currentColor" />
-                    </button>
-                  ) : (
-                    <>
-                      <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)} title="Leer este capítulo">
-                        <Play size={12} />
-                      </button>
-                      <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
-                        <Volume2 size={12} />
-                      </button>
-                    </>
-                  )}
+                  {/* Play/Pausa — guarda avance */}
+                  <button
+                    className={`ch-tts-btn ${ttsPlaying && ttsChapter === ch.id ? 'pause' : 'play'}`}
+                    onClick={() => ttsPlaying && ttsChapter === ch.id ? onPause() : onPlayChapter(ch)}
+                    title={ttsPlaying && ttsChapter === ch.id ? 'Pausar' : 'Reproducir'}
+                  >
+                    {ttsPlaying && ttsChapter === ch.id
+                      ? <Pause size={12} />
+                      : <Play size={12} />
+                    }
+                  </button>
+                  {/* Stop — para sin guardar avance */}
+                  <button className="ch-tts-btn stop" onClick={onStop} title="Parar y resetear">
+                    <Square size={11} fill="currentColor" />
+                  </button>
+                  {/* Leer desde aquí en adelante */}
+                  <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
+                    <Volume2 size={12} />
+                  </button>
                 </div>
               )}
               {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
@@ -597,248 +650,97 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   )
 }
 
-function CharactersTab({ characters }) {
-  if (!characters.length) return <p className="empty-tab">No se encontraron personajes</p>
-  const roleOrder = ['protagonist', 'antagonist', 'secondary', 'minor']
-  const sorted = [...characters].sort((a, b) => roleOrder.indexOf(a.role) - roleOrder.indexOf(b.role))
+function CharactersTab({ characters, bookId, onReanalyzed, status }) {
+  const [reanalyzing, setReanalyzing] = React.useState(false)
 
-  const roleLabels = { protagonist: 'Protagonista', antagonist: 'Antagonista', secondary: 'Secundario', minor: 'Menor' }
-  const roleColors = { protagonist: 'badge-gold', antagonist: 'badge-rust', secondary: 'badge-green', minor: 'badge-slate' }
-
-  return (
-    <div className="characters-grid">
-      {sorted.map(c => (
-        <div key={c.id} className="char-card">
-          <div className="char-header">
-            <div className="char-avatar">{c.name[0].toUpperCase()}</div>
-            <div>
-              <h3>{c.name}</h3>
-              {c.role && <span className={`badge ${roleColors[c.role] || 'badge-slate'}`}>{roleLabels[c.role] || c.role}</span>}
-            </div>
-          </div>
-          {c.description && <p className="char-desc">{c.description}</p>}
-          {c.personality && (
-            <details className="char-detail">
-              <summary>Personalidad</summary>
-              <p>{c.personality}</p>
-            </details>
-          )}
-          {c.arc && (
-            <details className="char-detail">
-              <summary>Arco del personaje</summary>
-              <p>{c.arc}</p>
-            </details>
-          )}
-          {c.relationships && Object.keys(c.relationships).length > 0 && (
-            <details className="char-detail">
-              <summary>Relaciones</summary>
-              <ul className="rel-list">
-                {Object.entries(c.relationships).map(([name, rel]) => (
-                  <li key={name}><strong>{name}</strong>: {rel}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function PodcastTab({ book, playing, onToggle }) {
-  const lines = book.podcast_script
-    ? book.podcast_script.split('\n').filter(l => l.trim())
-    : []
+  const handleReanalyze = async () => {
+    setReanalyzing(true)
+    try {
+      await reanalyzeCharacters(bookId)
+      toast('Reanalizando personajes…', { icon: '⏳' })
+      setTimeout(async () => {
+        await onReanalyzed()
+        setReanalyzing(false)
+      }, 60000)
+    } catch {
+      toast.error('Error al reanalizar')
+      setReanalyzing(false)
+    }
+  }
 
   return (
-    <div className="podcast-tab">
-      <div className="podcast-player">
-        <div className="player-art">
-          <Mic size={32} strokeWidth={1} />
-        </div>
-        <div className="player-info">
-          <h3>{book.title}</h3>
-          <p>Podcast generado por IA · Ana & Carlos</p>
-        </div>
-        {book.podcast_audio_path && (
-          <button className="play-btn" onClick={onToggle}>
-            {playing ? <Pause size={24} /> : <Play size={24} />}
+    <div className="characters-tab">
+      <div className="characters-header">
+        <span className="characters-count">
+          {characters.length} personaje{characters.length !== 1 ? 's' : ''}
+        </span>
+        {status?.phase3_done && (
+          <button
+            className="reanalyze-chars-btn"
+            onClick={handleReanalyze}
+            disabled={reanalyzing}
+          >
+            {reanalyzing ? '⏳ Reanalizando…' : '↻ Reanalizar'}
           </button>
         )}
       </div>
-
-      {lines.length > 0 && (
-        <div className="podcast-script">
-          <h3>Guión del podcast</h3>
-          {lines.map((line, i) => {
-            const isAna = line.startsWith('ANA:')
-            const isCarlos = line.startsWith('CARLOS:')
-            const speaker = isAna ? 'ANA' : isCarlos ? 'CARLOS' : null
-            const text = line.replace(/^(ANA|CARLOS):\s*/i, '')
-            return (
-              <div key={i} className={`script-line ${isAna ? 'ana' : isCarlos ? 'carlos' : ''}`}>
-                {speaker && <span className="speaker-label">{speaker}</span>}
-                <p>{text}</p>
+      {!characters.length
+        ? <p className="empty-tab">No se encontraron personajes. Pulsa ↻ Reanalizar para generarlos.</p>
+        : <div className="characters-grid">
+            {characters.map((char, i) => (
+              <div key={i} className="char-card">
+                <div className="char-avatar">
+                  {char.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div className="char-info">
+                  <h3 className="char-name">{char.name}</h3>
+                  {char.role && (
+                    <span className={`char-role role-${char.role}`}>{char.role}</span>
+                  )}
+                  {char.description && <p className="char-desc">{char.description}</p>}
+                  {char.personality && (
+                    <div className="char-section">
+                      <strong>Personalidad</strong>
+                      <p>{char.personality}</p>
+                    </div>
+                  )}
+                  {char.arc && (
+                    <div className="char-section">
+                      <strong>Evolución</strong>
+                      <p>{char.arc}</p>
+                    </div>
+                  )}
+                  {char.importance && (
+                    <div className="char-section">
+                      <strong>Importancia</strong>
+                      <p>{char.importance}</p>
+                    </div>
+                  )}
+                  {char.relationships && Object.keys(char.relationships).length > 0 && (
+                    <div className="char-section">
+                      <strong>Relaciones</strong>
+                      <ul className="char-relations">
+                        {Object.entries(char.relationships).map(([name, rel], j) => (
+                          <li key={j}><em>{name}</em>: {rel}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {char.quotes?.length > 0 && (
+                    <div className="char-section">
+                      <strong>Momentos destacados</strong>
+                      {char.quotes.map((q, j) => (
+                        <blockquote key={j} className="char-quote">{q}</blockquote>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            )
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+      }
     </div>
   )
 }
 
-
-// ── Referencias externas ──────────────────────────────────────
-function RefsTab({ book }) {
-  const title = encodeURIComponent(book.title || '')
-  const author = encodeURIComponent(book.author || '')
-  const titleRaw = book.title || ''
-  const authorRaw = book.author || ''
-  const isbn = book.isbn || ''
-
-  const bookLinks = [
-    {
-      name: 'Wikipedia',
-      icon: '📖',
-      desc: 'Artículo del libro',
-      url: `https://es.wikipedia.org/wiki/${title.replace(/%20/g, '_')}`,
-    },
-    {
-      name: 'Goodreads',
-      icon: '📚',
-      desc: 'Reseñas y valoraciones',
-      url: isbn
-        ? `https://www.goodreads.com/search?q=${isbn}`
-        : `https://www.goodreads.com/search?q=${title}+${author}&search_type=books`,
-    },
-    {
-      name: 'Google Books',
-      icon: '🔍',
-      desc: 'Vista previa y detalles',
-      url: isbn
-        ? `https://books.google.com/books?isbn=${isbn}`
-        : `https://books.google.com/books?q=${title}+${author}`,
-    },
-    {
-      name: 'YouTube',
-      icon: '▶️',
-      desc: 'Reseñas en vídeo',
-      url: `https://www.youtube.com/results?search_query=${title}+${author}+resena+libro`,
-    },
-    {
-      name: 'Casa del Libro',
-      icon: '🏠',
-      desc: 'Comprar en España',
-      url: `https://www.casadellibro.com/busqueda-generica?busqueda=${title}`,
-    },
-    {
-      name: 'Amazon',
-      icon: '📦',
-      desc: 'Comprar',
-      url: isbn
-        ? `https://www.amazon.es/s?k=${isbn}`
-        : `https://www.amazon.es/s?k=${title}+${author}&i=stripbooks`,
-    },
-    {
-      name: 'Open Library',
-      icon: '🌐',
-      desc: 'Biblioteca abierta',
-      url: `https://openlibrary.org/search?q=${title}+${author}&mode=books`,
-    },
-    {
-      name: 'LibraryThing',
-      icon: '📋',
-      desc: 'Catálogo y recomendaciones',
-      url: `https://www.librarything.com/search.php?search=${title}&searchtype=work`,
-    },
-  ]
-
-  const authorLinks = authorRaw ? [
-    {
-      name: 'Wikipedia',
-      icon: '📖',
-      desc: 'Biografía del autor',
-      url: `https://es.wikipedia.org/wiki/${author.replace(/%20/g, '_')}`,
-    },
-    {
-      name: 'Goodreads',
-      icon: '📚',
-      desc: 'Perfil del autor',
-      url: `https://www.goodreads.com/search?q=${author}&search_type=author`,
-    },
-    {
-      name: 'YouTube',
-      icon: '▶️',
-      desc: 'Entrevistas y charlas',
-      url: `https://www.youtube.com/results?search_query=${author}+escritor+entrevista`,
-    },
-    {
-      name: 'Twitter/X',
-      icon: '🐦',
-      desc: 'Perfil en X',
-      url: `https://x.com/search?q=${author}&src=typed_query&f=user`,
-    },
-    {
-      name: 'Instagram',
-      icon: '📷',
-      desc: 'Perfil en Instagram',
-      url: `https://www.instagram.com/explore/search/keyword/?q=${author}`,
-    },
-  ] : []
-
-  return (
-    <div className="refs-tab">
-      <div className="refs-section">
-        <h3>Sobre el libro</h3>
-        <div className="refs-grid">
-          {bookLinks.map(link => (
-            <a
-              key={link.name}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ref-card"
-            >
-              <span className="ref-icon">{link.icon}</span>
-              <div className="ref-info">
-                <span className="ref-name">{link.name}</span>
-                <span className="ref-desc">{link.desc}</span>
-              </div>
-              <ExternalLink size={13} className="ref-arrow" />
-            </a>
-          ))}
-        </div>
-      </div>
-
-      {authorLinks.length > 0 && (
-        <div className="refs-section">
-          <h3>Sobre {authorRaw}</h3>
-          <div className="refs-grid">
-            {authorLinks.map(link => (
-              <a
-                key={link.name}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ref-card"
-              >
-                <span className="ref-icon">{link.icon}</span>
-                <div className="ref-info">
-                  <span className="ref-name">{link.name}</span>
-                  <span className="ref-desc">{link.desc}</span>
-                </div>
-                <ExternalLink size={13} className="ref-arrow" />
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <p className="refs-note">
-        Los enlaces se generan automáticamente a partir del título y autor.
-        Algunos pueden no encontrar el libro exacto.
-      </p>
-    </div>
-  )
 }

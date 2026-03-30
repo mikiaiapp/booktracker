@@ -288,3 +288,22 @@ async def reidentify_book(
     fetch_shell_metadata.delay(current_user.id, book_id)
 
     return {"status": "updating"}
+
+
+# ── Reanalizar personajes ──────────────────────────────────────
+@router.post("/{book_id}/reanalyze-characters")
+async def reanalyze_characters(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if not book.phase3_done:
+        raise HTTPException(400, "La fase 3 debe estar completa")
+
+    from app.workers.tasks import reanalyze_characters_task
+    task = reanalyze_characters_task.delay(current_user.id, book_id)
+    return {"task_id": task.id, "status": "processing"}

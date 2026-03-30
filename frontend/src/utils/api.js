@@ -77,6 +77,10 @@ export const chapterAPI = {
     api.post(`/analysis/${bookId}/chapter/${chapterId}/summarize`),
 }
 
+// Reanalizar personajes
+export const reanalyzeCharacters = (bookId) =>
+  api.post(\`/analysis/\${bookId}/reanalyze-characters\`)
+
 // Shell books (ficha sin archivo)
 export const shellAPI = {
   create: (title, author, isbn = null) => api.post('/books/shell', { title, author, isbn }),
