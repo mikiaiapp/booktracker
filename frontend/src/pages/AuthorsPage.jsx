@@ -270,21 +270,13 @@ export default function AuthorsPage() {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
                     if (!title || title.trim() === '') return false
-                    // Comprobar por ISBN (normalizar quitando guiones)
-                    const normIsbn = isbn ? isbn.replace(/-/g, '') : null
-                    if (normIsbn && selected.books.some(b => b.isbn && b.isbn.replace(/-/g, '') === normIsbn)) return false
-                    // Palabras clave del título (mínimo 4 chars, ignorar artículos)
-                    const stopWords = new Set(['the','las','los','the','and','con','de','del','la','el','un','una'])
-                    const keywords = title.toLowerCase().split(/[\s\/\(\)\|,]+/)
-                      .filter(w => w.length >= 4 && !stopWords.has(w))
-                    // Si 2 o más palabras clave coinciden con cualquier libro existente → es el mismo
+                    // Comprobar por ISBN
+                    if (isbn && selected.books.some(b => b.isbn && b.isbn === isbn)) return false
+                    // Comprobar por título (normalizado)
                     const norm = title.toLowerCase().trim()
                     return !selected.books.some(b => {
                       const bt = (b.title || '').toLowerCase().trim()
-                      if (bt === norm || bt.includes(norm) || norm.includes(bt)) return true
-                      // Coincidencia por palabras clave
-                      const matchCount = keywords.filter(kw => bt.includes(kw)).length
-                      return matchCount >= 2
+                      return bt === norm || bt.includes(norm) || norm.includes(bt)
                     })
                   }).map((item, i) => {
                     const title = typeof item === 'string' ? item : item.title

@@ -5,21 +5,22 @@
 #
 #  ANTES DEL PRIMER DEPLOY en Portainer:
 #
-#  1. Crear carpetas en el NAS (una sola vez vía SSH):
+#  1. Crear carpetas de datos en el NAS (una sola vez vía SSH):
 #       mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
-#       mkdir -p /volume1/docker/booktracker/overrides
 #
-#  2. Copiar los ficheros de override al NAS:
-#       scp ai_analyzer.py book_identifier.py analysis.py tasks.py BookPage.jsx admin@IP-NAS:/volume1/docker/booktracker/overrides/
-#
-#  3. En Portainer → Stacks → Add stack → Repository:
+#  2. En Portainer → Stacks → Add stack → Repository:
 #       - Repository URL:  https://github.com/TU_USUARIO/TU_REPO
 #       - Compose path:    docker-compose.yml
 #
-#  4. En la sección "Environment variables" de Portainer añadir
+#  3. En la sección "Environment variables" de Portainer añadir
 #     las variables listadas al final de este archivo.
 #
 #  ACCESO:  http://IP-NAS:8080
+#
+#  ACTUALIZAR CÓDIGO:
+#    - Haz cambios en tu repo de GitHub
+#    - En Portainer: Stacks → booktracker → "Pull and redeploy"
+#    - Espera 2-3 minutos mientras reconstruye las imágenes
 # =============================================================
 
 version: "3.9"
@@ -50,13 +51,6 @@ x-backend-volumes: &backend-volumes
   - /volume1/docker/booktracker/data/covers:/data/covers
   - /volume1/docker/booktracker/data/audio:/data/audio
   - /volume1/docker/booktracker/data/databases:/data/databases
-  - /volume1/docker/booktracker/overrides/ai_analyzer.py:/app/app/services/ai_analyzer.py:ro
-  - /volume1/docker/booktracker/overrides/book_identifier.py:/app/app/services/book_identifier.py:ro
-  - /volume1/docker/booktracker/overrides/analysis.py:/app/app/api/analysis.py:ro
-  - /volume1/docker/booktracker/overrides/tasks.py:/app/app/workers/tasks.py:ro
-  - /volume1/docker/booktracker/overrides/auth.py:/app/app/api/auth.py:ro
-  - /volume1/docker/booktracker/overrides/books.py:/app/app/api/books.py:ro
-  - /volume1/docker/booktracker/overrides/user.py:/app/app/models/user.py:ro
 
 # ── Servicios ──────────────────────────────────────────────────
 services:
@@ -186,22 +180,4 @@ networks:
 #  │ SMTP_USER           │ tu_cuenta@gmail.com                    │
 #  │ SMTP_PASS           │ App Password de Google                 │
 #  └─────────────────────┴────────────────────────────────────────┘
-#
-#  FICHEROS DE OVERRIDE en /volume1/docker/booktracker/overrides/:
-#  ┌──────────────────────┬──────────────────────────────────────┐
-#  │ ai_analyzer.py       │ Motor IA (Gemini REST / Claude / GPT)│
-#  │ book_identifier.py   │ Fase 1: metadatos y bibliografía     │
-#  │ analysis.py          │ API endpoints de análisis            │
-#  │ tasks.py             │ Tareas Celery (fases + resumen)      │
-#  │ auth.py              │ Autenticación, 2FA, recuperar pw     │
-#  │ books.py             │ Subida de libros y fichas shell      │
-#  │ user.py              │ Modelo de usuario (campos OTP)       │
-#  └──────────────────────┴──────────────────────────────────────┘
-#
-#  NOTA: El frontend (React) se compila durante el build de Docker.
-#  Para actualizar ficheros .jsx hay que reconstruir la imagen:
-#    docker stop booktracker-frontend
-#    docker rm booktracker-frontend
-#    docker rmi booktracker-frontend (o el ID)
-#    Portainer → Start the stack
 # =============================================================

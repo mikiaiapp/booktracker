@@ -15,20 +15,9 @@
 ### 1 — Preparar el NAS (una sola vez, vía SSH)
 
 ```bash
-# Crear todas las carpetas necesarias (datos + overrides)
+# Crear carpetas de datos
 mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
-mkdir -p /volume1/docker/booktracker/overrides
-
-# Copiar los ficheros de override al NAS
-# (desde tu PC, sustituye IP-NAS por la IP de tu Synology)
-scp backend/app/services/ai_analyzer.py     admin@IP-NAS:/volume1/docker/booktracker/overrides/
-scp backend/app/services/book_identifier.py admin@IP-NAS:/volume1/docker/booktracker/overrides/
 ```
-
-> **¿Por qué los overrides?** Portainer despliega desde imágenes Docker cacheadas.
-> Los ficheros en `/overrides/` se montan sobre la imagen en cada arranque,
-> garantizando que el código actualizado siempre se aplica sin necesidad de
-> reconstruir la imagen completa.
 
 ---
 
@@ -99,19 +88,21 @@ http://IP-NAS:8080
 
 ---
 
-## Actualizar código sin reconstruir la imagen
+## Actualizar código
 
-Cuando se actualicen `ai_analyzer.py` o `book_identifier.py`:
+Cuando hagas cambios en el código:
 
 ```bash
-# Desde tu PC, copia el fichero actualizado al NAS
-scp backend/app/services/ai_analyzer.py admin@IP-NAS:/volume1/docker/booktracker/overrides/
+# 1. Haz commit y push a GitHub
+git add .
+git commit -m "Nueva funcionalidad"
+git push
 
-# Reinicia solo el worker para que cargue el nuevo código
-docker restart booktracker-worker
+# 2. En Portainer → Stacks → booktracker → "Pull and redeploy"
+# Espera 2-3 minutos mientras reconstruye las imágenes
 ```
 
-No hace falta Pull and redeploy para estos ficheros — el volumen los sirve directamente.
+El stack completo se reconstruye automáticamente con el código actualizado.
 
 ---
 
@@ -140,15 +131,12 @@ No hace falta Pull and redeploy para estos ficheros — el volumen los sirve dir
 
 ```
 /volume1/docker/booktracker/
-├── data/
-│   ├── uploads/      ← PDFs y EPUBs originales
-│   ├── covers/       ← portadas descargadas
-│   ├── audio/        ← podcasts MP3
-│   ├── databases/    ← SQLite
-│   └── redis/        ← cola de tareas
-└── overrides/        ← ficheros que sobreescriben la imagen
-    ├── ai_analyzer.py
-    └── book_identifier.py
+└── data/
+    ├── uploads/      ← PDFs y EPUBs originales
+    ├── covers/       ← portadas descargadas
+    ├── audio/        ← podcasts MP3
+    ├── databases/    ← SQLite (global.db + user_{id}.db)
+    └── redis/        ← cola de tareas Celery
 ```
 
 ---
@@ -163,11 +151,15 @@ docker ps | grep booktracker
 docker logs booktracker-worker -f
 docker logs booktracker-backend -f
 
-# Reiniciar el worker IA
+# Reiniciar un servicio específico
 docker restart booktracker-worker
+docker restart booktracker-backend
 
 # Backup de datos
 tar -czf backup-$(date +%Y%m%d).tar.gz /volume1/docker/booktracker/data/
+
+# Ver uso de recursos
+docker stats booktracker-backend booktracker-worker
 ```
 
 ---
@@ -176,12 +168,12 @@ tar -czf backup-$(date +%Y%m%d).tar.gz /volume1/docker/booktracker/data/
 
 | Error | Causa | Solución |
 |-------|-------|----------|
-| `Bind mount failed: overrides/... does not exist` | Carpeta overrides no creada | Ejecutar paso 1 del despliegue |
 | `Quota exceeded, limit: 0` | Clave Gemini con billing activado | Crear clave nueva en AI Studio con proyecto nuevo sin billing |
 | `No API_KEY or ADC found` | `GOOGLE_API_KEY` no definida | Añadir en Portainer → Environment variables |
-| `module 'httpx' has no attribute 'utils'` | Versión antigua de book_identifier.py | Copiar fichero actualizado a `/overrides/` |
 | `bcrypt` error al registrar | Versión incompatible de bcrypt | Verificar `bcrypt==4.0.1` en requirements.txt |
-| Backend unhealthy | Arranque lento en NAS | Esperar 2 min y reintentar el deploy |
+| Backend unhealthy | Arranque lento en NAS | Esperar 2-3 min y verificar logs con `docker logs booktracker-backend` |
+| Worker no procesa tareas | Redis desconectado | Verificar `docker logs booktracker-redis` y reiniciar stack |
+| Imágenes no se muestran | Permisos en /data/covers | `chmod -R 755 /volume1/docker/booktracker/data/covers` |
 
 ---
 
