@@ -227,17 +227,95 @@
 
 .tab-content { flex: 1; min-width: 0; animation: fadeIn 0.25s ease; }
 
+/* Tabs select móvil */
+.tabs-select-mobile {
+  display: none;
+}
+
+.tabs-select-wrapper {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.tabs-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink);
+  background: white;
+  border: 2px solid var(--paper-dark);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all var(--transition);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+.tabs-select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(201, 169, 110, 0.1);
+}
+
+.tabs-select option:disabled {
+  color: var(--mist);
+}
+
 @media (max-width: 768px) {
   .book-tabs { flex-direction: column; gap: 0; padding: 0 1rem 3rem; }
-  .tabs-bar {
-    flex-direction: row; width: 100%; position: static;
-    overflow-x: auto; border-radius: 8px; margin-bottom: 1rem;
+  
+  .tabs-bar-desktop {
+    display: none !important;
   }
-  .tab-btn { white-space: nowrap; flex: none; }
+  
+  .tabs-select-mobile {
+    display: block;
+  }
 }
 
 /* Info tab */
 .info-tab { display: flex; flex-direction: column; gap: 2rem; max-width: 720px; }
+
+.info-tts-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(201, 169, 110, 0.05);
+  border: 1.5px solid rgba(201, 169, 110, 0.2);
+  border-radius: var(--radius);
+}
+
+.info-tts-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--gold);
+  color: var(--ink);
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.info-tts-play-btn:hover {
+  background: var(--gold-light);
+  transform: translateY(-1px);
+}
+
+.info-tts-active {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
 
 .info-tab section h3 {
   font-family: var(--font-display);
@@ -462,6 +540,82 @@
 .script-line p { font-size: 0.875rem; color: var(--ink); line-height: 1.6; }
 
 .empty-tab { color: var(--mist); font-size: 0.875rem; padding: 2rem 0; }
+
+/* ── Referencias Tab ──────────────────────────────────────────── */
+.refs-tab {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.refs-tab h3 {
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--ink);
+}
+
+.refs-subtitle {
+  font-size: 0.9rem;
+  color: var(--slate);
+  margin-bottom: 1.5rem;
+}
+
+.refs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.ref-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--white);
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius);
+  transition: all var(--transition);
+}
+
+.ref-item:hover {
+  border-color: var(--gold);
+  box-shadow: var(--shadow);
+}
+
+.ref-cover {
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.ref-cover img {
+  width: 60px;
+  height: 85px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.ref-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ref-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.ref-year {
+  font-size: 0.8rem;
+  color: var(--gold);
+  font-weight: 500;
+}
+
+.ref-isbn {
+  font-size: 0.75rem;
+  color: var(--mist);
+}
 .muted { color: var(--mist) !important; font-style: italic; }
 
 .summarize-ch-btn {

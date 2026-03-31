@@ -30,8 +30,7 @@ export default function MindMap({ data }) {
 
     const width = el.clientWidth || 800
     const height = isFullscreen ? window.innerHeight - 100 : 600
-    const cx = width / 2
-    const cy = height / 2
+    const margin = { top: 20, right: 120, bottom: 20, left: 120 }
 
     const svg = d3.select(el)
       .append('svg')
@@ -46,7 +45,8 @@ export default function MindMap({ data }) {
         d3.select(this).style('cursor', 'grab')
       })
 
-    const g = svg.append('g').attr('transform', `translate(${cx},${cy})`)
+    const g = svg.append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`)
 
     // Build hierarchy with IDs for tracking collapsed state
     const root = {
@@ -80,13 +80,15 @@ export default function MindMap({ data }) {
 
     const filteredRoot = filterCollapsed(root)
     const hierarchy = d3.hierarchy(filteredRoot)
+    
+    // Tree layout - horizontal orientation
     const treeLayout = d3.tree()
-      .size([2 * Math.PI, Math.min(cx, cy) - 100])
-      .separation((a, b) => (a.parent === b.parent ? 1 : 2) / a.depth)
+      .size([height - margin.top - margin.bottom, width - margin.left - margin.right - 100])
+      .separation((a, b) => (a.parent === b.parent ? 1 : 1.2))
 
     const tree = treeLayout(hierarchy)
 
-    // Links with smooth animation
+    // Links with smooth curves
     const links = g.append('g')
       .attr('fill', 'none')
       .attr('stroke-linecap', 'round')
@@ -96,9 +98,9 @@ export default function MindMap({ data }) {
       .attr('stroke', d => d.target.data.color || d.source.data.color || '#c9a96e')
       .attr('stroke-opacity', 0)
       .attr('stroke-width', d => d.target.depth === 1 ? 3 : 1.5)
-      .attr('d', d3.linkRadial()
-        .angle(d => d.x)
-        .radius(d => d.y))
+      .attr('d', d3.linkHorizontal()
+        .x(d => d.y)
+        .y(d => d.x))
       .transition()
       .duration(600)
       .attr('stroke-opacity', d => d.target.depth === 1 ? 0.6 : 0.4)
@@ -108,7 +110,7 @@ export default function MindMap({ data }) {
       .selectAll('g')
       .data(tree.descendants())
       .join('g')
-      .attr('transform', d => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
+      .attr('transform', d => `translate(${d.y},${d.x})`)
       .attr('opacity', 0)
       .style('cursor', d => (d.depth > 0 && d.data._children) || d.children ? 'pointer' : 'default')
       .on('click', (event, d) => {
@@ -131,7 +133,7 @@ export default function MindMap({ data }) {
         if (d.depth === 1) return d.data.color || '#c9a96e'
         return d.data.leaf ? '#f8f9fa' : d.parent.data.color || '#c9a96e'
       })
-      .attr('r', d => d.depth === 0 ? 12 : d.depth === 1 ? 8 : 5)
+      .attr('r', d => d.depth === 0 ? 8 : d.depth === 1 ? 6 : 4)
       .attr('stroke', d => {
         if (d.depth === 0) return '#c9a96e'
         if (d.depth === 1) return d.data.color || '#c9a96e'
@@ -144,38 +146,31 @@ export default function MindMap({ data }) {
           d3.select(this)
             .transition()
             .duration(200)
-            .attr('r', d => d.depth === 0 ? 14 : d.depth === 1 ? 10 : 6)
+            .attr('r', d => d.depth === 0 ? 10 : d.depth === 1 ? 8 : 5)
         }
       })
       .on('mouseleave', function(event, d) {
         d3.select(this)
           .transition()
           .duration(200)
-          .attr('r', d => d.depth === 0 ? 12 : d.depth === 1 ? 8 : 5)
+          .attr('r', d => d.depth === 0 ? 8 : d.depth === 1 ? 6 : 4)
       })
 
-    // Collapse indicator for branches
-    node.filter(d => d.depth === 1)
-      .append('circle')
-      .attr('r', 3)
-      .attr('fill', 'white')
-      .attr('stroke', d => d.data.color || '#c9a96e')
-      .attr('stroke-width', 1.5)
-      .attr('cx', 12)
-      .attr('cy', 0)
-      .attr('opacity', d => (d.children || d.data._children) ? 1 : 0)
+    // Collapse/expand indicator
+    node.filter(d => d.depth === 1 && (d.children || d.data._children))
+      .append('text')
+      .attr('x', 12)
+      .attr('y', 4)
+      .attr('font-size', 10)
+      .attr('fill', d => d.data.color || '#c9a96e')
+      .text(d => collapsedNodes.has(d.data.id) ? '▸' : '▾')
 
-    // Node labels with better positioning
+    // Node labels
     node.append('text')
       .attr('dy', '0.31em')
-      .attr('x', d => {
-        const hasChildren = d.children || d.data._children
-        const offset = d.depth === 0 ? 18 : d.depth === 1 ? 14 : 8
-        return d.x < Math.PI === !hasChildren ? offset : -offset
-      })
-      .attr('text-anchor', d => d.x < Math.PI === !d.children ? 'start' : 'end')
-      .attr('transform', d => d.x >= Math.PI ? 'rotate(180)' : null)
-      .attr('font-size', d => d.depth === 0 ? 16 : d.depth === 1 ? 13 : 11)
+      .attr('x', d => d.children || d.data._children ? -12 : 12)
+      .attr('text-anchor', d => d.children || d.data._children ? 'end' : 'start')
+      .attr('font-size', d => d.depth === 0 ? 14 : d.depth === 1 ? 12 : 10)
       .attr('font-weight', d => d.depth <= 1 ? '600' : '400')
       .attr('fill', d => d.depth === 0 ? '#0d0d0d' : d.depth === 1 ? (d.data.color || '#0d0d0d') : '#495057')
       .text(d => {
@@ -206,7 +201,7 @@ export default function MindMap({ data }) {
     const zoom = d3.zoom()
       .scaleExtent([0.3, 3])
       .on('zoom', e => {
-        g.attr('transform', `translate(${cx + e.transform.x},${cy + e.transform.y}) scale(${e.transform.k})`)
+        g.attr('transform', `translate(${margin.left + e.transform.x},${margin.top + e.transform.y}) scale(${e.transform.k})`)
       })
 
     svg.call(zoom)

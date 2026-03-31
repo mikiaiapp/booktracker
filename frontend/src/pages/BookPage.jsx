@@ -49,6 +49,10 @@ export default function BookPage() {
   const ttsCharIndexRef = React.useRef(0)
   const charStorageKey = `tts_char_pos_${id}`
 
+  // TTS state for InfoTab (Ficha)
+  const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
+  const infoStorageKey = `tts_info_pos_${id}`
+
   // Guardar posición en localStorage
   const saveTTSPos = (idx, queue) => {
     try {
@@ -274,6 +278,55 @@ export default function BookPage() {
     setTtsCharIndex(0)
     setTtsCharPlaying(true)
     speakCharItem(queue, 0)
+  }
+
+  // ── TTS for InfoTab (Ficha) ───────────────────────────────────────────────────
+  const playInfo = (book) => {
+    // Detener otros TTS
+    stopTTS(true)
+    stopCharTTS(true)
+    window.speechSynthesis.cancel()
+
+    let text = ''
+    if (book.synopsis) {
+      text += `Sinopsis. ${book.synopsis}. `
+    }
+    if (book.author_bio) {
+      text += `Sobre el autor. ${book.author_bio}.`
+    }
+
+    if (!text) {
+      toast('No hay contenido para reproducir', { icon: 'ℹ️' })
+      return
+    }
+
+    setTtsInfoPlaying(true)
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => {
+      setTtsInfoPlaying(false)
+      localStorage.removeItem(infoStorageKey)
+    }
+    utterance.onerror = () => {
+      setTtsInfoPlaying(false)
+    }
+    window.speechSynthesis.speak(utterance)
+    localStorage.setItem(infoStorageKey, 'playing')
+  }
+
+  const pauseInfoTTS = () => {
+    window.speechSynthesis.cancel()
+    setTtsInfoPlaying(false)
+  }
+
+  const stopInfoTTS = (skipConfirm = false) => {
+    if (!skipConfirm && ttsInfoPlaying) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
+    }
+    window.speechSynthesis.cancel()
+    setTtsInfoPlaying(false)
+    localStorage.removeItem(infoStorageKey)
   }
 
   // Limpiar TTS al desmontar
@@ -682,37 +735,6 @@ export default function BookPage() {
               </p>
             )}
 
-            {/* Botones TTS en cabecera: Play/Pausa + Stop */}
-            {(book.synopsis || chapters.some(c => c.summary_status === 'done')) && (
-              <div className="hero-tts">
-                <div className="tts-hero-group">
-                  {/* Play / Pausa — guarda avance */}
-                  <button
-                    className={`tts-hero-btn ${ttsPlaying ? 'tts-hero-pause' : ''}`}
-                    onClick={() => {
-                      if (ttsPlaying) pauseTTS()
-                      else if (ttsChapter) resumeCurrentTTS()
-                      else if (hasSavedPos()) resumeTTS(book, chapters)
-                      else playFromBeginning(book, chapters)
-                    }}
-                  >
-                    {ttsPlaying
-                      ? <><Pause size={14} /> Pausar</>
-                      : ttsChapter || hasSavedPos()
-                        ? <><Play size={14} /> Continuar</>
-                        : <><Volume2 size={14} /> Leer análisis</>
-                    }
-                  </button>
-                  {/* Stop — para y resetea avance */}
-                  {(ttsPlaying || ttsChapter || hasSavedPos()) && (
-                    <button className="tts-hero-btn tts-hero-stop" onClick={stopTTS} title="Parar y resetear avance">
-                      <Square size={14} fill="currentColor" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} páginas</span>}
@@ -790,13 +812,14 @@ export default function BookPage() {
 
       {/* Tabs */}
       <div className="book-tabs">
-        <div className="tabs-bar">
+        {/* Barra desktop */}
+        <div className="tabs-bar tabs-bar-desktop">
           {TABS.map(t => (
             <button key={t.id}
               className={`tab-btn ${tab === t.id ? 'active' : ''}`}
               onClick={() => setTab(t.id)}
               disabled={
-                (isShell && t.id !== 'refs') ||
+                (isShell && t.id !== 'info') ||
                 (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
                 (t.id === 'summary' && !status?.phase3_done) ||
@@ -810,12 +833,47 @@ export default function BookPage() {
           ))}
         </div>
 
+        {/* Select móvil */}
+        <div className="tabs-select-wrapper tabs-select-mobile">
+          <select 
+            className="tabs-select" 
+            value={tab} 
+            onChange={(e) => setTab(e.target.value)}
+          >
+            {TABS.map(t => {
+              const disabled = 
+                (isShell && t.id !== 'info') ||
+                (t.id === 'chapters' && !status?.phase2_done) ||
+                (t.id === 'characters' && !status?.phase3_done) ||
+                (t.id === 'summary' && !status?.phase3_done) ||
+                (t.id === 'mindmap' && !status?.phase3_done) ||
+                (t.id === 'podcast' && !book.podcast_audio_path)
+              
+              const icon = {
+                info: '📖',
+                chapters: '📑',
+                characters: '👤',
+                summary: '🧠',
+                mindmap: '🗺️',
+                podcast: '🎙️',
+                refs: '🔗'
+              }[t.id] || '•'
+              
+              return (
+                <option key={t.id} value={t.id} disabled={disabled}>
+                  {icon} {t.label}
+                </option>
+              )
+            })}
+          </select>
+        </div>
+
         <AnimatePresence mode="wait">
           <motion.div key={tab} className="tab-content"
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} />}
+            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} ttsPlaying={ttsInfoPlaying} onPlay={playInfo} onPause={pauseInfoTTS} onStop={stopInfoTTS} />}
 
             {tab === 'chapters' && (
               <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => playTTS(chapterToText(ch), ch.id)} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
@@ -898,9 +956,34 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, book = {} }) {
   )
 }
 
-function InfoTab({ book, otherBooks = [] }) {
+function InfoTab({ book, otherBooks = [], ttsPlaying, onPlay, onPause, onStop }) {
   return (
     <div className="info-tab">
+      {/* Controles TTS */}
+      {(book.synopsis || book.author_bio) && (
+        <div className="info-tts-controls">
+          {!ttsPlaying ? (
+            <button className="info-tts-play-btn" onClick={() => onPlay(book)}>
+              <Play size={16} />
+              Reproducir ficha
+            </button>
+          ) : (
+            <div className="info-tts-active">
+              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
+                <Pause size={16} />
+              </button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
+                <Square size={16} />
+              </button>
+              <span className="tts-indicator">
+                <Volume2 size={14} className="pulse" />
+                Reproduciendo
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
       {book.synopsis && (
         <section>
           <h3>Sinopsis</h3>
@@ -1200,6 +1283,47 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, t
             })}
           </div>
       }
+    </div>
+  )
+}
+
+function RefsTab({ book }) {
+  if (!book.author_bibliography || book.author_bibliography.length === 0) {
+    return (
+      <div className="empty-tab">
+        <ExternalLink size={48} strokeWidth={1} />
+        <p>No hay referencias disponibles</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="refs-tab">
+      <h3>Otras obras del autor</h3>
+      <p className="refs-subtitle">Libros relacionados de {book.author}</p>
+      <div className="refs-grid">
+        {book.author_bibliography.slice(0, 20).map((item, i) => {
+          const title = typeof item === 'string' ? item : item.title
+          const year = typeof item === 'object' ? item.year : null
+          const cover = typeof item === 'object' ? item.cover_url : null
+          const isbn = typeof item === 'object' ? item.isbn : null
+          
+          return (
+            <div key={i} className="ref-item">
+              {cover && (
+                <div className="ref-cover">
+                  <img src={cover} alt={title} />
+                </div>
+              )}
+              <div className="ref-info">
+                <h4 className="ref-title">{title}</h4>
+                {year && <span className="ref-year">{year}</span>}
+                {isbn && <span className="ref-isbn">ISBN: {isbn}</span>}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
