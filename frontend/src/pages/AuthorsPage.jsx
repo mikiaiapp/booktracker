@@ -155,7 +155,25 @@ export default function AuthorsPage() {
                 <div className="author-item-info">
                   <span className="author-item-name">{author.name}</span>
                   <span className="author-item-count">
-                    {author.books.length} {author.books.length === 1 ? 'libro' : 'libros'}
+                    {(() => {
+                      // Calcular total de libros únicos en bibliografía
+                      const booksInApp = author.books.length
+                      const booksInBiblio = (author.bibliography || []).filter(item => {
+                        const title = typeof item === 'string' ? item : item.title
+                        const isbn = typeof item === 'string' ? null : item.isbn
+                        if (!title || title.trim() === '') return false
+                        // Comprobar por ISBN
+                        if (isbn && author.books.some(b => b.isbn && b.isbn === isbn)) return false
+                        // Comprobar por título
+                        const norm = title.toLowerCase().trim()
+                        return !author.books.some(b => {
+                          const bt = (b.title || '').toLowerCase().trim()
+                          return bt === norm || bt.includes(norm) || norm.includes(bt)
+                        })
+                      }).length
+                      const total = booksInApp + booksInBiblio
+                      return `${total} ${total === 1 ? 'libro' : 'libros'}`
+                    })()}
                   </span>
                 </div>
               </motion.div>
