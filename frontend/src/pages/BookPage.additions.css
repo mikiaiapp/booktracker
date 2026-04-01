@@ -1,0 +1,69 @@
+/* ── Attach/replace file button (already-analyzed books) ─── */
+.attach-file-area {
+  margin-top: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
+.attach-file-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--mist);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.attach-file-btn:hover {
+  border-color: rgba(201, 169, 110, 0.5);
+  color: var(--gold);
+}
+
+/* ── Hero TTS "Continuar reproducción" button ───────────── */
+.hero-tts-resume {
+  background: rgba(201,169,110,0.2) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+  font-weight: 600;
+  animation: pulseGold 2s ease-in-out infinite;
+}
+
+@keyframes pulseGold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201,169,110,0); }
+  50% { box-shadow: 0 0 0 4px rgba(201,169,110,0.2); }
+}
+
+/* ── Summary tab TTS controls ───────────────────────────── */
+.summary-tts-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Characters tab: resume button ─────────────────────── */
+.tts-control-btn.resume {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.tts-control-btn.resume:hover {
+  background: var(--gold);
+  color: var(--ink);
+}
+
+/* ── ref-item for missing books (bibliography-only) ──────── */
+.ref-item-missing {
+  opacity: 0.72;
+  border-style: dashed;
+  border-color: var(--paper-dark);
+}
+
+.ref-item-missing:hover {
+  opacity: 1;
+  border-color: var(--gold);
+  border-style: dashed;
+}

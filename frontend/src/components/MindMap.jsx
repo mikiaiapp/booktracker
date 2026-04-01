@@ -1,340 +1,393 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
 import { Maximize2, Minimize2 } from 'lucide-react'
 
 export default function MindMap({ data }) {
   const ref = useRef()
-  const [collapsedNodes, setCollapsedNodes] = useState(new Set())
   const [isFullscreen, setIsFullscreen] = useState(false)
+  // Track which branch-level nodes are expanded (by index)
+  // Start with none expanded — user opens them one by one
+  const [expandedBranches, setExpandedBranches] = useState(new Set())
+  const [revealedBranches, setRevealedBranches] = useState(new Set())
 
-  const toggleNode = (nodeId) => {
-    setCollapsedNodes(prev => {
+  const toggleFullscreen = () => setIsFullscreen(f => !f)
+
+  // Expand a branch by its index
+  const expandBranch = useCallback((branchIdx) => {
+    setExpandedBranches(prev => {
       const next = new Set(prev)
-      if (next.has(nodeId)) {
-        next.delete(nodeId)
+      if (next.has(branchIdx)) {
+        next.delete(branchIdx)
       } else {
-        next.add(nodeId)
+        next.add(branchIdx)
       }
       return next
     })
-  }
-
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen)
-  }
+  }, [])
 
   useEffect(() => {
     if (!data || !ref.current) return
     const el = ref.current
     el.innerHTML = ''
 
-    const width = el.clientWidth || 800
-    const height = isFullscreen ? window.innerHeight - 100 : 600
-    const margin = { top: 20, right: 120, bottom: 20, left: 120 }
+    const branches = data.branches || []
+    const width = el.clientWidth || 900
+    const height = isFullscreen ? window.innerHeight - 100 : 580
 
     const svg = d3.select(el)
       .append('svg')
       .attr('width', width)
       .attr('height', height)
       .style('font-family', 'var(--font-body)')
+      .style('background', 'linear-gradient(135deg, #fafafa 0%, #f5f0e8 100%)')
       .style('cursor', 'grab')
-      .on('mousedown', function() {
-        d3.select(this).style('cursor', 'grabbing')
-      })
-      .on('mouseup', function() {
-        d3.select(this).style('cursor', 'grab')
-      })
+      .on('mousedown', function () { d3.select(this).style('cursor', 'grabbing') })
+      .on('mouseup', function () { d3.select(this).style('cursor', 'grab') })
 
-    const g = svg.append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`)
-
-    // Build hierarchy with IDs for tracking collapsed state
-    const root = {
-      name: data.center,
-      id: 'root',
-      children: (data.branches || []).map((b, i) => ({
-        name: b.label,
-        id: `branch-${i}`,
-        color: b.color || '#6366f1',
-        children: (b.children || []).map((c, j) => ({ 
-          name: c, 
-          id: `leaf-${i}-${j}`,
-          leaf: true 
-        }))
-      }))
-    }
-
-    // Filter collapsed nodes
-    const filterCollapsed = (node) => {
-      if (collapsedNodes.has(node.id) && node.children) {
-        return { ...node, children: null, _children: node.children }
-      }
-      if (node.children) {
-        return {
-          ...node,
-          children: node.children.map(filterCollapsed)
-        }
-      }
-      return node
-    }
-
-    const filteredRoot = filterCollapsed(root)
-    const hierarchy = d3.hierarchy(filteredRoot)
-    
-    // Tree layout - horizontal orientation
-    const treeLayout = d3.tree()
-      .size([height - margin.top - margin.bottom, width - margin.left - margin.right - 100])
-      .separation((a, b) => (a.parent === b.parent ? 1 : 1.2))
-
-    const tree = treeLayout(hierarchy)
-
-    // Links with smooth curves
-    const links = g.append('g')
-      .attr('fill', 'none')
-      .attr('stroke-linecap', 'round')
-      .selectAll('path')
-      .data(tree.links())
-      .join('path')
-      .attr('stroke', d => d.target.data.color || d.source.data.color || '#c9a96e')
-      .attr('stroke-opacity', 0)
-      .attr('stroke-width', d => d.target.depth === 1 ? 3 : 1.5)
-      .attr('d', d3.linkHorizontal()
-        .x(d => d.y)
-        .y(d => d.x))
-      .transition()
-      .duration(600)
-      .attr('stroke-opacity', d => d.target.depth === 1 ? 0.6 : 0.4)
-
-    // Nodes group
-    const node = g.append('g')
-      .selectAll('g')
-      .data(tree.descendants())
-      .join('g')
-      .attr('transform', d => `translate(${d.y},${d.x})`)
-      .attr('opacity', 0)
-      .style('cursor', d => (d.depth > 0 && d.data._children) || d.children ? 'pointer' : 'default')
-      .on('click', (event, d) => {
-        if (d.depth > 0 && (d.children || d.data._children)) {
-          event.stopPropagation()
-          toggleNode(d.data.id)
-        }
-      })
-
-    // Animate node entrance
-    node.transition()
-      .duration(600)
-      .delay((d, i) => i * 20)
-      .attr('opacity', 1)
-
-    // Expandir/contraer botón para nodos con hijos
-    const nodeWithChildren = node.filter(d => d.depth === 1 && (d.children || d.data._children))
-    
-    nodeWithChildren.append('circle')
-      .attr('r', 12)
-      .attr('fill', 'white')
-      .attr('stroke', d => d.data.color || '#c9a96e')
-      .attr('stroke-width', 2.5)
-      .attr('cx', -18)
-      .attr('cy', 0)
-      .style('cursor', 'pointer')
-      .on('mouseenter', function() {
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr('r', 14)
-          .attr('stroke-width', 3)
-      })
-      .on('mouseleave', function() {
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr('r', 12)
-          .attr('stroke-width', 2.5)
-      })
-
-    nodeWithChildren.append('text')
-      .attr('x', -18)
-      .attr('y', 0)
-      .attr('text-anchor', 'middle')
-      .attr('dy', '0.35em')
-      .attr('font-size', 16)
-      .attr('font-weight', 'bold')
-      .attr('fill', d => d.data.color || '#c9a96e')
-      .text(d => collapsedNodes.has(d.data.id) ? '+' : '−')
-      .style('pointer-events', 'none')
-
-    // Fondo blanco para textos (mejor legibilidad)
-    node.each(function(d) {
-      const textNode = d3.select(this)
-      const text = d.data.name || ''
-      const maxLen = d.depth === 0 ? 40 : d.depth === 1 ? 35 : 30
-      const displayText = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text
-      
-      // Calcular ancho aproximado del texto
-      const textWidth = displayText.length * (d.depth === 0 ? 9 : d.depth === 1 ? 8 : 7)
-      const padding = 8
-      const xOffset = d.children || d.data._children ? -12 - padding : 12 + padding
-      
-      // Fondo blanco
-      textNode.append('rect')
-        .attr('x', d.children || d.data._children ? xOffset - textWidth : xOffset)
-        .attr('y', -14)
-        .attr('width', textWidth + padding * 2)
-        .attr('height', 28)
-        .attr('rx', 6)
-        .attr('fill', 'white')
-        .attr('fill-opacity', 0.95)
-        .attr('stroke', d.depth === 0 ? '#c9a96e' : d.depth === 1 ? (d.data.color || '#e0e0e0') : '#e0e0e0')
-        .attr('stroke-width', d.depth === 0 ? 2 : 1.5)
-        .style('filter', d.depth === 0 ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' : 'none')
-    })
-
-    // Node circles con glow effect
-    node.append('circle')
-      .attr('fill', d => {
-        if (d.depth === 0) return '#0d0d0d'
-        if (d.depth === 1) return d.data.color || '#c9a96e'
-        return d.data.leaf ? '#f8f9fa' : d.parent.data.color || '#c9a96e'
-      })
-      .attr('r', d => d.depth === 0 ? 8 : d.depth === 1 ? 6 : 4)
-      .attr('stroke', d => {
-        if (d.depth === 0) return '#c9a96e'
-        if (d.depth === 1) return d.data.color || '#c9a96e'
-        return 'white'
-      })
-      .attr('stroke-width', d => d.depth === 0 ? 3 : 2)
-      .attr('filter', d => d.depth <= 1 ? 'url(#glow)' : null)
-      .on('mouseenter', function(event, d) {
-        if (d.children || d.data._children) {
-          d3.select(this)
-            .transition()
-            .duration(200)
-            .attr('r', d => d.depth === 0 ? 10 : d.depth === 1 ? 8 : 5)
-        }
-      })
-      .on('mouseleave', function(event, d) {
-        d3.select(this)
-          .transition()
-          .duration(200)
-          .attr('r', d => d.depth === 0 ? 8 : d.depth === 1 ? 6 : 4)
-      })
-
-    // Node labels
-    node.append('text')
-      .attr('dy', '0.31em')
-      .attr('x', d => d.children || d.data._children ? -12 : 12)
-      .attr('text-anchor', d => d.children || d.data._children ? 'end' : 'start')
-      .attr('font-size', d => d.depth === 0 ? 14 : d.depth === 1 ? 12 : 10)
-      .attr('font-weight', d => d.depth <= 1 ? '600' : '400')
-      .attr('fill', d => d.depth === 0 ? '#0d0d0d' : d.depth === 1 ? (d.data.color || '#0d0d0d') : '#495057')
-      .text(d => {
-        const name = d.data.name || ''
-        const maxLen = d.depth === 0 ? 40 : d.depth === 1 ? 35 : 30
-        return name.length > maxLen ? name.slice(0, maxLen - 1) + '…' : name
-      })
-      .style('text-shadow', d => d.depth === 0 ? '0 0 8px rgba(255,255,255,0.8)' : 'none')
-
-    // Tooltips para textos completos
-    node.append('title')
-      .text(d => d.data.name || '')
-
-    // Glow filter para nodos centrales
+    // Defs (glow + arrow)
     const defs = svg.append('defs')
-    const filter = defs.append('filter')
-      .attr('id', 'glow')
-      .attr('x', '-50%')
-      .attr('y', '-50%')
-      .attr('width', '200%')
-      .attr('height', '200%')
-
-    filter.append('feGaussianBlur')
-      .attr('stdDeviation', '3')
-      .attr('result', 'coloredBlur')
-
-    const feMerge = filter.append('feMerge')
+    const glowFilter = defs.append('filter').attr('id', 'glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%')
+    glowFilter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur')
+    const feMerge = glowFilter.append('feMerge')
     feMerge.append('feMergeNode').attr('in', 'coloredBlur')
     feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
 
-    // Enhanced zoom and pan
-    const zoom = d3.zoom()
-      .scaleExtent([0.3, 3])
-      .on('zoom', e => {
-        g.attr('transform', `translate(${margin.left + e.transform.x},${margin.top + e.transform.y}) scale(${e.transform.k})`)
-      })
+    const g = svg.append('g')
 
+    // Zoom & pan
+    const zoom = d3.zoom()
+      .scaleExtent([0.2, 3])
+      .on('zoom', e => {
+        g.attr('transform', e.transform)
+      })
     svg.call(zoom)
+
+    // Initial transform — center the root
+    const initX = width * 0.16
+    const initY = height / 2
+    svg.call(zoom.transform, d3.zoomIdentity.translate(initX, initY))
+
+    // Layout constants
+    const BRANCH_SPACING = 52    // vertical space between branch nodes
+    const ROOT_X = 0
+    const ROOT_Y = 0
+    const BRANCH_X = 180         // x of branch nodes (level 1)
+    const LEAF_X = 380           // x of leaf nodes (level 2)
+    const LEAF_SPACING = 26      // vertical space between leaves
+
+    // Position branches evenly around center
+    const branchCount = branches.length
+    const totalBranchHeight = (branchCount - 1) * BRANCH_SPACING
+    const branchPositions = branches.map((_, i) => ({
+      x: BRANCH_X,
+      y: ROOT_Y - totalBranchHeight / 2 + i * BRANCH_SPACING
+    }))
+
+    // Draw root node
+    const rootG = g.append('g').attr('transform', `translate(${ROOT_X},${ROOT_Y})`)
+
+    rootG.append('circle')
+      .attr('r', 28)
+      .attr('fill', '#0d0d0d')
+      .attr('stroke', '#c9a96e')
+      .attr('stroke-width', 3)
+      .attr('filter', 'url(#glow)')
+
+    // Root label (wrapped)
+    const rootLabel = data.center || ''
+    const rootWords = rootLabel.split(' ')
+    const rootLines = []
+    let line = ''
+    rootWords.forEach(w => {
+      if ((line + ' ' + w).trim().length > 14) { rootLines.push(line.trim()); line = w }
+      else { line = (line + ' ' + w).trim() }
+    })
+    if (line) rootLines.push(line)
+
+    rootLines.forEach((l, i) => {
+      rootG.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dy', `${(i - (rootLines.length - 1) / 2) * 1.15}em`)
+        .attr('fill', '#c9a96e')
+        .attr('font-size', 11)
+        .attr('font-weight', '600')
+        .text(l)
+    })
+
+    // Draw each branch
+    branches.forEach((branch, bi) => {
+      const bPos = branchPositions[bi]
+      const color = branch.color || '#c9a96e'
+      const isExpanded = expandedBranches.has(bi)
+      const children = branch.children || []
+
+      // Connector root → branch
+      const linkG = g.append('g').attr('class', `branch-link-${bi}`)
+      linkG.append('path')
+        .attr('fill', 'none')
+        .attr('stroke', color)
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.55)
+        .attr('d', () => {
+          const sx = ROOT_X + 28, sy = ROOT_Y
+          const tx = bPos.x - 18, ty = bPos.y
+          const mx = (sx + tx) / 2
+          return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`
+        })
+        .style('transition', 'stroke-opacity 0.3s')
+
+      // Branch node group
+      const branchG = g.append('g')
+        .attr('class', `branch-node-${bi}`)
+        .attr('transform', `translate(${bPos.x},${bPos.y})`)
+        .style('cursor', 'pointer')
+        .on('click', () => expandBranch(bi))
+
+      // Branch background pill
+      const labelText = branch.label || ''
+      const labelLen = Math.min(labelText.length, 22)
+      const pillW = Math.max(90, labelLen * 7 + 28)
+
+      branchG.append('rect')
+        .attr('x', -pillW / 2)
+        .attr('y', -14)
+        .attr('width', pillW)
+        .attr('height', 28)
+        .attr('rx', 14)
+        .attr('fill', 'white')
+        .attr('stroke', color)
+        .attr('stroke-width', isExpanded ? 2.5 : 1.5)
+        .attr('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.08))')
+        .style('transition', 'stroke-width 0.2s')
+
+      // Expand/collapse indicator on left
+      branchG.append('circle')
+        .attr('cx', -pillW / 2 - 12)
+        .attr('cy', 0)
+        .attr('r', 8)
+        .attr('fill', isExpanded ? color : 'white')
+        .attr('stroke', color)
+        .attr('stroke-width', 1.5)
+
+      branchG.append('text')
+        .attr('x', -pillW / 2 - 12)
+        .attr('y', 0)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('font-size', 12)
+        .attr('font-weight', 'bold')
+        .attr('fill', isExpanded ? 'white' : color)
+        .text(isExpanded ? '−' : '+')
+        .style('pointer-events', 'none')
+
+      // Branch label
+      branchG.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .attr('font-size', 11)
+        .attr('font-weight', '600')
+        .attr('fill', color)
+        .text(labelText.length > 22 ? labelText.slice(0, 21) + '…' : labelText)
+        .style('pointer-events', 'none')
+
+      // Child count badge
+      if (children.length && !isExpanded) {
+        branchG.append('circle')
+          .attr('cx', pillW / 2 + 10)
+          .attr('cy', 0)
+          .attr('r', 9)
+          .attr('fill', color)
+          .attr('fill-opacity', 0.15)
+          .attr('stroke', color)
+          .attr('stroke-width', 1)
+
+        branchG.append('text')
+          .attr('x', pillW / 2 + 10)
+          .attr('y', 0)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central')
+          .attr('font-size', 9)
+          .attr('fill', color)
+          .text(children.length)
+          .style('pointer-events', 'none')
+      }
+
+      // Leaves (shown only when expanded)
+      if (isExpanded && children.length > 0) {
+        const totalLeavesH = (children.length - 1) * LEAF_SPACING
+        children.forEach((childText, ci) => {
+          const leafY = bPos.y - totalLeavesH / 2 + ci * LEAF_SPACING
+          const leafX = LEAF_X
+
+          // Connector branch → leaf
+          g.append('path')
+            .attr('class', `leaf-link-${bi}-${ci}`)
+            .attr('fill', 'none')
+            .attr('stroke', color)
+            .attr('stroke-width', 1.2)
+            .attr('stroke-opacity', 0)
+            .attr('d', () => {
+              const sx = bPos.x + pillW / 2, sy = bPos.y
+              const tx = leafX - 6, ty = leafY
+              const mx = (sx + tx) / 2
+              return `M${sx},${sy} C${mx},${sy} ${mx},${ty} ${tx},${ty}`
+            })
+            .transition()
+            .duration(300)
+            .delay(ci * 40)
+            .attr('stroke-opacity', 0.35)
+
+          // Leaf node
+          const leafG = g.append('g')
+            .attr('class', `leaf-node-${bi}-${ci}`)
+            .attr('transform', `translate(${leafX},${leafY})`)
+            .attr('opacity', 0)
+
+          leafG.transition()
+            .duration(300)
+            .delay(ci * 40)
+            .attr('opacity', 1)
+
+          const leafText = typeof childText === 'string' ? childText : ''
+          const truncated = leafText.length > 48 ? leafText.slice(0, 47) + '…' : leafText
+          const leafW = Math.max(80, Math.min(truncated.length * 6.5 + 20, 220))
+
+          leafG.append('rect')
+            .attr('x', 0)
+            .attr('y', -11)
+            .attr('width', leafW)
+            .attr('height', 22)
+            .attr('rx', 5)
+            .attr('fill', 'white')
+            .attr('stroke', color)
+            .attr('stroke-width', 1)
+            .attr('stroke-opacity', 0.4)
+            .attr('filter', 'drop-shadow(0 1px 3px rgba(0,0,0,0.06))')
+
+          leafG.append('text')
+            .attr('x', 8)
+            .attr('y', 0)
+            .attr('dominant-baseline', 'central')
+            .attr('font-size', 9.5)
+            .attr('fill', '#333')
+            .text(truncated)
+
+          // Tooltip for full text
+          leafG.append('title').text(leafText)
+        })
+      }
+    })
 
     // Reset view button
     const resetBtn = svg.append('g')
-      .attr('transform', 'translate(20, 20)')
+      .attr('transform', 'translate(16, 16)')
       .style('cursor', 'pointer')
       .on('click', () => {
-        svg.transition()
-          .duration(750)
-          .call(zoom.transform, d3.zoomIdentity)
+        svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity.translate(initX, initY))
       })
 
     resetBtn.append('rect')
-      .attr('width', 80)
-      .attr('height', 32)
+      .attr('width', 72)
+      .attr('height', 28)
       .attr('rx', 6)
       .attr('fill', 'white')
       .attr('stroke', '#dee2e6')
       .attr('stroke-width', 1)
-      .style('filter', 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))')
+      .attr('filter', 'drop-shadow(0 1px 4px rgba(0,0,0,0.08))')
 
     resetBtn.append('text')
-      .attr('x', 40)
-      .attr('y', 20)
+      .attr('x', 36).attr('y', 18)
       .attr('text-anchor', 'middle')
-      .attr('font-size', 12)
+      .attr('font-size', 11)
       .attr('fill', '#495057')
       .text('Centrar')
 
-  }, [data, collapsedNodes, isFullscreen])
+  }, [data, expandedBranches, isFullscreen])
 
   if (!data) return null
 
+  const branches = data.branches || []
+  const totalExpanded = expandedBranches.size
+
   return (
     <div style={{ position: 'relative' }}>
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '1rem'
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h2 style={{ marginBottom: '0.25rem' }}>Mapa mental interactivo</h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--mist)' }}>
-            Haz clic en los botones <strong>+/−</strong> para expandir/colapsar · Arrastra y usa zoom
+          <p style={{ fontSize: '0.82rem', color: 'var(--mist)', lineHeight: 1.5 }}>
+            Pulsa <strong>+</strong> en cada rama para desplegar sus nodos · Arrastra y usa el scroll para navegar
           </p>
+          {branches.length > 0 && (
+            <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {branches.map((b, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setExpandedBranches(prev => {
+                      const next = new Set(prev)
+                      if (next.has(i)) next.delete(i)
+                      else next.add(i)
+                      return next
+                    })
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    padding: '3px 10px',
+                    borderRadius: '20px',
+                    border: `1.5px solid ${b.color || '#c9a96e'}`,
+                    background: expandedBranches.has(i) ? (b.color || '#c9a96e') : 'white',
+                    color: expandedBranches.has(i) ? 'white' : (b.color || '#c9a96e'),
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span style={{ fontSize: '0.7rem' }}>{expandedBranches.has(i) ? '−' : '+'}</span>
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <button
-          onClick={toggleFullscreen}
-          style={{
-            background: 'var(--gold)',
-            border: 'none',
-            borderRadius: 'var(--radius)',
-            padding: '0.5rem 1rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.9rem',
-            color: 'var(--ink)',
-            fontWeight: '500'
-          }}
-        >
-          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          {isFullscreen ? 'Salir' : 'Pantalla completa'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {totalExpanded > 0 && (
+            <button
+              onClick={() => setExpandedBranches(new Set())}
+              style={{ background: 'none', border: '1.5px solid var(--paper-dark)', borderRadius: 'var(--radius)', padding: '0.4rem 0.85rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--slate)' }}
+            >
+              Colapsar todo
+            </button>
+          )}
+          {totalExpanded < branches.length && (
+            <button
+              onClick={() => setExpandedBranches(new Set(branches.map((_, i) => i)))}
+              style={{ background: 'none', border: '1.5px solid var(--paper-dark)', borderRadius: 'var(--radius)', padding: '0.4rem 0.85rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--slate)' }}
+            >
+              Expandir todo
+            </button>
+          )}
+          <button
+            onClick={toggleFullscreen}
+            style={{
+              background: 'var(--gold)', border: 'none', borderRadius: 'var(--radius)',
+              padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem',
+              cursor: 'pointer', fontSize: '0.85rem', color: 'var(--ink)', fontWeight: 500
+            }}
+          >
+            {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            {isFullscreen ? 'Salir' : 'Pantalla completa'}
+          </button>
+        </div>
       </div>
+
       <div
         ref={ref}
         style={{
           width: '100%',
-          height: isFullscreen ? 'calc(100vh - 100px)' : 600,
-          background: 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)',
+          height: isFullscreen ? 'calc(100vh - 100px)' : 580,
           border: '2px solid var(--paper-dark)',
           borderRadius: 'var(--radius-lg)',
           overflow: 'hidden',
