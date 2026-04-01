@@ -735,6 +735,46 @@ export default function BookPage() {
               </p>
             )}
 
+            {/* Controles TTS globales */}
+            {(ttsPlaying || ttsChapter || ttsInfoPlaying || ttsCharPlaying) && (
+              <div className="hero-tts-global">
+                {ttsPlaying || ttsInfoPlaying || ttsCharPlaying ? (
+                  <>
+                    <button className="hero-tts-btn" onClick={() => {
+                      if (ttsPlaying) pauseTTS()
+                      else if (ttsInfoPlaying) pauseInfoTTS()
+                      else if (ttsCharPlaying) pauseCharTTS()
+                    }}>
+                      <Pause size={14} /> Pausar reproducción
+                    </button>
+                    <button className="hero-tts-btn hero-tts-stop" onClick={() => {
+                      if (ttsPlaying) stopTTS()
+                      else if (ttsInfoPlaying) stopInfoTTS()
+                      else if (ttsCharPlaying) stopCharTTS()
+                    }}>
+                      <Square size={14} /> Stop
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="hero-tts-btn" onClick={() => {
+                      if (ttsChapter) resumeCurrentTTS()
+                      // Aquí se podría añadir lógica para resumir otros tipos
+                    }}>
+                      <Play size={14} /> Continuar reproducción
+                    </button>
+                    <button className="hero-tts-btn hero-tts-stop" onClick={() => {
+                      stopTTS()
+                      stopInfoTTS(true)
+                      stopCharTTS(true)
+                    }}>
+                      <Square size={14} /> Stop
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} páginas</span>}
@@ -999,23 +1039,29 @@ function InfoTab({ book, otherBooks = [], ttsPlaying, onPlay, onPause, onStop })
       {otherBooks.length > 0 && (
         <section>
           <h3>Otras obras del autor</h3>
-          <div className="other-books-grid">
+          <div className="refs-grid">
             {otherBooks.map(ob => {
               const isAnalyzed = ob.status === 'complete' || ob.phase3_done
               const isShell = ob.status === 'shell' || ob.status === 'shell_error'
               return (
-                <Link key={ob.id} to={`/book/${ob.id}`} className={`other-book-card ${isShell ? 'is-shell' : ''} ${isAnalyzed ? 'is-analyzed' : ''}`}>
-                  <div className="other-book-cover">
-                    {ob.cover_local ? (
+                <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{ textDecoration: 'none' }}>
+                  {ob.cover_local ? (
+                    <div className="ref-cover">
                       <img src={`/data/covers/${ob.cover_local.split('/covers/')[1]}`} alt={ob.title} />
-                    ) : (
-                      <div className="other-book-ph"><BookOpen size={16} strokeWidth={1} /></div>
-                    )}
-                    {isShell && <div className="other-book-overlay" />}
-                    {isAnalyzed && <span className="other-book-badge">✦</span>}
+                    </div>
+                  ) : (
+                    <div className="ref-cover">
+                      <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={24} strokeWidth={1} color="#999" />
+                      </div>
+                    </div>
+                  )}
+                  <div className="ref-info">
+                    <h4 className="ref-title">{ob.title}</h4>
+                    {ob.year && <span className="ref-year">{ob.year}</span>}
+                    {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
+                    {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
                   </div>
-                  <span className="other-book-title">{ob.title}</span>
-                  {ob.year && <span className="other-book-year">{ob.year}</span>}
                 </Link>
               )
             })}
@@ -1083,7 +1129,7 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
               }
               {ch.summary_status === 'done' && (
                 <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
-                  {/* Play/Pausa — guarda avance */}
+                  {/* Play individual */}
                   <button
                     className={`ch-tts-btn ${ttsPlaying && ttsChapter === ch.id ? 'pause' : 'play'}`}
                     onClick={() => ttsPlaying && ttsChapter === ch.id ? onPause() : onPlayChapter(ch)}
@@ -1093,18 +1139,6 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                       ? <Pause size={12} />
                       : <Play size={12} />
                     }
-                  </button>
-                  {/* Stop — confirma si hay cola activa (leer desde aquí) */}
-                  <button
-                    className="ch-tts-btn stop"
-                    onClick={() => {
-                      // Si hay cola activa (más de un capítulo en reproducción), pedir confirmación
-                      const hasQueue = ttsQueue && ttsQueue.length > 1
-                      onStop(!hasQueue)
-                    }}
-                    title="Parar reproducción"
-                  >
-                    <Square size={11} fill="currentColor" />
                   </button>
                   {/* Leer desde aquí en adelante */}
                   <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
@@ -1288,42 +1322,104 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, t
 }
 
 function RefsTab({ book }) {
-  if (!book.author_bibliography || book.author_bibliography.length === 0) {
-    return (
-      <div className="empty-tab">
-        <ExternalLink size={48} strokeWidth={1} />
-        <p>No hay referencias disponibles</p>
-      </div>
-    )
+  // Generar URLs de referencias externas
+  const bookTitle = encodeURIComponent(book.title || '')
+  const author = encodeURIComponent(book.author || '')
+  const isbn = book.isbn || ''
+  
+  const refs = {
+    // Referencias sobre el libro
+    wikipedia: `https://es.wikipedia.org/wiki/${bookTitle}`,
+    goodreads: `https://www.goodreads.com/search?q=${bookTitle}`,
+    youtube: `https://www.youtube.com/results?search_query=${bookTitle}+${author}`,
+    amazon: `https://www.amazon.es/s?k=${bookTitle}+${author}`,
+    googleBooks: isbn ? `https://books.google.es/books?isbn=${isbn}` : `https://books.google.es/books?q=${bookTitle}+${author}`,
+    library: `https://www.worldcat.org/search?q=${bookTitle}`,
+    
+    // Referencias sobre el autor
+    authorWikipedia: `https://es.wikipedia.org/wiki/${author}`,
+    authorGoodreads: `https://www.goodreads.com/search?q=${author}`,
+    authorX: `https://twitter.com/search?q=${author}`,
+    authorInstagram: `https://www.instagram.com/explore/tags/${author.replace(/\s+/g, '')}/`,
+    authorYoutube: `https://www.youtube.com/results?search_query=${author}+entrevista`
   }
 
   return (
     <div className="refs-tab">
-      <h3>Otras obras del autor</h3>
-      <p className="refs-subtitle">Libros relacionados de {book.author}</p>
-      <div className="refs-grid">
-        {book.author_bibliography.slice(0, 20).map((item, i) => {
-          const title = typeof item === 'string' ? item : item.title
-          const year = typeof item === 'object' ? item.year : null
-          const cover = typeof item === 'object' ? item.cover_url : null
-          const isbn = typeof item === 'object' ? item.isbn : null
-          
-          return (
-            <div key={i} className="ref-item">
-              {cover && (
-                <div className="ref-cover">
-                  <img src={cover} alt={title} />
-                </div>
-              )}
-              <div className="ref-info">
-                <h4 className="ref-title">{title}</h4>
-                {year && <span className="ref-year">{year}</span>}
-                {isbn && <span className="ref-isbn">ISBN: {isbn}</span>}
-              </div>
+      <h3>Referencias externas</h3>
+      <p className="refs-subtitle">Enlaces para ampliar información sobre el libro y su autor</p>
+      
+      <div className="refs-sections">
+        {/* Referencias sobre el libro */}
+        <div className="refs-section">
+          <h4>
+            <BookOpen size={18} />
+            Sobre el libro
+          </h4>
+          <div className="refs-links">
+            <a href={refs.wikipedia} target="_blank" rel="noopener noreferrer" className="ref-link">
+              <ExternalLink size={16} />
+              <span>Wikipedia</span>
+            </a>
+            <a href={refs.goodreads} target="_blank" rel="noopener noreferrer" className="ref-link">
+              <Star size={16} />
+              <span>Goodreads</span>
+            </a>
+            <a href={refs.youtube} target="_blank" rel="noopener noreferrer" className="ref-link">
+              <Play size={16} />
+              <span>YouTube</span>
+            </a>
+            <a href={refs.amazon} target="_blank" rel="noopener noreferrer" className="ref-link">
+              <ExternalLink size={16} />
+              <span>Amazon</span>
+            </a>
+            <a href={refs.googleBooks} target="_blank" rel="noopener noreferrer" className="ref-link">
+              <BookOpen size={16} />
+              <span>Google Books</span>
+            </a>
+            <a href={refs.library} target="_blank" rel="noopener noreferrer" className="ref-link">
+              <BookOpen size={16} />
+              <span>WorldCat (Bibliotecas)</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Referencias sobre el autor */}
+        {book.author && (
+          <div className="refs-section">
+            <h4>
+              <User size={18} />
+              Sobre el autor
+            </h4>
+            <div className="refs-links">
+              <a href={refs.authorWikipedia} target="_blank" rel="noopener noreferrer" className="ref-link">
+                <ExternalLink size={16} />
+                <span>Wikipedia (autor)</span>
+              </a>
+              <a href={refs.authorGoodreads} target="_blank" rel="noopener noreferrer" className="ref-link">
+                <Star size={16} />
+                <span>Goodreads (autor)</span>
+              </a>
+              <a href={refs.authorYoutube} target="_blank" rel="noopener noreferrer" className="ref-link">
+                <Play size={16} />
+                <span>Entrevistas YouTube</span>
+              </a>
+              <a href={refs.authorX} target="_blank" rel="noopener noreferrer" className="ref-link">
+                <ExternalLink size={16} />
+                <span>X / Twitter</span>
+              </a>
+              <a href={refs.authorInstagram} target="_blank" rel="noopener noreferrer" className="ref-link">
+                <ExternalLink size={16} />
+                <span>Instagram</span>
+              </a>
             </div>
-          )
-        })}
+          </div>
+        )}
       </div>
+      
+      <p className="refs-note">
+        💡 Estos enlaces se generan automáticamente. Algunos pueden no estar disponibles o requerir búsqueda adicional.
+      </p>
     </div>
   )
 }

@@ -218,49 +218,62 @@ export default function AuthorsPage() {
               </div>
             )}
 
-            {/* Bibliografía completa como grid de portadas */}
+            {/* Bibliografía completa en formato Referencias */}
             {(selected.books?.length > 0 || selected.bibliography?.length > 0) && (
               <div className="author-section">
                 <h3>Bibliografía completa</h3>
-                <div className="biblio-covers-grid">
+                <div className="refs-grid">
                   {/* Libros ya en la app */}
                   {selected.books.map(book => {
                     const isAnalyzed = book.status === 'complete' || book.phase3_done
                     const isShell = book.status === 'shell' || book.status === 'shell_error'
                     const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified'].includes(book.status)
-                    const hasFile = !isShell
                     return (
                       <Link
                         key={book.id}
                         to={`/book/${book.id}`}
-                        className={`biblio-cover-card ${isShell ? 'is-shell' : ''} ${isAnalyzed ? 'is-analyzed' : ''} ${hasFile && !isAnalyzed ? 'has-file' : ''}`}
-                        title={book.title}
+                        className="ref-item"
+                        style={{ textDecoration: 'none', position: 'relative' }}
                       >
-                        <div className="biblio-cover-img">
-                          {book.cover_local ? (
+                        {book.cover_local ? (
+                          <div className="ref-cover">
                             <img src={`/data/covers/${book.cover_local.split('/covers/')[1]}`} alt={book.title} />
-                          ) : (
-                            <div className="biblio-cover-ph"><BookOpen size={18} strokeWidth={1} /></div>
-                          )}
-                          {isShell && <div className="biblio-shell-overlay" />}
-                          <div className="biblio-cover-badge-wrap">
-                            {isAnalyzed
-                              ? <span className="biblio-status-badge analyzed">✦ Analizado</span>
-                              : isProcessing
-                              ? <span className="biblio-status-badge processing">Procesando…</span>
-                              : isShell
-                              ? <span className="biblio-status-badge shell">Solo ficha</span>
-                              : <span className="biblio-status-badge has-file">Sin analizar</span>
-                            }
                           </div>
+                        ) : (
+                          <div className="ref-cover">
+                            <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <BookOpen size={24} strokeWidth={1} color="#999" />
+                            </div>
+                          </div>
+                        )}
+                        <div className="ref-info">
+                          <h4 className="ref-title">{book.title}</h4>
+                          {book.year && <span className="ref-year">{book.year}</span>}
+                          {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
+                          {isProcessing && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#f39c12' }}>Procesando…</span>}
+                          {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
+                          {!isShell && !isAnalyzed && !isProcessing && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
                         </div>
-                        <span className="biblio-cover-title">{book.title}</span>
-                        {book.year && <span className="biblio-cover-year">{book.year}</span>}
                         <button
-                          className="biblio-refresh-btn"
+                          className="ref-refresh-btn"
                           onClick={e => { e.preventDefault(); handleRefreshBook(book.id) }}
                           disabled={refreshingBook[book.id]}
                           title="Actualizar portada, sinopsis e ISBN"
+                          style={{
+                            position: 'absolute',
+                            top: '0.5rem',
+                            right: '0.5rem',
+                            background: 'white',
+                            border: '1.5px solid #ddd',
+                            borderRadius: '4px',
+                            width: '24px',
+                            height: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            fontSize: '0.9rem'
+                          }}
                         >
                           {refreshingBook[book.id] ? '⏳' : '↻'}
                         </button>
@@ -273,9 +286,7 @@ export default function AuthorsPage() {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
                     if (!title || title.trim() === '') return false
-                    // Comprobar por ISBN
                     if (isbn && selected.books.some(b => b.isbn && b.isbn === isbn)) return false
-                    // Comprobar por título (normalizado)
                     const norm = title.toLowerCase().trim()
                     return !selected.books.some(b => {
                       const bt = (b.title || '').toLowerCase().trim()
@@ -289,26 +300,46 @@ export default function AuthorsPage() {
                     const key = isbn || title
                     const isCreating = creating[key]
                     return (
-                      <div key={i} className="biblio-cover-card is-missing" title={title}>
-                        <div className="biblio-cover-img">
-                          {cover_url ? (
+                      <div key={i} className="ref-item" style={{ position: 'relative', opacity: 0.8 }}>
+                        {cover_url ? (
+                          <div className="ref-cover">
                             <img src={cover_url} alt={title} />
-                          ) : (
-                            <div className="biblio-cover-ph">
-                              <BookOpen size={18} strokeWidth={1} />
+                          </div>
+                        ) : (
+                          <div className="ref-cover">
+                            <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <BookOpen size={24} strokeWidth={1} color="#999" />
                             </div>
-                          )}
-                          <button
-                            className="biblio-add-btn"
-                            onClick={() => handleAddShell(item, selected.name)}
-                            disabled={isCreating}
-                            title="Añadir ficha"
-                          >
-                            {isCreating ? '…' : <Plus size={16} />}
-                          </button>
+                          </div>
+                        )}
+                        <div className="ref-info">
+                          <h4 className="ref-title">{title}</h4>
+                          {year && <span className="ref-year">{year}</span>}
+                          <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#95a5a6' }}>No añadido</span>
                         </div>
-                        <span className="biblio-cover-title">{title}</span>
-                        {year && <span className="biblio-cover-year">{year}</span>}
+                        <button
+                          className="ref-add-btn"
+                          onClick={() => handleAddShell(item, selected.name)}
+                          disabled={isCreating}
+                          title="Añadir ficha"
+                          style={{
+                            position: 'absolute',
+                            top: '0.5rem',
+                            right: '0.5rem',
+                            background: 'var(--gold)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'pointer',
+                            color: 'var(--ink)'
+                          }}
+                        >
+                          {isCreating ? '…' : <Plus size={16} />}
+                        </button>
                       </div>
                     )
                   })}

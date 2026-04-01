@@ -63,6 +63,46 @@
   margin-bottom: 0.75rem;
 }
 
+/* Controles TTS globales en hero */
+.hero-tts-global {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem;
+  background: rgba(201, 169, 110, 0.08);
+  border: 1.5px solid rgba(201, 169, 110, 0.3);
+  border-radius: var(--radius);
+}
+
+.hero-tts-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--gold);
+  color: var(--ink);
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.hero-tts-btn:hover {
+  background: var(--gold-light);
+  transform: translateY(-1px);
+}
+
+.hero-tts-stop {
+  background: #e74c3c;
+  color: white;
+}
+
+.hero-tts-stop:hover {
+  background: #c0392b;
+}
+
 .hero-meta {
   display: flex; gap: 0.75rem; flex-wrap: wrap;
   margin-bottom: 1rem;
@@ -556,7 +596,75 @@
 .refs-subtitle {
   font-size: 0.9rem;
   color: var(--slate);
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.refs-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.refs-section {
+  background: var(--white);
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+}
+
+.refs-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  color: var(--gold);
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--gold-light);
+}
+
+.refs-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.ref-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--paper);
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+  transition: all var(--transition);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.ref-link:hover {
+  background: var(--white);
+  border-color: var(--gold);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+.ref-link svg {
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
+.refs-note {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: rgba(201, 169, 110, 0.05);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  color: var(--slate);
+  line-height: 1.6;
 }
 
 .refs-grid {
