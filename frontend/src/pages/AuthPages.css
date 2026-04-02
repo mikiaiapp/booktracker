@@ -129,41 +129,43 @@ h2 { margin-bottom: 0.25rem; }
   margin-bottom: 0.4rem;
 }
 
-/* ── FIX: input con icono — padding-left suficiente ─────── */
+/* ── FIX DEFINITIVO: icono fuera del input, borde compartido ─ */
 .input-wrap {
-  position: relative;
   display: flex;
   align-items: center;
-}
-
-.input-wrap svg {
-  position: absolute;
-  left: 0.85rem;
-  color: var(--mist);
-  pointer-events: none;
-  flex-shrink: 0;
-  z-index: 2;
-  width: 16px;
-  height: 16px;
-}
-
-.input-wrap input {
-  width: 100%;
-  /* left(0.85rem) + icon(16px ~1rem) + gap(0.5rem) = 2.35rem → usamos 2.6rem holgado */
-  padding: 0.75rem 0.85rem 0.75rem 2.6rem;
   border: 1.5px solid var(--paper-dark);
   border-radius: var(--radius);
   background: var(--white);
+  transition: border-color var(--transition);
+  overflow: hidden;
+}
+
+.input-wrap:focus-within {
+  border-color: var(--gold);
+}
+
+.input-wrap svg {
+  flex-shrink: 0;
+  margin-left: 0.75rem;
+  color: var(--mist);
+  pointer-events: none;
+  min-width: 16px;
+}
+
+.input-wrap input {
+  flex: 1;
+  padding: 0.75rem 0.85rem 0.75rem 0.6rem;
+  border: none;
+  background: transparent;
   font-family: var(--font-body);
   font-size: 0.9rem;
   color: var(--ink);
-  transition: border-color var(--transition);
   outline: none;
-  /* Evitar que el fondo de autocompletado del navegador tape el icono */
-  background-clip: padding-box;
+  width: 100%;
+  min-width: 0;
 }
 
-/* Override del fondo amarillo de autocompletado del navegador */
+/* Override fondo amarillo de autocompletado — ya no afecta al icono */
 .input-wrap input:-webkit-autofill,
 .input-wrap input:-webkit-autofill:hover,
 .input-wrap input:-webkit-autofill:focus {
