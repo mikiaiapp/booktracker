@@ -31,11 +31,13 @@ export default function BookPage() {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // TTS state
-  const [ttsPlaying, setTtsPlaying] = useState(false)
-  const [ttsChapter, setTtsChapter] = useState(null)
-  const [ttsQueue, setTtsQueue] = useState([])
-  const [ttsIndex, setTtsIndex] = useState(0)
+  // TTS state — capítulos
+  const [ttsPlaying,       setTtsPlaying]       = useState(false)
+  const [ttsChapterPaused, setTtsChapterPaused] = useState(false)  // pausa activa
+  const [ttsChapter,       setTtsChapter]       = useState(null)   // id capítulo activo
+  const [ttsMode,          setTtsMode]          = useState('single') // 'single' | 'from'
+  const [ttsQueue,         setTtsQueue]         = useState([])
+  const [ttsIndex,         setTtsIndex]         = useState(0)
   const ttsQueueRef  = React.useRef([])
   const ttsIndexRef  = React.useRef(0)
   const ttsActiveRef = React.useRef(false)
@@ -60,33 +62,33 @@ export default function BookPage() {
     ttsActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
-    // ttsChapter se mantiene — cabecera muestra 'Continuar'
+    setTtsChapterPaused(true)  // ttsChapter se mantiene — cabecera y tab muestran 'Continuar'
   }
 
   const resumeCurrentTTS = () => {
     if (ttsQueueRef.current.length && ttsIndexRef.current >= 0) {
       ttsActiveRef.current = true
-      setTtsPlaying(true)
+      setTtsPlaying(true); setTtsChapterPaused(false)
       speakItem(ttsQueueRef.current, ttsIndexRef.current)
     }
   }
 
   const stopTTS = (skipConfirm = false) => {
-    if (!skipConfirm && (ttsPlaying || ttsChapter)) {
+    if (!skipConfirm && (ttsPlaying || ttsChapter || ttsChapterPaused)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     ttsActiveRef.current = false
     window.speechSynthesis.cancel()
-    setTtsPlaying(false)
-    setTtsChapter(null)
+    setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false); setTtsMode('single')
     localStorage.removeItem(storageKey)
   }
 
   const speakItem = (queue, idx) => {
     if (!ttsActiveRef.current) return
+    // En modo 'single' paramos al acabar el único ítem de la cola
     if (idx >= queue.length) {
       ttsActiveRef.current = false
-      setTtsPlaying(false); setTtsChapter(null)
+      setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
       localStorage.removeItem(storageKey)
       return
     }
@@ -96,8 +98,21 @@ export default function BookPage() {
     setTtsIndex(idx); setTtsChapter(item.id)
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.lang = 'es-ES'; utterance.rate = 0.95
-    utterance.onend = () => { if (ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1) }
-    utterance.onerror = (e) => { if (e.error !== 'interrupted' && ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1) }
+    utterance.onend = () => {
+      if (!ttsActiveRef.current) return
+      // Si es modo single y ya no hay más ítems después del actual, parar
+      const nextIdx = ttsIndexRef.current + 1
+      if (ttsQueueRef.current._mode === 'single' && nextIdx >= ttsQueueRef.current.length) {
+        ttsActiveRef.current = false
+        setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
+        localStorage.removeItem(storageKey)
+      } else {
+        speakItem(ttsQueueRef.current, nextIdx)
+      }
+    }
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted' && ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+    }
     window.speechSynthesis.speak(utterance)
   }
 
@@ -148,17 +163,18 @@ export default function BookPage() {
   }
 
   const playFromChapter = (chapter, chapters) => {
-    stopTTS()
+    stopTTS(true)
     const doneChapters = chapters.filter(c => c.summary && c.summary_status === 'done')
     const idx = doneChapters.findIndex(c => c.id === chapter.id)
-    const queue = doneChapters
-      .slice(idx < 0 ? 0 : idx)
-      .map(c => ({ id: c.id, title: c.title, text: chapterToText(c) }))
+    const queue = Object.assign(
+      doneChapters.slice(idx < 0 ? 0 : idx).map(c => ({ id: c.id, title: c.title, text: chapterToText(c) })),
+      { _mode: 'from' }
+    )
     if (!queue.length) return
     ttsQueueRef.current = queue
     ttsIndexRef.current = 0
-    setTtsQueue(queue)
-    setTtsIndex(0)
+    setTtsQueue(queue); setTtsIndex(0)
+    setTtsMode('from'); setTtsChapterPaused(false)
     ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
@@ -566,9 +582,9 @@ export default function BookPage() {
               </p>
             )}
 
-            {(ttsPlaying || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || audioPlaying) && (
+            {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || audioPlaying) && (
               <div className="hero-tts-global">
-                {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (
+                {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (  // alguno reproduciendo
                   <>
                     <button className="hero-tts-btn" onClick={() => {
                       if (audioPlaying)         toggleAudio()
@@ -590,7 +606,7 @@ export default function BookPage() {
                 ) : (
                   <>
                     <button className="hero-tts-btn hero-tts-resume" onClick={() => {
-                      if (ttsChapter)          resumeCurrentTTS()
+                      if (ttsChapterPaused)    resumeCurrentTTS()
                       else if (ttsInfoPaused)  resumeInfoTTS()
                     }}>
                       <Play size={14} /> Continuar reproducción
@@ -720,35 +736,21 @@ export default function BookPage() {
             {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { stopTTS(); const q=[{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); ttsActiveRef.current=true; setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onResume={resumeCurrentTTS} onPlayChapter={(ch) => { stopTTS(true); const q=Object.assign([{id:ch.id,title:ch.title,text:chapterToText(ch)}],{_mode:'single'}); ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsMode('single'); setTtsChapterPaused(false); ttsActiveRef.current=true; setTtsPlaying(true); setTtsChapter(ch.id); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}
 
             {tab === 'summary' && (
-              <div className="prose-content">
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
-                  <h2 style={{margin:0}}>Resumen global</h2>
-                  {book.global_summary && (
-                    <div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
-                      {!ttsInfoPlaying && !ttsInfoPaused && (
-                        <button className="info-tts-play-btn" onClick={() => playSummary(book)}>
-                          <Play size={15}/> Escuchar
-                        </button>
-                      )}
-                      {ttsInfoPaused && (
-                        <button className="info-tts-play-btn" onClick={resumeInfoTTS}>
-                          <Play size={15}/> Continuar
-                        </button>
-                      )}
-                      {ttsInfoPlaying && (
-                        <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <p>{book.global_summary || 'No disponible'}</p>
-              </div>
+              <SummaryTab
+                book={book}
+                ttsPlaying={ttsInfoPlaying}
+                ttsPaused={ttsInfoPaused}
+                onPlay={() => playSummary(book)}
+                onPause={pauseInfoTTS}
+                onResume={resumeInfoTTS}
+                onStop={() => stopInfoTTS()}
+              />
             )}
 
             {tab === 'mindmap' && (
@@ -909,7 +911,42 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
   )
 }
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onStop, onPause }) {
+// ── SummaryTab ─────────────────────────────────────────────────────────────────
+function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
+  return (
+    <div className="prose-content">
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
+        <h2 style={{margin:0}}>Resumen global</h2>
+        {book.global_summary && (
+          <div className="info-tts-controls" style={{marginBottom:0}}>
+            {!ttsPlaying && !ttsPaused && (
+              <button className="info-tts-play-btn" onClick={onPlay}>
+                <Play size={15}/> Escuchar
+              </button>
+            )}
+            {ttsPlaying && (
+              <div className="info-tts-active">
+                <button className="tts-control-btn pause" onClick={onPause} title="Pausar"><Pause size={15}/></button>
+                <button className="tts-control-btn stop"  onClick={onStop}  title="Detener"><Square size={15}/></button>
+                <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo</span>
+              </div>
+            )}
+            {ttsPaused && (
+              <div className="info-tts-active">
+                <button className="info-tts-play-btn" onClick={onResume}><Play size={15}/> Continuar</button>
+                <button className="tts-control-btn stop" onClick={onStop} title="Detener"><Square size={15}/></button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <p>{book.global_summary || 'No disponible'}</p>
+    </div>
+  )
+}
+
+
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause }) {
   const [summarizing, setSummarizing] = React.useState({})
 
   const handleSummarize = async (e, chapter) => {
@@ -962,19 +999,32 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
               }
               {ch.summary_status === 'done' && (
                 <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
-                  <button
-                    className={`ch-tts-btn ${ttsPlaying && ttsChapter === ch.id ? 'pause' : 'play'}`}
-                    onClick={() => ttsPlaying && ttsChapter === ch.id ? onPause() : onPlayChapter(ch)}
-                    title={ttsPlaying && ttsChapter === ch.id ? 'Pausar' : 'Reproducir'}
-                  >
-                    {ttsPlaying && ttsChapter === ch.id
-                      ? <Pause size={12} />
-                      : <Play size={12} />
-                    }
-                  </button>
-                  <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
-                    <Volume2 size={12} />
-                  </button>
+                  {/* Botón play/pausa/continuar del capítulo */}
+                  {ttsPlaying && ttsChapter === ch.id ? (
+                    <button className="ch-tts-btn pause" onClick={onPause} title="Pausar">
+                      <Pause size={12} />
+                    </button>
+                  ) : ttsChapterPaused && ttsChapter === ch.id ? (
+                    <button className="ch-tts-btn play" onClick={onResume} title="Continuar">
+                      <Play size={12} />
+                    </button>
+                  ) : (
+                    <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)} title="Reproducir solo este capítulo">
+                      <Play size={12} />
+                    </button>
+                  )}
+                  {/* Stop — solo visible si este capítulo está activo (playing o paused) */}
+                  {(ttsChapter === ch.id && (ttsPlaying || ttsChapterPaused)) && (
+                    <button className="ch-tts-btn stop" onClick={onStop} title="Parar reproducción">
+                      <Square size={12} />
+                    </button>
+                  )}
+                  {/* Leer desde aquí — solo si no hay nada activo en este capítulo */}
+                  {!(ttsChapter === ch.id && (ttsPlaying || ttsChapterPaused)) && (
+                    <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
+                      <Volume2 size={12} />
+                    </button>
+                  )}
                 </div>
               )}
               {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
