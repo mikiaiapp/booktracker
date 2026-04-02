@@ -421,8 +421,6 @@ export default function BookPage() {
     localStorage.removeItem(infoStorageKey)
   }
 
-  const infoStorageKey = `tts_info_pos_${id}`
-
   // Cleanup on unmount
   React.useEffect(() => {
     return () => {

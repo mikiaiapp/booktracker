@@ -8,7 +8,6 @@ export default function MindMap({ data }) {
   // Track which branch-level nodes are expanded (by index)
   // Start with none expanded — user opens them one by one
   const [expandedBranches, setExpandedBranches] = useState(new Set())
-  const [revealedBranches, setRevealedBranches] = useState(new Set())
 
   const toggleFullscreen = () => setIsFullscreen(f => !f)
 
