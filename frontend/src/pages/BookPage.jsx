@@ -14,13 +14,13 @@ import './BookPage.css'
 
 const TABS = [
   { id: 'info',       label: 'Ficha',          icon: BookOpen    },
-  { id: 'analysis',   label: 'Análisis',        icon: RefreshCw   },
   { id: 'chapters',   label: 'Capítulos',       icon: List        },
   { id: 'characters', label: 'Personajes',      icon: User        },
   { id: 'summary',    label: 'Resumen global',  icon: Brain       },
   { id: 'mindmap',    label: 'Mapa mental',     icon: Map         },
   { id: 'podcast',    label: 'Podcast',         icon: Mic         },
   { id: 'refs',       label: 'Referencias',     icon: ExternalLink},
+  { id: 'analysis',   label: 'Análisis',        icon: RefreshCw   },
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -40,6 +40,7 @@ export default function BookPage() {
   const [ttsIndex, setTtsIndex] = useState(0)
   const ttsQueueRef = React.useRef([])
   const ttsIndexRef = React.useRef(0)
+  const ttsActiveRef = React.useRef(false)   // false = parado, true = reproduciendo
   const storageKey = `tts_pos_${id}`
 
   // TTS state for characters
@@ -49,6 +50,7 @@ export default function BookPage() {
   const [ttsCharIndex, setTtsCharIndex] = useState(0)
   const ttsCharQueueRef = React.useRef([])
   const ttsCharIndexRef = React.useRef(0)
+  const ttsCharActiveRef = React.useRef(false)  // false = parado, true = reproduciendo
   const charStorageKey = `tts_char_pos_${id}`
 
   // TTS state for InfoTab (Ficha)
@@ -71,6 +73,7 @@ export default function BookPage() {
     if (!skipConfirm && (ttsPlaying || ttsChapter)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
+    ttsActiveRef.current = false   // evita que onend lance el siguiente elemento
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
     setTtsChapter(null)
@@ -78,7 +81,10 @@ export default function BookPage() {
   }
 
   const speakItem = (queue, idx) => {
+    // Si ttsActiveRef es false, alguien llamó a stop — no continuar
+    if (!ttsActiveRef.current) return
     if (idx >= queue.length) {
+      ttsActiveRef.current = false
       setTtsPlaying(false)
       setTtsChapter(null)
       localStorage.removeItem(storageKey)
@@ -94,9 +100,13 @@ export default function BookPage() {
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.lang = 'es-ES'
     utterance.rate = 0.95
-    utterance.onend = () => speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+    utterance.onend = () => {
+      if (ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+    }
     utterance.onerror = (e) => {
-      if (e.error !== 'interrupted') speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+      if (e.error !== 'interrupted' && ttsActiveRef.current) {
+        speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+      }
     }
     window.speechSynthesis.speak(utterance)
   }
@@ -142,6 +152,7 @@ export default function BookPage() {
     ttsIndexRef.current = 0
     setTtsQueue(queue)
     setTtsIndex(0)
+    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
   }
@@ -158,6 +169,7 @@ export default function BookPage() {
     ttsIndexRef.current = 0
     setTtsQueue(queue)
     setTtsIndex(0)
+    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
   }
@@ -174,6 +186,7 @@ export default function BookPage() {
     ttsIndexRef.current = idx
     setTtsQueue(queue)
     setTtsIndex(idx)
+    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, idx)
   }
@@ -212,6 +225,7 @@ export default function BookPage() {
     if (!skipConfirm && (ttsCharPlaying || ttsCharacter)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
+    ttsCharActiveRef.current = false  // evita que onend lance el siguiente
     window.speechSynthesis.cancel()
     setTtsCharPlaying(false)
     setTtsCharacter(null)
@@ -219,7 +233,9 @@ export default function BookPage() {
   }
 
   const speakCharItem = (queue, idx) => {
+    if (!ttsCharActiveRef.current) return
     if (idx >= queue.length) {
+      ttsCharActiveRef.current = false
       setTtsCharPlaying(false)
       setTtsCharacter(null)
       localStorage.removeItem(charStorageKey)
@@ -235,9 +251,13 @@ export default function BookPage() {
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.lang = 'es-ES'
     utterance.rate = 0.95
-    utterance.onend = () => speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+    utterance.onend = () => {
+      if (ttsCharActiveRef.current) speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+    }
     utterance.onerror = (e) => {
-      if (e.error !== 'interrupted') speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+      if (e.error !== 'interrupted' && ttsCharActiveRef.current) {
+        speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+      }
     }
     window.speechSynthesis.speak(utterance)
   }
@@ -250,6 +270,7 @@ export default function BookPage() {
     ttsCharIndexRef.current = 0
     setTtsCharQueue(queue)
     setTtsCharIndex(0)
+    ttsCharActiveRef.current = true
     setTtsCharPlaying(true)
     speakCharItem(queue, 0)
   }
@@ -266,6 +287,7 @@ export default function BookPage() {
     ttsCharIndexRef.current = 0
     setTtsCharQueue(queue)
     setTtsCharIndex(0)
+    ttsCharActiveRef.current = true
     setTtsCharPlaying(true)
     speakCharItem(queue, 0)
   }
@@ -714,7 +736,7 @@ export default function BookPage() {
             {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} ttsPlaying={ttsInfoPlaying} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { const q = [{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { const q = [{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); ttsActiveRef.current=true; setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}

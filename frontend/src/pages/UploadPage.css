@@ -1,8 +1,45 @@
 .upload-page { padding: 2.5rem; max-width: 800px; }
 
-.upload-header { margin-bottom: 2rem; }
+.upload-header { margin-bottom: 1.5rem; }
 .upload-header p { color: var(--slate); margin-top: 0.3rem; }
 
+/* ── Toggle modo ─────────────────────────────────────────── */
+.upload-mode-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--paper-dark);
+  padding: 4px;
+  border-radius: var(--radius);
+  width: fit-content;
+  margin-bottom: 1.5rem;
+}
+
+.mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1.1rem;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--slate);
+  background: none;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.mode-btn:hover { color: var(--ink); }
+
+.mode-btn.active {
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+}
+
+.mode-btn.active svg { color: var(--gold); }
+
+/* ── Tarjeta contenedora ─────────────────────────────────── */
 .upload-card {
   background: var(--white);
   border: 1.5px solid var(--paper-dark);
@@ -12,6 +49,7 @@
   box-shadow: var(--shadow);
 }
 
+/* ── Dropzone ────────────────────────────────────────────── */
 .dropzone {
   border: 2px dashed var(--paper-dark);
   border-radius: var(--radius-lg);
@@ -33,109 +71,200 @@
 
 .dropzone.has-file { border-style: solid; border-color: var(--forest); }
 
+.bulk-drop { min-height: 140px; padding: 2rem; }
+
 .dropzone-content { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
 
 .drop-icon {
-  width: 72px; height: 72px;
-  border-radius: 50%;
-  background: var(--paper);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--gold);
-  margin-bottom: 0.5rem;
+  width: 72px; height: 72px; border-radius: 50%;
+  background: var(--paper); display: flex; align-items: center; justify-content: center;
+  color: var(--gold); margin-bottom: 0.5rem;
 }
 
 .drop-title { font-family: var(--font-display); font-size: 1.25rem; }
-.drop-sub { color: var(--slate); font-size: 0.875rem; }
+.drop-sub   { color: var(--slate); font-size: 0.875rem; }
 
-.drop-formats {
-  display: flex; gap: 0.5rem; margin-top: 0.75rem;
-}
-
+.drop-formats { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
 .drop-formats span {
-  background: var(--paper-dark);
-  padding: 0.2rem 0.6rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--slate);
+  background: var(--paper-dark); padding: 0.2rem 0.6rem;
+  border-radius: 20px; font-size: 0.75rem; font-weight: 500; color: var(--slate);
 }
 
 .file-preview {
-  display: flex; align-items: center; gap: 1rem;
-  color: var(--forest);
+  display: flex; align-items: center; gap: 1rem; color: var(--forest);
 }
-
 .file-preview strong { display: block; font-size: 0.9rem; color: var(--ink); }
-.file-preview span { font-size: 0.8rem; color: var(--slate); }
+.file-preview span   { font-size: 0.8rem; color: var(--slate); }
 
+/* ── Botones modo único ──────────────────────────────────── */
 .upload-btn {
-  width: 100%;
-  padding: 0.85rem;
-  background: var(--ink);
-  color: var(--paper);
-  border: none;
-  border-radius: var(--radius);
-  font-size: 0.9rem;
-  font-weight: 500;
+  width: 100%; padding: 0.85rem;
+  background: var(--ink); color: var(--paper); border: none;
+  border-radius: var(--radius); font-size: 0.9rem; font-weight: 500;
   display: flex; align-items: center; justify-content: center; gap: 0.5rem;
   transition: background var(--transition), transform var(--transition);
   margin-bottom: 0.5rem;
 }
-
 .upload-btn:hover { background: #1a1a1a; transform: translateY(-1px); }
 
 .change-btn {
-  width: 100%;
-  padding: 0.7rem;
-  background: none;
-  border: 1.5px solid var(--paper-dark);
-  border-radius: var(--radius);
-  font-size: 0.875rem;
-  color: var(--slate);
+  width: 100%; padding: 0.7rem;
+  background: none; border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius); font-size: 0.875rem; color: var(--slate);
   transition: all var(--transition);
 }
-
 .change-btn:hover { border-color: var(--mist); }
 
-/* Progress */
+/* ── Progreso modo único ─────────────────────────────────── */
 .upload-progress {
   display: flex; flex-direction: column; align-items: center; gap: 1rem;
-  padding: 1rem 0;
-  text-align: center;
+  padding: 1rem 0; text-align: center;
 }
-
 .progress-icon { color: var(--gold); }
-
 .uploading-icon { animation: pulse 1s ease infinite; }
-
 .progress-label { font-size: 0.875rem; color: var(--slate); }
+.progress-bar { width: 100%; height: 6px; background: var(--paper-dark); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--gold), var(--rust)); border-radius: 3px; }
+.progress-pct  { font-size: 0.875rem; color: var(--slate); }
 
-.progress-bar {
-  width: 100%;
-  height: 6px;
-  background: var(--paper-dark);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--gold), var(--rust));
-  border-radius: 3px;
-}
-
-.progress-pct { font-size: 0.875rem; color: var(--slate); }
-
-/* Done */
 .upload-done {
   display: flex; flex-direction: column; align-items: center; gap: 0.75rem;
   padding: 2rem; text-align: center; color: var(--forest);
 }
-
 .upload-done p { font-family: var(--font-display); font-size: 1.2rem; }
 .done-sub { font-size: 0.875rem; color: var(--slate); font-family: var(--font-body) !important; }
 
-/* Steps */
+/* ── Bulk panel ──────────────────────────────────────────── */
+.bulk-container { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.bulk-panel {
+  display: flex; flex-direction: column; gap: 0;
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.bulk-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.85rem 1.25rem;
+  background: var(--paper);
+  border-bottom: 1px solid var(--paper-dark);
+  flex-wrap: wrap; gap: 0.75rem;
+}
+
+.bulk-stats { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.bulk-total { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
+.bulk-done-count    { font-size: 0.8rem; color: var(--forest); font-weight: 500; }
+.bulk-active-count  { font-size: 0.8rem; color: var(--gold);   font-weight: 500; }
+.bulk-pending-count { font-size: 0.8rem; color: var(--mist); }
+
+.bulk-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+.bulk-start-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1.1rem;
+  background: var(--ink); color: var(--gold);
+  border: none; border-radius: var(--radius);
+  font-size: 0.85rem; font-weight: 500; cursor: pointer;
+  transition: all var(--transition);
+}
+.bulk-start-btn:hover { background: #1a1a1a; transform: translateY(-1px); }
+
+.bulk-running-badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; color: var(--gold); font-weight: 500;
+  padding: 0.4rem 0.85rem;
+  background: rgba(201,169,110,0.1);
+  border-radius: var(--radius);
+}
+
+.bulk-library-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: var(--forest); color: white;
+  border-radius: var(--radius); text-decoration: none;
+  font-size: 0.85rem; font-weight: 500;
+  transition: all var(--transition);
+}
+.bulk-library-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+
+/* ── Lista de items ──────────────────────────────────────── */
+.bulk-list { display: flex; flex-direction: column; }
+
+.bulk-item {
+  display: flex; align-items: center; gap: 0.85rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--paper-dark);
+  transition: background var(--transition);
+}
+.bulk-item:last-child { border-bottom: none; }
+.bulk-item:hover { background: var(--paper); }
+
+.bulk-item-done     { background: rgba(45, 90, 61, 0.03); }
+.bulk-item-error    { background: rgba(192, 57, 43, 0.03); }
+.bulk-item-uploading { background: rgba(201,169,110,0.04); }
+
+.bulk-item-icon { flex-shrink: 0; width: 20px; display: flex; justify-content: center; }
+
+.bulk-item-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.bulk-item-name { font-size: 0.85rem; font-weight: 500; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bulk-item-size { font-size: 0.75rem; color: var(--mist); }
+.bulk-item-error { font-size: 0.75rem; color: #c0392b; }
+
+.bulk-item-right {
+  display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0;
+}
+
+.bulk-progress-wrap { display: flex; align-items: center; gap: 0.5rem; }
+.bulk-progress-bar  { width: 80px; height: 4px; background: var(--paper-dark); border-radius: 2px; overflow: hidden; }
+.bulk-progress-fill { height: 100%; background: var(--gold); border-radius: 2px; transition: width 0.3s; }
+.bulk-progress-pct  { font-size: 0.75rem; color: var(--mist); min-width: 30px; text-align: right; }
+
+.bulk-item-status { font-size: 0.75rem; font-weight: 500; white-space: nowrap; }
+
+.bulk-remove-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--mist); padding: 2px; border-radius: 4px;
+  display: flex; align-items: center;
+  transition: color var(--transition);
+}
+.bulk-remove-btn:hover { color: var(--rust); }
+
+.bulk-view-btn {
+  font-size: 0.75rem; color: var(--gold); font-weight: 500;
+  text-decoration: none; white-space: nowrap;
+  padding: 2px 6px; border-radius: 4px;
+  background: rgba(201,169,110,0.1);
+  transition: background var(--transition);
+}
+.bulk-view-btn:hover { background: rgba(201,169,110,0.2); }
+
+/* ── Sección completados colapsable ─────────────────────── */
+.bulk-done-section { border-top: 1px solid var(--paper-dark); }
+
+.bulk-done-toggle {
+  width: 100%; display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  background: var(--paper); border: none; cursor: pointer;
+  font-size: 0.8rem; color: var(--slate); font-weight: 500;
+  transition: background var(--transition);
+  text-align: left;
+}
+.bulk-done-toggle:hover { background: var(--paper-dark); }
+
+.bulk-list-done { border-top: 1px solid var(--paper-dark); }
+
+/* ── Nota informativa ────────────────────────────────────── */
+.bulk-note {
+  display: flex; align-items: flex-start; gap: 0.6rem;
+  padding: 0.85rem 1.25rem;
+  background: rgba(201,169,110,0.05);
+  border-top: 1px solid rgba(201,169,110,0.15);
+  font-size: 0.78rem; color: var(--slate); line-height: 1.5;
+}
+.bulk-note svg { color: var(--gold); flex-shrink: 0; margin-top: 1px; }
+
+/* ── Steps ───────────────────────────────────────────────── */
 .upload-steps h2 { margin-bottom: 1.5rem; }
 
 .steps-grid {
@@ -153,12 +282,18 @@
 
 .step-num {
   font-family: var(--font-display);
-  font-size: 2rem;
-  font-weight: 300;
-  color: var(--gold);
-  display: block;
-  margin-bottom: 0.5rem;
+  font-size: 2rem; font-weight: 300; color: var(--gold);
+  display: block; margin-bottom: 0.5rem;
 }
 
 .step-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
-.step-card p { font-size: 0.85rem; color: var(--slate); line-height: 1.5; }
+.step-card p  { font-size: 0.85rem; color: var(--slate); line-height: 1.5; }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .upload-page { padding: 1.5rem 1rem; }
+  .upload-card { padding: 1.25rem; }
+  .bulk-header { flex-direction: column; align-items: flex-start; }
+  .bulk-progress-wrap { display: none; }
+  .bulk-item-name { max-width: 160px; }
+}
