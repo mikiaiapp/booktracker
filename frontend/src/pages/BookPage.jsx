@@ -581,13 +581,7 @@ export default function BookPage() {
 
         <div className="hero-content">
           <div className="hero-cover">
-            {book.cover_local ? (
-              <img src={book.cover_local?.includes('/covers/') ? `/data/covers/${book.cover_local.split('/covers/')[1]}` : book.cover_local} alt={book.title} />
-            ) : (
-              <div className="cover-ph-lg">
-                <BookOpen size={48} strokeWidth={1} />
-              </div>
-            )}
+            <HeroCover book={book} />
           </div>
 
           <div className="hero-info">
@@ -814,6 +808,29 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
     </div>
   )
 }
+
+function HeroCover({ book }) {
+  const [src, setSrc] = React.useState(() => {
+    if (book.cover_local) {
+      return book.cover_local.includes('/covers/')
+        ? `/data/covers/${book.cover_local.split('/covers/')[1]}`
+        : book.cover_local
+    }
+    return book.cover_url || null
+  })
+
+  if (src) return (
+    <img src={src} alt={book.title}
+      onError={() => setSrc(null)}
+      style={{width:'100%', height:'100%', objectFit:'cover'}} />
+  )
+  return (
+    <div className="cover-ph-lg">
+      <BookOpen size={48} strokeWidth={1} />
+    </div>
+  )
+}
+
 
 function BookCover({ src, alt, size = 60, title, isbn }) {
   const [imgSrc, setImgSrc] = React.useState(src || null)
