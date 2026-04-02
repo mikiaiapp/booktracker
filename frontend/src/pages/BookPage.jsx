@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -6,20 +6,21 @@ import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText,
-  Upload
+  Upload, RefreshCw
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
 import './BookPage.css'
 
 const TABS = [
-  { id: 'info',       label: 'Ficha',          icon: BookOpen },
-  { id: 'chapters',   label: 'Capítulos',      icon: List     },
-  { id: 'characters', label: 'Personajes',     icon: User     },
-  { id: 'summary',    label: 'Resumen global', icon: Brain    },
-  { id: 'mindmap',    label: 'Mapa mental',    icon: Map      },
-  { id: 'podcast',    label: 'Podcast',        icon: Mic      },
-  { id: 'refs',       label: 'Referencias',    icon: ExternalLink },
+  { id: 'info',       label: 'Ficha',          icon: BookOpen    },
+  { id: 'analysis',   label: 'Análisis',        icon: RefreshCw   },
+  { id: 'chapters',   label: 'Capítulos',       icon: List        },
+  { id: 'characters', label: 'Personajes',      icon: User        },
+  { id: 'summary',    label: 'Resumen global',  icon: Brain       },
+  { id: 'mindmap',    label: 'Mapa mental',     icon: Map         },
+  { id: 'podcast',    label: 'Podcast',         icon: Mic         },
+  { id: 'refs',       label: 'Referencias',     icon: ExternalLink},
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -27,260 +28,298 @@ const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing'
 export default function BookPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const [data, setData]       = useState(null)
-  const [status, setStatus]   = useState(null)
+  const [data, setData] = useState(null)
+  const [prevData, setPrevData] = useState(null)
+  const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab]         = useState('info')
-  const [expandedChapter, setExpandedChapter] = useState(null)
-  const [audioPlaying, setAudioPlaying] = useState(false)
-  const [audioEl, setAudioEl] = useState(null)
-  const [rating, setRating]   = useState(0)
-  const [audioUrl, setAudioUrl] = useState(null)
 
-  // ── TTS: capítulos ──────────────────────────────────────────────────────────
-  // ttsState: 'idle' | 'playing' | 'paused'
-  const [ttsState,   setTtsState]   = useState('idle')
-  const [ttsChapter, setTtsChapter] = useState(null)   // id del capítulo activo
-  const ttsQueueRef   = useRef([])
-  const ttsIndexRef   = useRef(0)
-  const ttsActiveRef  = useRef(false)
-  const storageKey    = `tts_pos_${id}`
+  // TTS state
+  const [ttsPlaying, setTtsPlaying] = useState(false)
+  const [ttsChapter, setTtsChapter] = useState(null)
+  const [ttsQueue, setTtsQueue] = useState([])
+  const [ttsIndex, setTtsIndex] = useState(0)
+  const ttsQueueRef = React.useRef([])
+  const ttsIndexRef = React.useRef(0)
+  const storageKey = `tts_pos_${id}`
 
-  // ── TTS: personajes ─────────────────────────────────────────────────────────
-  const [ttsCharState,   setTtsCharState]   = useState('idle')
-  const [ttsCharacter,   setTtsCharacter]   = useState(null)
-  const ttsCharQueueRef  = useRef([])
-  const ttsCharIndexRef  = useRef(0)
-  const ttsCharActiveRef = useRef(false)
-  const charStorageKey   = `tts_char_pos_${id}`
+  // TTS state for characters
+  const [ttsCharPlaying, setTtsCharPlaying] = useState(false)
+  const [ttsCharacter, setTtsCharacter] = useState(null)
+  const [ttsCharQueue, setTtsCharQueue] = useState([])
+  const [ttsCharIndex, setTtsCharIndex] = useState(0)
+  const ttsCharQueueRef = React.useRef([])
+  const ttsCharIndexRef = React.useRef(0)
+  const charStorageKey = `tts_char_pos_${id}`
 
-  // ── TTS: ficha (info) ───────────────────────────────────────────────────────
-  const [ttsInfoState,   setTtsInfoState]   = useState('idle')
-  const ttsInfoActiveRef = useRef(false)
+  // TTS state for InfoTab (Ficha)
+  const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
+  const infoStorageKey = `tts_info_pos_${id}`
 
-  // ── TTS: resumen global ─────────────────────────────────────────────────────
-  const [ttsSummaryState,   setTtsSummaryState]   = useState('idle')
-  const ttsSummaryActiveRef = useRef(false)
-
-  // Detiene TODOS los motores TTS sin confirmación
-  const _cancelAll = () => {
-    ttsActiveRef.current      = false
-    ttsCharActiveRef.current  = false
-    ttsInfoActiveRef.current  = false
-    ttsSummaryActiveRef.current = false
+  const pauseTTS = () => {
     window.speechSynthesis.cancel()
+    setTtsPlaying(false)
   }
 
-  // Limpieza al desmontar
-  useEffect(() => { return () => _cancelAll() }, [])
-
-  // ── Helpers TTS capítulos ───────────────────────────────────────────────────
-  const chapterToText = (c) => {
-    let t = `${c.title}. ${c.summary || ''}`
-    if (c.key_events?.length > 0) t += '. Eventos clave: ' + c.key_events.join('. ')
-    return t
-  }
-
-  const _saveTTSPos = (idx, queue) => {
-    try { localStorage.setItem(storageKey, JSON.stringify({ idx, chapterId: queue[idx]?.id })) } catch {}
-  }
-
-  const _speakChapter = (queue, idx) => {
-    if (!ttsActiveRef.current || idx >= queue.length) {
-      if (ttsActiveRef.current) {
-        setTtsState('idle'); setTtsChapter(null)
-        localStorage.removeItem(storageKey)
-        ttsActiveRef.current = false
-      }
-      return
+  const resumeCurrentTTS = () => {
+    if (ttsQueueRef.current.length && ttsIndexRef.current >= 0) {
+      setTtsPlaying(true)
+      speakItem(ttsQueueRef.current, ttsIndexRef.current)
     }
-    const item = queue[idx]
-    ttsQueueRef.current  = queue
-    ttsIndexRef.current  = idx
-    _saveTTSPos(idx, queue)
-    setTtsChapter(item.id)
-
-    const u = new SpeechSynthesisUtterance(item.text)
-    u.lang = 'es-ES'; u.rate = 0.95
-    u.onend = () => { if (ttsActiveRef.current) _speakChapter(ttsQueueRef.current, ttsIndexRef.current + 1) }
-    u.onerror = (e) => { if (e.error !== 'interrupted' && ttsActiveRef.current) _speakChapter(ttsQueueRef.current, ttsIndexRef.current + 1) }
-    window.speechSynthesis.speak(u)
   }
 
-  const startChaptersTTS = (queue, idx) => {
-    _cancelAll()
-    if (!queue.length) return
-    ttsQueueRef.current = queue; ttsIndexRef.current = idx
-    ttsActiveRef.current = true
-    setTtsState('playing'); setTtsChapter(queue[idx]?.id)
-    _speakChapter(queue, idx)
-  }
-
-  const pauseChaptersTTS = () => {
-    ttsActiveRef.current = false
-    window.speechSynthesis.cancel()
-    setTtsState('paused')
-  }
-
-  const resumeChaptersTTS = () => {
-    ttsActiveRef.current = true
-    setTtsState('playing')
-    _speakChapter(ttsQueueRef.current, ttsIndexRef.current)
-  }
-
-  const stopChaptersTTS = (force = false) => {
-    if (!force && ttsState !== 'idle') {
-      if (!window.confirm('¿Parar la reproducción? Se perderá el punto de avance.')) return
+  const stopTTS = (skipConfirm = false) => {
+    if (!skipConfirm && (ttsPlaying || ttsChapter)) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
-    ttsActiveRef.current = false
     window.speechSynthesis.cancel()
-    setTtsState('idle'); setTtsChapter(null)
+    setTtsPlaying(false)
+    setTtsChapter(null)
     localStorage.removeItem(storageKey)
   }
 
-  const playFromChapter = (chapter, chapters) => {
-    const done = chapters.filter(c => c.summary && c.summary_status === 'done')
-    const idx  = done.findIndex(c => c.id === chapter.id)
-    const queue = done.slice(idx < 0 ? 0 : idx).map(c => ({ id: c.id, title: c.title, text: chapterToText(c) }))
-    if (queue.length) startChaptersTTS(queue, 0)
-  }
-
-  // ── Helpers TTS personajes ──────────────────────────────────────────────────
-  const characterToText = (char) => {
-    let t = `Personaje: ${char.name}.`
-    if (char.role)        t += ` Rol: ${char.role}.`
-    if (char.description) t += ` ${char.description}.`
-    if (char.personality) t += ` Personalidad: ${char.personality}.`
-    if (char.arc)         t += ` Evolución: ${char.arc}.`
-    if (char.relationships && Object.keys(char.relationships).length > 0)
-      t += ` Relaciones: ${Object.entries(char.relationships).map(([n,r]) => `${n}, ${r}`).join('. ')}.`
-    if (char.key_moments?.length > 0) t += ` Momentos clave: ${char.key_moments.join('. ')}.`
-    return t
-  }
-
-  const _saveCharPos = (idx, queue) => {
-    try { localStorage.setItem(charStorageKey, JSON.stringify({ idx, charName: queue[idx]?.name })) } catch {}
-  }
-
-  const _speakChar = (queue, idx) => {
-    if (!ttsCharActiveRef.current || idx >= queue.length) {
-      if (ttsCharActiveRef.current) {
-        setTtsCharState('idle'); setTtsCharacter(null)
-        localStorage.removeItem(charStorageKey)
-        ttsCharActiveRef.current = false
-      }
+  const speakItem = (queue, idx) => {
+    if (idx >= queue.length) {
+      setTtsPlaying(false)
+      setTtsChapter(null)
+      localStorage.removeItem(storageKey)
       return
     }
     const item = queue[idx]
-    ttsCharQueueRef.current = queue; ttsCharIndexRef.current = idx
-    _saveCharPos(idx, queue); setTtsCharacter(item.name)
+    ttsIndexRef.current = idx
+    ttsQueueRef.current = queue
+    saveTTSPos(idx, queue)
+    setTtsIndex(idx)
+    setTtsChapter(item.id)
 
-    const u = new SpeechSynthesisUtterance(item.text)
-    u.lang = 'es-ES'; u.rate = 0.95
-    u.onend  = () => { if (ttsCharActiveRef.current) _speakChar(ttsCharQueueRef.current, ttsCharIndexRef.current + 1) }
-    u.onerror = (e) => { if (e.error !== 'interrupted' && ttsCharActiveRef.current) _speakChar(ttsCharQueueRef.current, ttsCharIndexRef.current + 1) }
-    window.speechSynthesis.speak(u)
-  }
-
-  const startCharsTTS = (queue, idx) => {
-    _cancelAll()
-    if (!queue.length) return
-    ttsCharQueueRef.current = queue; ttsCharIndexRef.current = idx
-    ttsCharActiveRef.current = true
-    setTtsCharState('playing'); setTtsCharacter(queue[idx]?.name)
-    _speakChar(queue, idx)
-  }
-
-  const pauseCharsTTS = () => {
-    ttsCharActiveRef.current = false
-    window.speechSynthesis.cancel()
-    setTtsCharState('paused')
-  }
-
-  const resumeCharsTTS = () => {
-    ttsCharActiveRef.current = true
-    setTtsCharState('playing')
-    _speakChar(ttsCharQueueRef.current, ttsCharIndexRef.current)
-  }
-
-  const stopCharsTTS = (force = false) => {
-    if (!force && ttsCharState !== 'idle') {
-      if (!window.confirm('¿Parar la reproducción?')) return
+    const utterance = new SpeechSynthesisUtterance(item.text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted') speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
     }
-    ttsCharActiveRef.current = false
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const saveTTSPos = (idx, queue) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ idx, chapterId: queue[idx]?.id }))
+    } catch {}
+  }
+
+  const loadTTSPos = () => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  }
+
+  const chapterToText = (c) => {
+    let text = `${c.title}. ${c.summary || ''}`
+    if (c.key_events?.length > 0) {
+      text += '. Eventos clave: ' + c.key_events.join('. ')
+    }
+    return text
+  }
+
+  const buildQueue = (book, chapters, fromIdx = 0) => {
+    const queue = []
+    if (fromIdx === 0 && book.synopsis) {
+      queue.push({ id: 'synopsis', title: 'Sinopsis', text: book.synopsis })
+    }
+    chapters
+      .filter(c => c.summary && c.summary_status === 'done')
+      .slice(fromIdx === 0 ? 0 : undefined)
+      .forEach(c => queue.push({ id: c.id, title: c.title, text: chapterToText(c) }))
+    return queue
+  }
+
+  const playFromBeginning = (book, chapters) => {
+    stopTTS()
+    const queue = buildQueue(book, chapters)
+    if (!queue.length) return
+    ttsQueueRef.current = queue
+    ttsIndexRef.current = 0
+    setTtsQueue(queue)
+    setTtsIndex(0)
+    setTtsPlaying(true)
+    speakItem(queue, 0)
+  }
+
+  const playFromChapter = (chapter, chapters) => {
+    stopTTS()
+    const doneChapters = chapters.filter(c => c.summary && c.summary_status === 'done')
+    const idx = doneChapters.findIndex(c => c.id === chapter.id)
+    const queue = doneChapters
+      .slice(idx < 0 ? 0 : idx)
+      .map(c => ({ id: c.id, title: c.title, text: chapterToText(c) }))
+    if (!queue.length) return
+    ttsQueueRef.current = queue
+    ttsIndexRef.current = 0
+    setTtsQueue(queue)
+    setTtsIndex(0)
+    setTtsPlaying(true)
+    speakItem(queue, 0)
+  }
+
+  const resumeTTS = (book, chapters) => {
+    const saved = loadTTSPos()
+    if (!saved) { playFromBeginning(book, chapters); return }
+    stopTTS()
+    const queue = buildQueue(book, chapters)
+    const idx = saved.chapterId
+      ? Math.max(0, queue.findIndex(q => q.id === saved.chapterId))
+      : saved.idx || 0
+    ttsQueueRef.current = queue
+    ttsIndexRef.current = idx
+    setTtsQueue(queue)
+    setTtsIndex(idx)
+    setTtsPlaying(true)
+    speakItem(queue, idx)
+  }
+
+  const hasSavedPos = () => {
+    try { return !!localStorage.getItem(storageKey) } catch { return false }
+  }
+
+  const characterToText = (char) => {
+    let text = `Personaje: ${char.name}.`
+    if (char.role) text += ` Rol: ${char.role}.`
+    if (char.description) text += ` ${char.description}.`
+    if (char.personality) text += ` Personalidad: ${char.personality}.`
+    if (char.arc) text += ` Evolución: ${char.arc}.`
+    if (char.relationships && Object.keys(char.relationships).length > 0) {
+      text += ` Relaciones: ${Object.entries(char.relationships).map(([n, r]) => `${n}, ${r}`).join('. ')}.`
+    }
+    if (char.key_moments?.length > 0) {
+      text += ` Momentos clave: ${char.key_moments.join('. ')}.`
+    }
+    return text
+  }
+
+  const saveCharTTSPos = (idx, queue) => {
+    try {
+      localStorage.setItem(charStorageKey, JSON.stringify({ idx, charName: queue[idx]?.name }))
+    } catch {}
+  }
+
+  const pauseCharTTS = () => {
     window.speechSynthesis.cancel()
-    setTtsCharState('idle'); setTtsCharacter(null)
+    setTtsCharPlaying(false)
+  }
+
+  const stopCharTTS = (skipConfirm = false) => {
+    if (!skipConfirm && (ttsCharPlaying || ttsCharacter)) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+    }
+    window.speechSynthesis.cancel()
+    setTtsCharPlaying(false)
+    setTtsCharacter(null)
     localStorage.removeItem(charStorageKey)
   }
 
-  const playCharacter      = (char)              => startCharsTTS([{ name: char.name, text: characterToText(char) }], 0)
-  const playFromCharacter  = (char, characters)  => {
-    const idx   = characters.findIndex(c => c.name === char.name)
-    const queue = characters.slice(idx < 0 ? 0 : idx).map(c => ({ name: c.name, text: characterToText(c) }))
-    if (queue.length) startCharsTTS(queue, 0)
+  const speakCharItem = (queue, idx) => {
+    if (idx >= queue.length) {
+      setTtsCharPlaying(false)
+      setTtsCharacter(null)
+      localStorage.removeItem(charStorageKey)
+      return
+    }
+    const item = queue[idx]
+    ttsCharIndexRef.current = idx
+    ttsCharQueueRef.current = queue
+    saveCharTTSPos(idx, queue)
+    setTtsCharIndex(idx)
+    setTtsCharacter(item.name)
+
+    const utterance = new SpeechSynthesisUtterance(item.text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+    utterance.onerror = (e) => {
+      if (e.error !== 'interrupted') speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+    }
+    window.speechSynthesis.speak(utterance)
   }
 
-  // ── Helpers TTS ficha ───────────────────────────────────────────────────────
-  const _speakSimple = (text, activeRef, setStateFn) => {
-    _cancelAll()
-    if (!text) { toast('No hay contenido para reproducir', { icon: 'ℹ️' }); return }
-    activeRef.current = true
-    setStateFn('playing')
-    const u = new SpeechSynthesisUtterance(text)
-    u.lang = 'es-ES'; u.rate = 0.95
-    u.onend  = () => { setStateFn('idle'); activeRef.current = false }
-    u.onerror = () => { setStateFn('idle'); activeRef.current = false }
-    window.speechSynthesis.speak(u)
+  const playCharacter = (char) => {
+    stopCharTTS()
+    stopTTS()
+    const queue = [{ name: char.name, text: characterToText(char) }]
+    ttsCharQueueRef.current = queue
+    ttsCharIndexRef.current = 0
+    setTtsCharQueue(queue)
+    setTtsCharIndex(0)
+    setTtsCharPlaying(true)
+    speakCharItem(queue, 0)
   }
 
-  const playInfo   = (book) => _speakSimple(
-    [book.synopsis, book.author_bio ? `Sobre el autor. ${book.author_bio}` : ''].filter(Boolean).join(' '),
-    ttsInfoActiveRef, setTtsInfoState
-  )
-  const pauseInfoTTS  = () => { ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoState('paused') }
-  const resumeInfoTTS = (book) => playInfo(book)
-  const stopInfoTTS   = (force = false) => {
-    if (!force && ttsInfoState !== 'idle' && !window.confirm('¿Parar?')) return
-    ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoState('idle')
+  const playFromCharacter = (char, characters) => {
+    stopCharTTS()
+    stopTTS()
+    const idx = characters.findIndex(c => c.name === char.name)
+    const queue = characters
+      .slice(idx < 0 ? 0 : idx)
+      .map(c => ({ name: c.name, text: characterToText(c) }))
+    if (!queue.length) return
+    ttsCharQueueRef.current = queue
+    ttsCharIndexRef.current = 0
+    setTtsCharQueue(queue)
+    setTtsCharIndex(0)
+    setTtsCharPlaying(true)
+    speakCharItem(queue, 0)
   }
 
-  const playSummary    = (book) => _speakSimple(book.global_summary, ttsSummaryActiveRef, setTtsSummaryState)
-  const pauseSummaryTTS  = () => { ttsSummaryActiveRef.current = false; window.speechSynthesis.cancel(); setTtsSummaryState('paused') }
-  const resumeSummaryTTS = (book) => playSummary(book)
-  const stopSummaryTTS   = (force = false) => {
-    if (!force && ttsSummaryState !== 'idle' && !window.confirm('¿Parar?')) return
-    ttsSummaryActiveRef.current = false; window.speechSynthesis.cancel(); setTtsSummaryState('idle')
+  const playInfo = (book) => {
+    stopTTS(true)
+    stopCharTTS(true)
+    window.speechSynthesis.cancel()
+
+    let text = ''
+    if (book.synopsis) text += `Sinopsis. ${book.synopsis}. `
+    if (book.author_bio) text += `Sobre el autor. ${book.author_bio}.`
+
+    if (!text) {
+      toast('No hay contenido para reproducir', { icon: 'ℹ️' })
+      return
+    }
+
+    setTtsInfoPlaying(true)
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => {
+      setTtsInfoPlaying(false)
+      localStorage.removeItem(infoStorageKey)
+    }
+    utterance.onerror = () => {
+      setTtsInfoPlaying(false)
+    }
+    window.speechSynthesis.speak(utterance)
+    localStorage.setItem(infoStorageKey, 'playing')
   }
 
-  // ── Control global TTS (cabecera) ───────────────────────────────────────────
-  const anyTTSPlaying = ttsState === 'playing' || ttsCharState === 'playing' || ttsInfoState === 'playing' || ttsSummaryState === 'playing'
-  const anyTTSPaused  = !anyTTSPlaying && (ttsState === 'paused' || ttsCharState === 'paused' || ttsInfoState === 'paused' || ttsSummaryState === 'paused')
-  const anyTTSActive  = anyTTSPlaying || anyTTSPaused
-
-  const globalPause = () => {
-    if (ttsState      === 'playing') pauseChaptersTTS()
-    else if (ttsCharState  === 'playing') pauseCharsTTS()
-    else if (ttsInfoState  === 'playing') pauseInfoTTS()
-    else if (ttsSummaryState === 'playing') pauseSummaryTTS()
+  const pauseInfoTTS = () => {
+    window.speechSynthesis.cancel()
+    setTtsInfoPlaying(false)
   }
 
-  const globalResume = (book) => {
-    if (ttsState      === 'paused') resumeChaptersTTS()
-    else if (ttsCharState  === 'paused') resumeCharsTTS()
-    else if (ttsInfoState  === 'paused') resumeInfoTTS(book)
-    else if (ttsSummaryState === 'paused') resumeSummaryTTS(book)
+  const stopInfoTTS = (skipConfirm = false) => {
+    if (!skipConfirm && ttsInfoPlaying) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
+    }
+    window.speechSynthesis.cancel()
+    setTtsInfoPlaying(false)
+    localStorage.removeItem(infoStorageKey)
   }
 
-  const globalStop = () => {
-    if (!anyTTSActive) return
-    if (!window.confirm('¿Seguro que quieres parar? Se perderá el punto de avance.')) return
-    _cancelAll()
-    setTtsState('idle'); setTtsCharState('idle'); setTtsInfoState('idle'); setTtsSummaryState('idle')
-    setTtsChapter(null); setTtsCharacter(null)
-    localStorage.removeItem(storageKey); localStorage.removeItem(charStorageKey)
-  }
+  React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
+  const [tab, setTab] = useState('info')
+  const [expandedChapter, setExpandedChapter] = useState(null)
+  const [audioPlaying, setAudioPlaying] = useState(false)
+  const [audioEl, setAudioEl] = useState(null)
+  const [rating, setRating] = useState(0)
 
-  // ── Datos y carga ───────────────────────────────────────────────────────────
   const load = async () => {
     try {
       const [bookRes, statusRes] = await Promise.all([
@@ -300,7 +339,6 @@ export default function BookPage() {
 
   useEffect(() => { load() }, [id])
 
-  // Poll mientras procesa
   useEffect(() => {
     if (!status) return
     if (PROCESSING_STATUSES.includes(status.status)) {
@@ -315,15 +353,17 @@ export default function BookPage() {
       await analysisAPI.cancel(id)
       toast('Proceso cancelado')
       load()
-    } catch { toast.error('Error al cancelar') }
+    } catch {
+      toast.error('Error al cancelar')
+    }
   }
 
-  // triggerPhase: NO navega, recarga en background
   const triggerPhase = async (phase) => {
     try {
       if (phase === 1)          await analysisAPI.triggerPhase1(id)
       else if (phase === 2)     await analysisAPI.triggerPhase2(id)
       else if (phase === 3)     await analysisAPI.triggerPhase3(id)
+      else if (phase === '3b')  await analysisAPI.triggerPhase3b(id)
       else if (phase === 'podcast') await analysisAPI.triggerPodcast(id)
       toast.success('Proceso iniciado')
       setTimeout(load, 600)
@@ -342,6 +382,8 @@ export default function BookPage() {
     load()
   }
 
+  const [audioUrl, setAudioUrl] = useState(null)
+
   const loadAudio = async () => {
     try {
       const token = localStorage.getItem('bt_token')
@@ -350,10 +392,13 @@ export default function BookPage() {
       })
       if (!resp.ok) throw new Error('Audio not found')
       const blob = await resp.blob()
-      const url  = URL.createObjectURL(blob)
+      const url = URL.createObjectURL(blob)
       setAudioUrl(url)
       return url
-    } catch { toast.error('Error al cargar el audio'); return null }
+    } catch (err) {
+      toast.error('Error al cargar el audio')
+      return null
+    }
   }
 
   const toggleAudio = async () => {
@@ -362,14 +407,15 @@ export default function BookPage() {
       if (!url) return
       const el = new Audio(url)
       el.onended = () => setAudioPlaying(false)
-      setAudioEl(el); el.play(); setAudioPlaying(true)
+      setAudioEl(el)
+      el.play()
+      setAudioPlaying(true)
     } else {
       if (audioPlaying) { audioEl.pause(); setAudioPlaying(false) }
-      else              { audioEl.play();  setAudioPlaying(true)  }
+      else { audioEl.play(); setAudioPlaying(true) }
     }
   }
 
-  // ── Export PDF ──────────────────────────────────────────────────────────────
   const exportToPDF = async () => {
     if (!book) return
     toast('Generando PDF...', { icon: '📄', duration: 3000 })
@@ -377,70 +423,87 @@ export default function BookPage() {
       const script = document.createElement('script')
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
       document.head.appendChild(script)
-      await new Promise((resolve, reject) => { script.onload = resolve; script.onerror = reject })
-
+      await new Promise((resolve, reject) => {
+        script.onload = resolve
+        script.onerror = reject
+      })
       const { jsPDF } = window.jspdf
       const doc = new jsPDF()
       let y = 20
-      const margin = 20, maxWidth = 170
-      const checkPage = (n = 20) => { if (y + n > doc.internal.pageSize.height - 20) { doc.addPage(); y = 20 } }
-      const addText  = (text, size = 10, weight = 'normal') => {
+      const pageHeight = doc.internal.pageSize.height
+      const margin = 20
+      const maxWidth = 170
+      const checkPage = (needed = 20) => {
+        if (y + needed > pageHeight - 20) { doc.addPage(); y = 20 }
+      }
+      const addText = (text, size = 10, weight = 'normal') => {
         doc.setFontSize(size); doc.setFont('helvetica', weight)
-        doc.splitTextToSize(text || '', maxWidth).forEach(l => { checkPage(); doc.text(l, margin, y); y += size * 0.4 })
+        const lines = doc.splitTextToSize(text || '', maxWidth)
+        lines.forEach(line => { checkPage(); doc.text(line, margin, y); y += size * 0.4 })
         y += 3
       }
-
-      doc.setFillColor(13,13,13); doc.rect(0,0,210,297,'F')
-      doc.setTextColor(201,169,110); doc.setFontSize(28); doc.setFont('helvetica','bold')
-      doc.splitTextToSize(book.title, 170).forEach((l,i) => doc.text(l, 105, 100+(i*12), {align:'center'}))
-      if (book.author) { doc.setFontSize(16); doc.setFont('helvetica','normal'); doc.text(book.author, 105, 130, {align:'center'}) }
+      doc.setFillColor(13, 13, 13); doc.rect(0, 0, 210, 297, 'F')
+      doc.setTextColor(201, 169, 110); doc.setFontSize(28); doc.setFont('helvetica', 'bold')
+      const titleLines = doc.splitTextToSize(book.title, 170)
+      titleLines.forEach((line, i) => { doc.text(line, 105, 100 + (i * 12), { align: 'center' }) })
+      if (book.author) { doc.setFontSize(16); doc.setFont('helvetica', 'normal'); doc.text(book.author, 105, 130, { align: 'center' }) }
       doc.setFontSize(10)
-      doc.text('Análisis generado por BookTracker', 105, 280, {align:'center'})
-      doc.text(new Date().toLocaleDateString('es-ES'), 105, 286, {align:'center'})
-
-      doc.addPage(); doc.setTextColor(0,0,0); y = 20
-      doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110)
-      doc.text('Información General', margin, y); y += 12; doc.setTextColor(0,0,0)
-      if (book.isbn)  addText(`ISBN: ${book.isbn}`, 11, 'bold')
-      if (book.year)  addText(`Año: ${book.year}`, 11, 'bold')
+      doc.text('Análisis generado por BookTracker', 105, 280, { align: 'center' })
+      doc.text(new Date().toLocaleDateString('es-ES'), 105, 286, { align: 'center' })
+      doc.addPage(); doc.setTextColor(0, 0, 0); y = 20
+      doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110)
+      doc.text('Información General', margin, y); y += 12; doc.setTextColor(0, 0, 0)
+      if (book.isbn) addText(`ISBN: ${book.isbn}`, 11, 'bold')
+      if (book.year) addText(`Año: ${book.year}`, 11, 'bold')
       if (book.genre) addText(`Género: ${book.genre}`, 11, 'bold')
       if (book.pages) addText(`Páginas: ${book.pages}`, 11, 'bold')
+      if (book.language) addText(`Idioma: ${book.language}`, 11, 'bold')
       y += 5
-
-      if (book.synopsis)   { checkPage(30); doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110); doc.text('Sinopsis', margin, y); y+=10; doc.setTextColor(0,0,0); addText(book.synopsis,10) }
-      if (book.author_bio) { checkPage(30); doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110); doc.text('Sobre el autor', margin, y); y+=10; doc.setTextColor(0,0,0); addText(book.author_bio,10) }
-      if (book.global_summary) { checkPage(30); doc.setFontSize(16); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110); doc.text('Resumen Global', margin, y); y+=10; doc.setTextColor(0,0,0); addText(book.global_summary,10) }
-
+      if (book.synopsis) { checkPage(30); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110); doc.text('Sinopsis', margin, y); y += 10; doc.setTextColor(0, 0, 0); addText(book.synopsis, 10) }
+      if (book.author_bio) { checkPage(30); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110); doc.text('Sobre el autor', margin, y); y += 10; doc.setTextColor(0, 0, 0); addText(book.author_bio, 10) }
+      if (book.author_bibliography?.length > 0) {
+        checkPage(30); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110)
+        doc.text('Otras obras del autor', margin, y); y += 10; doc.setTextColor(0, 0, 0)
+        book.author_bibliography.slice(0, 15).forEach((item) => {
+          const title = typeof item === 'string' ? item : item.title
+          const yr = typeof item === 'object' ? item.year : null
+          addText(yr ? `• ${title} (${yr})` : `• ${title}`, 9)
+        })
+      }
+      if (book.global_summary) { checkPage(30); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110); doc.text('Resumen Global', margin, y); y += 10; doc.setTextColor(0, 0, 0); addText(book.global_summary, 10) }
       if (chapters.length > 0) {
         doc.addPage(); y = 20
-        doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110)
-        doc.text('Capítulos', margin, y); y += 12; doc.setTextColor(0,0,0)
-        chapters.forEach((ch,i) => {
-          checkPage(25); doc.setFontSize(12); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110)
-          doc.text(`${i+1}. ${ch.title}`, margin, y); y+=7; doc.setTextColor(0,0,0)
+        doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110)
+        doc.text('Capítulos', margin, y); y += 12; doc.setTextColor(0, 0, 0)
+        chapters.forEach((ch, i) => {
+          checkPage(25); doc.setFontSize(12); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110)
+          doc.text(`${i + 1}. ${ch.title}`, margin, y); y += 7; doc.setTextColor(0, 0, 0)
           if (ch.summary) addText(ch.summary, 9)
-          if (ch.key_events?.length > 0) { doc.setFont('helvetica','italic'); addText('Eventos: '+ch.key_events.join(', '),8) }
+          if (ch.key_events?.length > 0) { doc.setFont('helvetica', 'italic'); addText('Eventos clave: ' + ch.key_events.join(', '), 8) }
           y += 3
         })
       }
-
       if (characters.length > 0) {
         doc.addPage(); y = 20
-        doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110)
-        doc.text('Personajes', margin, y); y += 12; doc.setTextColor(0,0,0)
-        characters.forEach(char => {
-          checkPage(30); doc.setFontSize(14); doc.setFont('helvetica','bold'); doc.setTextColor(201,169,110)
-          doc.text(char.name, margin, y); y+=7; doc.setTextColor(0,0,0)
-          if (char.description) addText(char.description,9)
-          if (char.personality) { addText('Personalidad:',9,'bold'); addText(char.personality,9) }
-          if (char.arc)         { addText('Evolución:',9,'bold');    addText(char.arc,9) }
+        doc.setFontSize(18); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110)
+        doc.text('Personajes', margin, y); y += 12; doc.setTextColor(0, 0, 0)
+        characters.forEach((char) => {
+          checkPage(30); doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(201, 169, 110)
+          doc.text(char.name, margin, y); y += 7; doc.setTextColor(0, 0, 0)
+          if (char.role) { doc.setFontSize(9); doc.setFont('helvetica', 'italic'); doc.text(`Rol: ${char.role}`, margin, y); y += 5 }
+          if (char.description) addText(char.description, 9)
+          if (char.personality) { addText('Personalidad:', 9, 'bold'); addText(char.personality, 9) }
+          if (char.arc) { addText('Evolución:', 9, 'bold'); addText(char.arc, 9) }
           y += 5
         })
       }
-
-      doc.save(`${book.title.replace(/[^a-z0-9]/gi,'_')}_analisis.pdf`)
+      const filename = `${book.title.replace(/[^a-z0-9]/gi, '_')}_analisis.pdf`
+      doc.save(filename)
       toast.success('PDF generado correctamente')
-    } catch (e) { console.error(e); toast.error('Error al generar el PDF') }
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      toast.error('Error al generar el PDF')
+    }
   }
 
   const handleDelete = async () => {
@@ -449,41 +512,30 @@ export default function BookPage() {
     navigate('/')
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   if (loading) return (
     <div className="book-loading">
       <Loader size={28} className="spin" strokeWidth={1.5} />
     </div>
   )
 
-  if (!data) return (
-    <div className="book-loading" style={{flexDirection:'column',gap:'1rem'}}>
-      <p style={{color:'var(--slate)'}}>No se pudo cargar el libro</p>
-      <button onClick={() => navigate('/')} style={{background:'var(--ink)',color:'var(--paper)',border:'none',padding:'0.5rem 1rem',borderRadius:'4px',cursor:'pointer'}}>
+  const activeData = data || prevData
+  const book = activeData?.book || {}
+  if (!loading && !activeData) return (
+    <div className="book-loading" style={{flexDirection:"column",gap:"1rem"}}>
+      <p style={{color:"var(--slate)"}}>No se pudo cargar el libro</p>
+      <button onClick={() => navigate("/")} style={{background:"var(--ink)",color:"var(--paper)",border:"none",padding:"0.5rem 1rem",borderRadius:"4px",cursor:"pointer"}}>
         Volver a la biblioteca
       </button>
     </div>
   )
-
-  const book       = data?.book       || {}
-  const chapters   = data?.chapters   || []
-  const characters = data?.characters || []
-  const otherBooks = data?.other_books || []
-  const allBiblio  = book.author_bibliography || []
-
+  const chapters = activeData?.chapters || []
+  const characters = activeData?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(status?.status)
-  const isShell      = book.status === 'shell' || book.status === 'shell_error'
-  const hasFile      = !!book.file_path
-
-  const coverSrc = book.cover_local
-    ? (book.cover_local.includes('/covers/')
-        ? `/data/covers/${book.cover_local.split('/covers/')[1]}`
-        : book.cover_local)
-    : null
+  const isShell = book?.status === 'shell' || book?.status === 'shell_error'
+  const isStuck  = ['identifying','analyzing_structure','summarizing','generating_podcast'].includes(status?.status)
 
   return (
     <div className="book-page">
-      {/* ── Hero ─────────────────────────────────────────────────────────────── */}
       <div className="book-hero">
         <button className="back-btn" onClick={() => navigate('/')}>
           <ArrowLeft size={16} /> Biblioteca
@@ -491,38 +543,54 @@ export default function BookPage() {
 
         <div className="hero-content">
           <div className="hero-cover">
-            {coverSrc
-              ? <img src={coverSrc} alt={book.title} />
-              : <div className="cover-ph-lg"><BookOpen size={48} strokeWidth={1} /></div>
-            }
+            {book.cover_local ? (
+              <img src={book.cover_local?.includes('/covers/') ? `/data/covers/${book.cover_local.split('/covers/')[1]}` : book.cover_local} alt={book.title} />
+            ) : (
+              <div className="cover-ph-lg">
+                <BookOpen size={48} strokeWidth={1} />
+              </div>
+            )}
           </div>
 
           <div className="hero-info">
             <h1>{book.title}</h1>
             {book.author && (
               <p className="hero-author">
-                <Link to="/authors" state={{author: book.author}}>{book.author}</Link>
+                <Link to="/authors" state={{author: book.author}} className="author-link">{book.author}</Link>
               </p>
             )}
 
-            {/* TTS global: solo aparece cuando hay reproducción activa o pausada */}
-            {anyTTSActive && (
+            {(ttsPlaying || ttsChapter || ttsInfoPlaying || ttsCharPlaying) && (
               <div className="hero-tts-global">
-                {anyTTSPlaying ? (
+                {ttsPlaying || ttsInfoPlaying || ttsCharPlaying ? (
                   <>
-                    <button className="hero-tts-btn" onClick={globalPause}>
+                    <button className="hero-tts-btn" onClick={() => {
+                      if (ttsPlaying) pauseTTS()
+                      else if (ttsInfoPlaying) pauseInfoTTS()
+                      else if (ttsCharPlaying) pauseCharTTS()
+                    }}>
                       <Pause size={14} /> Pausar reproducción
                     </button>
-                    <button className="hero-tts-btn hero-tts-stop" onClick={globalStop}>
+                    <button className="hero-tts-btn hero-tts-stop" onClick={() => {
+                      if (ttsPlaying) stopTTS()
+                      else if (ttsInfoPlaying) stopInfoTTS()
+                      else if (ttsCharPlaying) stopCharTTS()
+                    }}>
                       <Square size={14} /> Stop
                     </button>
                   </>
                 ) : (
                   <>
-                    <button className="hero-tts-btn hero-tts-resume" onClick={() => globalResume(book)}>
+                    <button className="hero-tts-btn" onClick={() => {
+                      if (ttsChapter) resumeCurrentTTS()
+                    }}>
                       <Play size={14} /> Continuar reproducción
                     </button>
-                    <button className="hero-tts-btn hero-tts-stop" onClick={globalStop}>
+                    <button className="hero-tts-btn hero-tts-stop" onClick={() => {
+                      stopTTS()
+                      stopInfoTTS(true)
+                      stopCharTTS(true)
+                    }}>
                       <Square size={14} /> Stop
                     </button>
                   </>
@@ -531,79 +599,68 @@ export default function BookPage() {
             )}
 
             <div className="hero-meta">
-              {book.year     && <span>{book.year}</span>}
-              {book.pages    && <span>{book.pages} páginas</span>}
-              {book.isbn     && <span>ISBN: {book.isbn}</span>}
-              {book.genre    && <span>{book.genre}</span>}
+              {book.year && <span>{book.year}</span>}
+              {book.pages && <span>{book.pages} páginas</span>}
+              {book.isbn && <span>ISBN: {book.isbn}</span>}
+              {book.genre && <span>{book.genre}</span>}
             </div>
 
-            {/* Valoración */}
             <div className="star-rating">
               {[1,2,3,4,5].map(n => (
-                <button key={n} onClick={() => handleRating(n)} className={`star ${rating >= n ? 'filled' : ''}`}>
+                <button key={n} onClick={() => handleRating(n)}
+                  className={`star ${rating >= n ? 'filled' : ''}`}>
                   <Star size={20} fill={rating >= n ? 'currentColor' : 'none'} />
                 </button>
               ))}
             </div>
 
-            {/* Estado de lectura */}
             <div className="read-status-btns">
-              {[{v:'to_read',l:'Por leer'},{v:'reading',l:'Leyendo'},{v:'read',l:'Leído ✓'}].map(s => (
-                <button key={s.v} className={`rs-btn ${book.read_status === s.v ? 'active' : ''}`} onClick={() => handleReadStatus(s.v)}>
+              {[
+                { v: 'to_read', l: 'Por leer' },
+                { v: 'reading', l: 'Leyendo' },
+                { v: 'read', l: 'Leído ✓' },
+              ].map(s => (
+                <button key={s.v}
+                  className={`rs-btn ${book.read_status === s.v ? 'active' : ''}`}
+                  onClick={() => handleReadStatus(s.v)}>
                   {s.l}
                 </button>
               ))}
             </div>
 
-            {/* Exportar PDF */}
             {status?.phase3_done && (
-              <button className="export-pdf-btn" onClick={exportToPDF}>
-                <FileText size={16} /> Exportar a PDF
+              <button className="export-pdf-btn" onClick={exportToPDF} title="Exportar análisis completo">
+                <FileText size={16} />
+                Exportar a PDF
               </button>
             )}
 
-            {/* Subir archivo: fichas sin archivo */}
-            {(!hasFile || isShell) && (
+            {/* Pipeline movido al tab "Análisis" */}
+            {isShell && (
               <div className="shell-upload-area">
-                <span className="shell-label">
-                  {isShell ? 'Solo ficha — sube el PDF/EPUB para analizar' : 'Sin archivo adjunto'}
-                </span>
+                <span className="shell-label">Solo ficha — sube el PDF/EPUB para analizar</span>
                 <label className="shell-upload-btn">
                   <input type="file" accept=".pdf,.epub" style={{display:'none'}}
                     onChange={async (e) => {
-                      const f = e.target.files[0]; if (!f) return
-                      try { toast('Subiendo…',{icon:'⏳'}); await uploadToShell(id,f); toast.success('Archivo subido. Identificando…'); load() }
+                      const file = e.target.files[0]; if (!file) return
+                      try { toast('Subiendo…',{icon:'⏳'}); await uploadToShell(id,file); toast.success('Archivo subido. Identificando…'); load() }
                       catch { toast.error('Error al subir el archivo') }
                     }} />
-                  <Upload size={13} /> Subir PDF/EPUB
+                  <Upload size={14} /> Subir PDF/EPUB
                 </label>
               </div>
             )}
-
-            {/* Reemplazar archivo: libros ya analizados */}
-            {hasFile && !isShell && (
-              <div className="attach-file-area">
-                <label className="attach-file-btn">
-                  <input type="file" accept=".pdf,.epub" style={{display:'none'}}
-                    onChange={async (e) => {
-                      const f = e.target.files[0]; if (!f) return
-                      if (!confirm('¿Reemplazar el archivo? Se mantendrá el análisis existente.')) return
-                      try { toast('Subiendo…',{icon:'⏳'}); await uploadToShell(id,f); toast.success('Archivo actualizado'); load() }
-                      catch { toast.error('Error al subir el archivo') }
-                    }} />
-                  <Upload size={13} /> Reemplazar archivo
-                </label>
-              </div>
-            )}
-
-            {/* Pipeline de análisis */}
-            {!isShell && (
-              <ProcessingPipeline
-                status={status}
-                isProcessing={isProcessing}
-                onTrigger={triggerPhase}
-                onCancel={cancelProcess}
-              />
+            {!isShell && !!book.file_path && (
+              <label className="attach-file-btn" title="Reemplazar archivo PDF/EPUB">
+                <input type="file" accept=".pdf,.epub" style={{display:'none'}}
+                  onChange={async (e) => {
+                    const file = e.target.files[0]; if (!file) return
+                    if (!confirm('¿Reemplazar el archivo? El análisis existente se conservará.')) return
+                    try { toast('Subiendo…',{icon:'⏳'}); await uploadToShell(id,file); toast.success('Archivo actualizado'); load() }
+                    catch { toast.error('Error al subir el archivo') }
+                  }} />
+                <Upload size={13} /> Reemplazar archivo
+              </label>
             )}
           </div>
 
@@ -613,40 +670,37 @@ export default function BookPage() {
         </div>
       </div>
 
-      {/* ── Tabs ─────────────────────────────────────────────────────────────── */}
       <div className="book-tabs">
-        {/* Sidebar desktop */}
         <div className="tabs-bar tabs-bar-desktop">
           {TABS.map(t => (
             <button key={t.id}
               className={`tab-btn ${tab === t.id ? 'active' : ''}`}
               onClick={() => setTab(t.id)}
               disabled={
-                (isShell && t.id !== 'info') ||
+                (isShell && t.id !== 'info' && t.id !== 'analysis') ||
                 (t.id === 'chapters'   && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
                 (t.id === 'summary'    && !status?.phase3_done) ||
                 (t.id === 'mindmap'    && !status?.phase3_done) ||
-                (t.id === 'podcast'    && !book.podcast_script)
+                (t.id === 'podcast'    && !book.podcast_audio_path)
               }
             >
-              <t.icon size={15} strokeWidth={1.5} />{t.label}
+              <t.icon size={15} strokeWidth={1.5} />
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Select móvil */}
         <div className="tabs-select-wrapper tabs-select-mobile">
-          <select className="tabs-select" value={tab} onChange={e => setTab(e.target.value)}>
+          <select className="tabs-select" value={tab} onChange={(e) => setTab(e.target.value)}>
             {TABS.map(t => {
-              const disabled =
-                (isShell && t.id !== 'info') ||
+              const disabled = (isShell && t.id !== 'info' && t.id !== 'analysis') ||
                 (t.id === 'chapters'   && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
                 (t.id === 'summary'    && !status?.phase3_done) ||
                 (t.id === 'mindmap'    && !status?.phase3_done) ||
-                (t.id === 'podcast'    && !book.podcast_script)
-              const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
+                (t.id === 'podcast'    && !book.podcast_audio_path)
+              const icon = {info:'📖',analysis:'⚙️',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
               return <option key={t.id} value={t.id} disabled={disabled}>{icon} {t.label}</option>
             })}
           </select>
@@ -654,62 +708,43 @@ export default function BookPage() {
 
         <AnimatePresence mode="wait">
           <motion.div key={tab} className="tab-content"
-            initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0}} transition={{duration:0.2}}>
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && (
-              <InfoTab
-                book={book}
-                otherBooks={otherBooks}
-                allBiblio={allBiblio}
-                ttsState={ttsInfoState}
-                onPlay={() => playInfo(book)}
-                onPause={pauseInfoTTS}
-                onResume={() => resumeInfoTTS(book)}
-                onStop={() => stopInfoTTS()}
-              />
-            )}
+            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} ttsPlaying={ttsInfoPlaying} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab
-                chapters={chapters}
-                expanded={expandedChapter}
-                setExpanded={setExpandedChapter}
-                bookId={id}
-                onChapterSummarized={load}
-                ttsState={ttsState}
-                ttsChapter={ttsChapter}
-                onPlayChapter={(ch) => startChaptersTTS([{id:ch.id,title:ch.title,text:chapterToText(ch)}], 0)}
-                onPlayFromChapter={(ch) => playFromChapter(ch, chapters)}
-                onPause={pauseChaptersTTS}
-                onResume={resumeChaptersTTS}
-                onStop={() => stopChaptersTTS()}
-              />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { const q = [{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
-            {tab === 'characters' && (
-              <CharactersTab
-                characters={characters}
-                bookId={id}
-                onReanalyzed={load}
+            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}
+
+            {tab === 'analysis' && (
+              <AnalysisTab
                 status={status}
-                ttsState={ttsCharState}
-                ttsCharacter={ttsCharacter}
-                onPlayCharacter={playCharacter}
-                onPlayFromCharacter={playFromCharacter}
-                onPause={pauseCharsTTS}
-                onResume={resumeCharsTTS}
-                onStop={() => stopCharsTTS()}
+                isProcessing={isProcessing}
+                isStuck={isStuck}
+                onTrigger={triggerPhase}
+                onCancel={cancelProcess}
               />
             )}
 
             {tab === 'summary' && (
               <SummaryTab
                 book={book}
-                ttsState={ttsSummaryState}
-                onPlay={() => playSummary(book)}
-                onPause={pauseSummaryTTS}
-                onResume={() => resumeSummaryTTS(book)}
-                onStop={() => stopSummaryTTS()}
+                ttsPlaying={ttsInfoPlaying}
+                onPlay={() => {
+                  stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
+                  if (!book.global_summary) { toast('No hay resumen disponible',{icon:'ℹ️'}); return }
+                  setTtsInfoPlaying(true)
+                  const u = new SpeechSynthesisUtterance(book.global_summary)
+                  u.lang='es-ES'; u.rate=0.95
+                  u.onend = () => setTtsInfoPlaying(false)
+                  u.onerror = () => setTtsInfoPlaying(false)
+                  window.speechSynthesis.speak(u)
+                }}
+                onPause={() => { window.speechSynthesis.cancel(); setTtsInfoPlaying(false) }}
+                onStop={() => { window.speechSynthesis.cancel(); setTtsInfoPlaying(false) }}
               />
             )}
 
@@ -719,9 +754,14 @@ export default function BookPage() {
                 : <p className="empty-tab">Mapa mental no disponible</p>
             )}
 
-            {tab === 'refs'    && <RefsTab    book={book} />}
-            {tab === 'podcast' && <PodcastTab book={book} playing={audioPlaying} onToggle={toggleAudio} />}
-
+            {tab === 'refs' && <RefsTab book={book} />}
+            {tab === 'podcast' && (
+              <PodcastTab
+                book={book}
+                playing={audioPlaying}
+                onToggle={toggleAudio}
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -729,150 +769,118 @@ export default function BookPage() {
   )
 }
 
-// ── ProcessingPipeline ─────────────────────────────────────────────────────────
-const STUCK_STATUSES = ['identifying','analyzing_structure','summarizing','generating_podcast']
+// ── Sub-components del original ────────────────────────────────────────────────
 
-function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel }) {
+function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = {} }) {
   if (!status) return null
-
-  const isStuck = STUCK_STATUSES.includes(status.status)
-
   const steps = [
-    { label:'Fase 1: Identificación',  sub:'Ficha, sinopsis, autor',                done:status.phase1_done,                                  canTrigger:true,                   trigger:()=>onTrigger(1) },
-    { label:'Fase 2: Estructura',       sub:'Capítulos',                              done:status.phase2_done,                                  canTrigger:status.phase1_done,     trigger:()=>onTrigger(2) },
-    { label:'Fase 3a: Resúmenes',       sub:'Resumen de cada capítulo',               done:status.chapters_summarized||status.phase3_done,      canTrigger:status.phase2_done,     trigger:()=>onTrigger(3), resumable:status.phase2_done&&!status.phase3_done&&status.chapters_done>0 },
-    { label:'Fase 3b: Análisis IA',     sub:'Personajes, resumen global, mapa mental',done:status.phase3_done,                                  canTrigger:status.chapters_summarized||status.phase3_done, trigger:()=>onTrigger(3) },
-    { label:'Podcast',                  sub:'Guión y audio',                          done:status.podcast_done,                                 canTrigger:status.phase3_done,     trigger:()=>onTrigger('podcast') },
+    { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
+    { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
+    { label: 'Fase 3a: Resúmenes', sublabel: 'Resumen de cada capítulo', done: status.chapters_summarized || status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
+    { label: 'Fase 3b: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.chapters_summarized || status.phase3_done },
+    { label: 'Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
-
-  const firstPending = steps.findIndex(s => !s.done)
 
   return (
     <div className="pipeline">
-      {isStuck && (
-        <div className="pipeline-stuck-banner">
-          <AlertCircle size={13} />
-          <span>Proceso bloqueado o en curso</span>
-          <button className="unlock-btn" onClick={onCancel}>🔓 Desbloquear</button>
-        </div>
-      )}
       {steps.map((s, i) => (
         <div key={i} className={`pipeline-step ${s.done ? 'done' : ''}`}>
           {s.done
             ? <CheckCircle size={14} />
-            : (isProcessing && i === firstPending)
+            : isProcessing && !s.done && i === steps.findIndex(x => !x.done)
               ? <Loader size={14} className="spin" />
               : <div className="step-dot" />
           }
-          <span>{s.label}<span className="step-sublabel"> ({s.sub})</span></span>
-          {s.canTrigger && !isProcessing && !isStuck && (
+          <span>{s.label}{s.sublabel && <span className="step-sublabel"> ({s.sublabel})</span>}</span>
+          {s.canTrigger && !isProcessing && (
             <button className="trigger-btn" onClick={s.trigger}>
               {s.done ? 'Repetir' : s.resumable ? 'Reanudar' : 'Iniciar'}
             </button>
           )}
-          {isProcessing && i === firstPending && (
-            <button className="cancel-btn" onClick={onCancel}>Cancelar</button>
+          {isProcessing && i === steps.findIndex(x => !x.done) && (
+            <button className="cancel-btn" onClick={onCancel} title="Cancelar proceso">
+              Cancelar
+            </button>
           )}
         </div>
       ))}
       {status.error_msg && (
-        <div className={`pipeline-error ${status.error_msg.includes('Cuota')||status.status==='quota_exceeded' ? 'quota-error' : ''}`}>
+        <div className={`pipeline-error ${status.error_msg.includes('Cuota') || status.error_msg.includes('quota') ? 'quota-error' : ''}`}>
           <AlertCircle size={14} />
-          <span>{status.error_msg.includes('Cuota')||status.status==='quota_exceeded' ? status.error_msg : 'Error en el proceso'}</span>
+          <span>{status.error_msg.includes('Cuota') || status.status === 'quota_exceeded'
+            ? status.error_msg
+            : 'Error en el proceso'}</span>
         </div>
       )}
     </div>
   )
 }
 
-// ── InfoTab ────────────────────────────────────────────────────────────────────
-function InfoTab({ book, otherBooks, allBiblio, ttsState, onPlay, onPause, onResume, onStop }) {
-  // Une libros en la app + libros solo en bibliografía
-  const allWorks = React.useMemo(() => {
-    const inApp  = new Map()
-    otherBooks.forEach(b => {
-      inApp.set((b.title||'').toLowerCase().trim(), true)
-      if (b.isbn) inApp.set(b.isbn, true)
-    })
-    const missing = []
-    ;(allBiblio || []).forEach(item => {
-      const title = typeof item === 'string' ? item : item?.title
-      const isbn  = typeof item === 'object' ? item?.isbn : null
-      if (!title) return
-      const key = title.toLowerCase().trim()
-      if (inApp.has(key) || (isbn && inApp.has(isbn))) return
-      missing.push({ _missing:true, title, isbn, year:item?.year||null, cover_url:item?.cover_url||null })
-    })
-    return [...otherBooks, ...missing].sort((a,b) => (b.year||0)-(a.year||0))
-  }, [otherBooks, allBiblio])
-
+function InfoTab({ book, otherBooks = [], ttsPlaying, onPlay, onPause, onStop }) {
   return (
     <div className="info-tab">
       {(book.synopsis || book.author_bio) && (
         <div className="info-tts-controls">
-          {ttsState === 'idle' && (
-            <button className="info-tts-play-btn" onClick={onPlay}><Play size={16} /> Reproducir ficha</button>
-          )}
-          {ttsState === 'playing' && (
+          {!ttsPlaying ? (
+            <button className="info-tts-play-btn" onClick={() => onPlay(book)}>
+              <Play size={16} />
+              Reproducir ficha
+            </button>
+          ) : (
             <div className="info-tts-active">
-              <button className="tts-control-btn" onClick={onPause}><Pause size={16} /></button>
-              <button className="tts-control-btn stop" onClick={onStop}><Square size={16} /></button>
-              <span className="tts-indicator"><Volume2 size={14} className="pulse" /> Reproduciendo</span>
-            </div>
-          )}
-          {ttsState === 'paused' && (
-            <div className="info-tts-active">
-              <button className="info-tts-play-btn" onClick={onResume}><Play size={16} /> Continuar reproducción</button>
-              <button className="tts-control-btn stop" onClick={onStop}><Square size={16} /></button>
+              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
+                <Pause size={16} />
+              </button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
+                <Square size={16} />
+              </button>
+              <span className="tts-indicator">
+                <Volume2 size={14} className="pulse" />
+                Reproduciendo
+              </span>
             </div>
           )}
         </div>
       )}
 
-      {book.synopsis   && <section><h3>Sinopsis</h3><p>{book.synopsis}</p></section>}
-      {book.author_bio && <section><h3>Sobre el autor</h3><p>{book.author_bio}</p></section>}
-
-      {allWorks.length > 0 && (
+      {book.synopsis && (
+        <section>
+          <h3>Sinopsis</h3>
+          <p>{book.synopsis}</p>
+        </section>
+      )}
+      {book.author_bio && (
+        <section>
+          <h3>Sobre el autor</h3>
+          <p>{book.author_bio}</p>
+        </section>
+      )}
+      {otherBooks.length > 0 && (
         <section>
           <h3>Otras obras del autor</h3>
           <div className="refs-grid">
-            {allWorks.map((ob, idx) => {
-              if (ob._missing) {
-                return (
-                  <div key={`m-${idx}`} className="ref-item" style={{opacity:0.72,borderStyle:'dashed'}}>
-                    <div className="ref-cover">
-                      {ob.cover_url
-                        ? <img src={ob.cover_url} alt={ob.title} />
-                        : <div style={{width:60,height:85,background:'#f0f0f0',borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center'}}><BookOpen size={22} strokeWidth={1} color="#999"/></div>
-                      }
-                    </div>
-                    <div className="ref-info">
-                      <h4 className="ref-title">{ob.title}</h4>
-                      {ob.year && <span className="ref-year">{ob.year}</span>}
-                      <span className="ref-badge muted">No añadido</span>
-                    </div>
-                  </div>
-                )
-              }
-              const coverPath = ob.cover_local?.includes('/covers/')
-                ? `/data/covers/${ob.cover_local.split('/covers/')[1]}`
-                : ob.cover_local || null
+            {otherBooks.map(ob => {
               const isAnalyzed = ob.status === 'complete' || ob.phase3_done
-              const obIsShell  = ob.status === 'shell' || ob.status === 'shell_error'
+              const isShell = ob.status === 'shell' || ob.status === 'shell_error'
               return (
-                <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{textDecoration:'none'}}>
-                  <div className="ref-cover">
-                    {coverPath
-                      ? <img src={coverPath} alt={ob.title} />
-                      : <div style={{width:60,height:85,background:'#f0f0f0',borderRadius:4,display:'flex',alignItems:'center',justifyContent:'center'}}><BookOpen size={22} strokeWidth={1} color="#999"/></div>
-                    }
-                  </div>
+                <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{ textDecoration: 'none' }}>
+                  {ob.cover_local ? (
+                    <div className="ref-cover">
+                      <img src={`/data/covers/${ob.cover_local.split('/covers/')[1]}`} alt={ob.title} />
+                    </div>
+                  ) : (
+                    <div className="ref-cover">
+                      <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={24} strokeWidth={1} color="#999" />
+                      </div>
+                    </div>
+                  )}
                   <div className="ref-info">
                     <h4 className="ref-title">{ob.title}</h4>
                     {ob.year && <span className="ref-year">{ob.year}</span>}
-                    {isAnalyzed && <span className="ref-badge" style={{color:'var(--gold)',fontWeight:500}}>✦ Analizado</span>}
-                    {obIsShell  && <span className="ref-badge muted">Solo ficha</span>}
-                    {!obIsShell && !isAnalyzed && <span className="ref-badge" style={{color:'#3498db'}}>Sin analizar</span>}
+                    {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
+                    {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
+                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
                   </div>
                 </Link>
               )
@@ -880,123 +888,100 @@ function InfoTab({ book, otherBooks, allBiblio, ttsState, onPlay, onPause, onRes
           </div>
         </section>
       )}
-
-      {!book.synopsis && !book.author_bio && <p className="empty-tab">La información del libro aún se está cargando…</p>}
+      {!book.synopsis && !book.author_bio && (
+        <p className="empty-tab">La información del libro aún se está cargando…</p>
+      )}
     </div>
   )
 }
 
-// ── SummaryTab ─────────────────────────────────────────────────────────────────
-function SummaryTab({ book, ttsState, onPlay, onPause, onResume, onStop }) {
-  return (
-    <div className="prose-content">
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
-        <h2 style={{margin:0}}>Resumen global</h2>
-        {book.global_summary && (
-          <div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
-            {ttsState === 'idle' && (
-              <button className="info-tts-play-btn" onClick={onPlay}><Play size={15}/> Escuchar</button>
-            )}
-            {ttsState === 'playing' && (
-              <>
-                <button className="tts-control-btn" onClick={onPause}><Pause size={15}/></button>
-                <button className="tts-control-btn stop" onClick={onStop}><Square size={15}/></button>
-                <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo</span>
-              </>
-            )}
-            {ttsState === 'paused' && (
-              <>
-                <button className="info-tts-play-btn" onClick={onResume}><Play size={15}/> Continuar</button>
-                <button className="tts-control-btn stop" onClick={onStop}><Square size={15}/></button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-      <p>{book.global_summary || 'No disponible'}</p>
-    </div>
-  )
-}
-
-// ── ChaptersTab ────────────────────────────────────────────────────────────────
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsState, ttsChapter, onPlayChapter, onPlayFromChapter, onPause, onResume, onStop }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onStop, onPause }) {
   const [summarizing, setSummarizing] = React.useState({})
 
-  const handleSummarize = async (e, ch) => {
+  const handleSummarize = async (e, chapter) => {
     e.stopPropagation()
-    setSummarizing(s => ({...s,[ch.id]:true}))
+    setSummarizing(s => ({ ...s, [chapter.id]: true }))
     try {
-      await chapterAPI.summarize(bookId, ch.id)
-      toast('Resumiendo capítulo...', {icon:'⏳'})
+      await chapterAPI.summarize(bookId, chapter.id)
+      toast('Resumiendo capítulo...', { icon: '⏳' })
       const poll = setInterval(async () => {
-        const {data} = await import('../utils/api').then(m => m.booksAPI.get(bookId))
-        const c = data.chapters?.find(c => c.id === ch.id)
-        if (c?.summary_status === 'done') { clearInterval(poll); setSummarizing(s=>({...s,[ch.id]:false})); onChapterSummarized?.(); toast.success('Capítulo resumido') }
+        const { data } = await import('../utils/api').then(m => m.booksAPI.get(bookId))
+        const ch = data.chapters?.find(c => c.id === chapter.id)
+        if (ch?.summary_status === 'done') {
+          clearInterval(poll)
+          setSummarizing(s => ({ ...s, [chapter.id]: false }))
+          onChapterSummarized?.()
+          toast.success('Capítulo resumido')
+        }
       }, 3000)
       setTimeout(() => clearInterval(poll), 120000)
     } catch {
-      setSummarizing(s => ({...s,[ch.id]:false})); toast.error('Error al resumir')
+      setSummarizing(s => ({ ...s, [chapter.id]: false }))
+      toast.error('Error al resumir el capítulo')
     }
   }
 
   if (!chapters.length) return <p className="empty-tab">No se encontraron capítulos</p>
-
   return (
     <div className="chapters-list">
       {chapters.map((ch, i) => (
         <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'open' : ''}`}>
           <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
-            <span className="ch-num">{String(i+1).padStart(2,'0')}</span>
+            <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
             <span className="ch-title">{ch.title}</span>
             <div className="ch-meta">
               {ch.summary_status === 'done'
                 ? <span className="badge badge-green">Resumido</span>
                 : ch.summary_status === 'quota_exceeded'
-                  ? <span className="badge badge-rust" title={ch.summary}>⏰ Cuota agotada</span>
-                  : ch.summary_status === 'skipped'
-                    ? <span className="badge badge-slate">⚠ Omitido</span>
-                    : ch.summary_status === 'processing'
-                      ? <span className="badge badge-gold">Procesando…</span>
-                      : <button className="summarize-ch-btn" onClick={e=>handleSummarize(e,ch)} disabled={summarizing[ch.id]}>
-                          {summarizing[ch.id] ? '…' : '+ Resumir'}
-                        </button>
+                  ? <span className="badge badge-rust" title={ch.summary || 'Cuota agotada'}>⏰ Cuota agotada</span>
+                : ch.summary_status === 'skipped'
+                  ? <span className="badge badge-slate" title="Contenido bloqueado por filtros de seguridad">⚠ Omitido</span>
+                : ch.summary_status === 'processing'
+                  ? <span className="badge badge-gold">Procesando…</span>
+                  : <button
+                      className="summarize-ch-btn"
+                      onClick={(e) => handleSummarize(e, ch)}
+                      disabled={summarizing[ch.id]}
+                    >
+                      {summarizing[ch.id] ? '…' : '+ Resumir'}
+                    </button>
               }
               {ch.summary_status === 'done' && (
-                <div className="ch-tts-btns" onClick={e=>e.stopPropagation()}>
-                  {/* Play / Pausa del capítulo individual */}
+                <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
                   <button
-                    className={`ch-tts-btn ${ttsState==='playing'&&ttsChapter===ch.id ? 'pause' : 'play'}`}
-                    onClick={() => {
-                      if      (ttsState==='playing' && ttsChapter===ch.id) onPause()
-                      else if (ttsState==='paused'  && ttsChapter===ch.id) onResume()
-                      else onPlayChapter(ch)
-                    }}
-                    title={ttsState==='playing'&&ttsChapter===ch.id ? 'Pausar' : 'Reproducir'}
+                    className={`ch-tts-btn ${ttsPlaying && ttsChapter === ch.id ? 'pause' : 'play'}`}
+                    onClick={() => ttsPlaying && ttsChapter === ch.id ? onPause() : onPlayChapter(ch)}
+                    title={ttsPlaying && ttsChapter === ch.id ? 'Pausar' : 'Reproducir'}
                   >
-                    {ttsState==='playing'&&ttsChapter===ch.id ? <Pause size={12}/> : <Play size={12}/>}
+                    {ttsPlaying && ttsChapter === ch.id
+                      ? <Pause size={12} />
+                      : <Play size={12} />
+                    }
                   </button>
-                  {/* Reproducir desde aquí */}
-                  <button className="ch-tts-btn play-from" onClick={()=>onPlayFromChapter(ch)} title="Leer desde aquí">
-                    <Volume2 size={12}/>
+                  <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
+                    <Volume2 size={12} />
                   </button>
                 </div>
               )}
-              {ch.page_start && <span className="ch-pages">p.{ch.page_start}–{ch.page_end}</span>}
-              {expanded===ch.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+              {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
+              {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>
           </button>
           <AnimatePresence>
-            {expanded===ch.id && (
-              <motion.div className="chapter-body" initial={{height:0,opacity:0}} animate={{height:'auto',opacity:1}} exit={{height:0,opacity:0}}>
+            {expanded === ch.id && (
+              <motion.div className="chapter-body"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}>
                 <div className="chapter-body-inner">
                   {ch.summary
                     ? <p>{ch.summary}</p>
-                    : <p className="muted">Resumen no disponible</p>
+                    : <p className="muted">Resumen no disponible para este capítulo</p>
                   }
                   {ch.key_events?.length > 0 && (
                     <div className="key-events">
                       <strong>Eventos clave:</strong>
-                      <ul>{ch.key_events.map((e,i) => <li key={i}>{e}</li>)}</ul>
+                      <ul>{ch.key_events.map((e, i) => <li key={i}>{e}</li>)}</ul>
                     </div>
                   )}
                 </div>
@@ -1009,92 +994,138 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   )
 }
 
-// ── CharactersTab ──────────────────────────────────────────────────────────────
-function CharactersTab({ characters, bookId, onReanalyzed, status, ttsState, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onPause, onResume, onStop }) {
+function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause }) {
   const [reanalyzing, setReanalyzing] = React.useState(false)
 
   const handleReanalyze = async () => {
     setReanalyzing(true)
     try {
       await reanalyzeCharacters(bookId)
-      toast('Reanalizando personajes…',{icon:'⏳'})
-      setTimeout(async () => { await onReanalyzed(); setReanalyzing(false) }, 60000)
-    } catch { toast.error('Error al reanalizar'); setReanalyzing(false) }
+      toast('Reanalizando personajes…', { icon: '⏳' })
+      setTimeout(async () => {
+        await onReanalyzed()
+        setReanalyzing(false)
+      }, 60000)
+    } catch {
+      toast.error('Error al reanalizar')
+      setReanalyzing(false)
+    }
   }
 
   return (
     <div className="characters-tab">
       <div className="characters-header">
         <div className="characters-info">
-          <span className="characters-count">{characters.length} personaje{characters.length!==1?'s':''}</span>
-          {ttsState==='playing' && ttsCharacter && (
-            <span className="tts-indicator"><Volume2 size={14} className="pulse"/> Reproduciendo personajes</span>
-          )}
-          {ttsState==='paused' && (
-            <span className="tts-indicator" style={{color:'var(--slate)'}}>⏸ Pausado</span>
+          <span className="characters-count">
+            {characters.length} personaje{characters.length !== 1 ? 's' : ''}
+          </span>
+          {ttsPlaying && ttsCharacter && (
+            <span className="tts-indicator">
+              <Volume2 size={14} className="pulse" />
+              Reproduciendo personajes
+            </span>
           )}
         </div>
         <div className="characters-actions">
-          {ttsState==='playing' && (
-            <><button className="tts-control-btn" onClick={onPause}><Pause size={16}/></button>
-              <button className="tts-control-btn stop" onClick={onStop}><Square size={16}/></button></>
-          )}
-          {ttsState==='paused' && (
-            <><button className="tts-control-btn resume" onClick={onResume}><Play size={16}/></button>
-              <button className="tts-control-btn stop" onClick={onStop}><Square size={16}/></button></>
+          {ttsPlaying && (
+            <>
+              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
+                <Pause size={16} />
+              </button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
+                <Square size={16} />
+              </button>
+            </>
           )}
           {status?.phase3_done && (
-            <button className="reanalyze-chars-btn" onClick={handleReanalyze} disabled={reanalyzing}>
+            <button
+              className="reanalyze-chars-btn"
+              onClick={handleReanalyze}
+              disabled={reanalyzing}
+            >
               {reanalyzing ? '⏳ Reanalizando…' : '↻ Reanalizar'}
             </button>
           )}
         </div>
       </div>
-
       {!characters.length
-        ? <p className="empty-tab">No se encontraron personajes.</p>
-        : (
-          <div className="characters-grid">
+        ? <p className="empty-tab">No se encontraron personajes. Pulsa ↻ Reanalizar para generarlos.</p>
+        : <div className="characters-grid">
             {characters.map((char, i) => {
-              const isPlaying = ttsState==='playing' && ttsCharacter===char.name
+              const isPlaying = ttsPlaying && ttsCharacter === char.name
               return (
                 <div key={i} className={`char-card ${isPlaying ? 'char-playing' : ''}`}>
-                  <div className="char-avatar">{char.name?.[0]?.toUpperCase()||'?'}</div>
+                  <div className="char-avatar">
+                    {char.name?.[0]?.toUpperCase() || '?'}
+                  </div>
                   <div className="char-info">
                     <div className="char-header">
                       <h3 className="char-name">{char.name}</h3>
                       <div className="char-tts-btns">
-                        <button className="char-tts-btn" disabled={ttsState==='playing'} onClick={()=>onPlayCharacter(char)} title="Reproducir">
-                          {isPlaying ? <Volume2 size={14} className="pulse"/> : <Play size={14}/>}
+                        <button
+                          className="char-tts-btn"
+                          onClick={() => onPlayCharacter(char)}
+                          disabled={ttsPlaying}
+                          title="Reproducir este personaje"
+                        >
+                          {isPlaying ? <Volume2 size={14} className="pulse" /> : <Play size={14} />}
                         </button>
-                        <button className="char-tts-btn from-here" disabled={ttsState==='playing'} onClick={()=>onPlayFromCharacter(char,characters)} title="Desde aquí">
-                          <PlayCircle size={14}/>
+                        <button
+                          className="char-tts-btn from-here"
+                          onClick={() => onPlayFromCharacter(char, characters)}
+                          disabled={ttsPlaying}
+                          title="Reproducir desde aquí"
+                        >
+                          <PlayCircle size={14} />
                         </button>
                       </div>
                     </div>
-                    {char.role        && <span className={`char-role role-${char.role}`}>{char.role}</span>}
+                    {char.role && (
+                      <span className={`char-role role-${char.role}`}>{char.role}</span>
+                    )}
                     {char.description && <p className="char-desc">{char.description}</p>}
-                    {char.personality && <div className="char-section"><strong>Personalidad</strong><p>{char.personality}</p></div>}
-                    {char.arc         && <div className="char-section"><strong>Evolución</strong><p>{char.arc}</p></div>}
-                    {char.importance  && <div className="char-section"><strong>Importancia</strong><p>{char.importance}</p></div>}
-                    {char.relationships && typeof char.relationships === 'object' && !Array.isArray(char.relationships) && Object.keys(char.relationships).length > 0 && (
+                    {char.personality && (
+                      <div className="char-section">
+                        <strong>Personalidad</strong>
+                        <p>{char.personality}</p>
+                      </div>
+                    )}
+                    {char.arc && (
+                      <div className="char-section">
+                        <strong>Evolución</strong>
+                        <p>{char.arc}</p>
+                      </div>
+                    )}
+                    {char.importance && (
+                      <div className="char-section">
+                        <strong>Importancia</strong>
+                        <p>{char.importance}</p>
+                      </div>
+                    )}
+                    {char.relationships && Object.keys(char.relationships).length > 0 && (
                       <div className="char-section">
                         <strong>Relaciones</strong>
                         <ul className="char-relations">
-                          {Object.entries(char.relationships).map(([n,r],j) => <li key={j}><em>{n}</em>: {r}</li>)}
+                          {Object.entries(char.relationships).map(([name, rel], j) => (
+                            <li key={j}><em>{name}</em>: {rel}</li>
+                          ))}
                         </ul>
                       </div>
                     )}
                     {char.key_moments?.length > 0 && (
                       <div className="char-section">
                         <strong>Momentos clave</strong>
-                        {char.key_moments.map((q,j) => <blockquote key={j} className="char-quote">{q}</blockquote>)}
+                        {char.key_moments.map((q, j) => (
+                          <blockquote key={j} className="char-quote">{q}</blockquote>
+                        ))}
                       </div>
                     )}
                     {char.quotes?.length > 0 && (
                       <div className="char-section">
-                        <strong>Citas memorables</strong>
-                        {char.quotes.map((q,j) => <blockquote key={j} className="char-quote">{q}</blockquote>)}
+                        <strong>Citas y momentos memorables</strong>
+                        {char.quotes.map((q, j) => (
+                          <blockquote key={j} className="char-quote">{q}</blockquote>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -1102,94 +1133,96 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsState, tts
               )
             })}
           </div>
-        )
       }
     </div>
   )
 }
 
-// ── RefsTab ────────────────────────────────────────────────────────────────────
 function RefsTab({ book }) {
-  const t = encodeURIComponent(book.title||'')
-  const a = encodeURIComponent(book.author||'')
-  const isbn = book.isbn||''
+  const bookTitle = encodeURIComponent(book.title || '')
+  const author = encodeURIComponent(book.author || '')
+  const isbn = book.isbn || ''
+  const refs = {
+    wikipedia: `https://es.wikipedia.org/wiki/${bookTitle}`,
+    goodreads: `https://www.goodreads.com/search?q=${bookTitle}`,
+    youtube: `https://www.youtube.com/results?search_query=${bookTitle}+${author}`,
+    amazon: `https://www.amazon.es/s?k=${bookTitle}+${author}`,
+    googleBooks: isbn ? `https://books.google.es/books?isbn=${isbn}` : `https://books.google.es/books?q=${bookTitle}+${author}`,
+    library: `https://www.worldcat.org/search?q=${bookTitle}`,
+    authorWikipedia: `https://es.wikipedia.org/wiki/${author}`,
+    authorGoodreads: `https://www.goodreads.com/search?q=${author}`,
+    authorX: `https://twitter.com/search?q=${author}`,
+    authorInstagram: `https://www.instagram.com/explore/tags/${author.replace(/\s+/g, '')}/`,
+    authorYoutube: `https://www.youtube.com/results?search_query=${author}+entrevista`
+  }
   return (
     <div className="refs-tab">
       <h3>Referencias externas</h3>
       <p className="refs-subtitle">Enlaces para ampliar información sobre el libro y su autor</p>
       <div className="refs-sections">
         <div className="refs-section">
-          <h4><BookOpen size={18}/>Sobre el libro</h4>
+          <h4><BookOpen size={18} />Sobre el libro</h4>
           <div className="refs-links">
-            {[
-              ['Wikipedia',      `https://es.wikipedia.org/wiki/${t}`],
-              ['Goodreads',      `https://www.goodreads.com/search?q=${t}`],
-              ['YouTube',        `https://www.youtube.com/results?search_query=${t}+${a}`],
-              ['Amazon',         `https://www.amazon.es/s?k=${t}+${a}`],
-              ['Google Books',   isbn?`https://books.google.es/books?isbn=${isbn}`:`https://books.google.es/books?q=${t}+${a}`],
-              ['WorldCat',       `https://www.worldcat.org/search?q=${t}`],
-            ].map(([label,href]) => (
-              <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="ref-link">
-                <ExternalLink size={15}/><span>{label}</span>
-              </a>
-            ))}
+            <a href={refs.wikipedia} target="_blank" rel="noopener noreferrer" className="ref-link"><ExternalLink size={16} /><span>Wikipedia</span></a>
+            <a href={refs.goodreads} target="_blank" rel="noopener noreferrer" className="ref-link"><Star size={16} /><span>Goodreads</span></a>
+            <a href={refs.youtube} target="_blank" rel="noopener noreferrer" className="ref-link"><Play size={16} /><span>YouTube</span></a>
+            <a href={refs.amazon} target="_blank" rel="noopener noreferrer" className="ref-link"><ExternalLink size={16} /><span>Amazon</span></a>
+            <a href={refs.googleBooks} target="_blank" rel="noopener noreferrer" className="ref-link"><BookOpen size={16} /><span>Google Books</span></a>
+            <a href={refs.library} target="_blank" rel="noopener noreferrer" className="ref-link"><BookOpen size={16} /><span>WorldCat</span></a>
           </div>
         </div>
         {book.author && (
           <div className="refs-section">
-            <h4><User size={18}/>Sobre el autor</h4>
+            <h4><User size={18} />Sobre el autor</h4>
             <div className="refs-links">
-              {[
-                ['Wikipedia (autor)',     `https://es.wikipedia.org/wiki/${a}`],
-                ['Goodreads (autor)',     `https://www.goodreads.com/search?q=${a}&search_type=author`],
-                ['Entrevistas YouTube',   `https://www.youtube.com/results?search_query=${a}+entrevista`],
-                ['X / Twitter',          `https://twitter.com/search?q=${a}`],
-                ['Instagram',            `https://www.instagram.com/explore/search/keyword/?q=${a}`],
-              ].map(([label,href]) => (
-                <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="ref-link">
-                  <ExternalLink size={15}/><span>{label}</span>
-                </a>
-              ))}
+              <a href={refs.authorWikipedia} target="_blank" rel="noopener noreferrer" className="ref-link"><ExternalLink size={16} /><span>Wikipedia (autor)</span></a>
+              <a href={refs.authorGoodreads} target="_blank" rel="noopener noreferrer" className="ref-link"><Star size={16} /><span>Goodreads (autor)</span></a>
+              <a href={refs.authorYoutube} target="_blank" rel="noopener noreferrer" className="ref-link"><Play size={16} /><span>Entrevistas YouTube</span></a>
+              <a href={refs.authorX} target="_blank" rel="noopener noreferrer" className="ref-link"><ExternalLink size={16} /><span>X / Twitter</span></a>
+              <a href={refs.authorInstagram} target="_blank" rel="noopener noreferrer" className="ref-link"><ExternalLink size={16} /><span>Instagram</span></a>
             </div>
           </div>
         )}
       </div>
-      <p className="refs-note">💡 Estos enlaces se generan automáticamente. Algunos pueden no estar disponibles.</p>
+      <p className="refs-note">💡 Estos enlaces se generan automáticamente.</p>
     </div>
   )
 }
 
-// ── PodcastTab ─────────────────────────────────────────────────────────────────
 function PodcastTab({ book, playing, onToggle }) {
-  const hasScript = !!book?.podcast_script
-  const hasAudio  = !!book?.podcast_audio_path
+  const hasScript = book?.podcast_script
+  const hasAudio = book?.podcast_audio_path
 
-  if (!hasScript && !hasAudio) return (
-    <div className="empty-tab">
-      <Mic size={48} strokeWidth={1}/>
-      <p>El podcast aún no ha sido generado</p>
-    </div>
-  )
+  if (!hasScript && !hasAudio) {
+    return (
+      <div className="empty-tab">
+        <Mic size={48} strokeWidth={1} />
+        <p>El podcast aún no ha sido generado</p>
+      </div>
+    )
+  }
 
   const processScript = (script) => {
-    const sections = []; let cur = null
-    script.split('\n').filter(l=>l.trim()).forEach(line => {
-      const t = line.trim()
-      if ((t===t.toUpperCase()&&t.length>3) || /^(INTRODUCCIÓN|CAPÍTULO|PARTE|PERSONAJES|CONCLUSIÓN|ANÁLISIS)/i.test(t) || /^[#*_=]/.test(t)) {
-        if (cur) sections.push(cur)
-        cur = { title: t.replace(/^[#*_=]+\s*/,'').replace(/[#*_=]+$/,''), content:[] }
-      } else if (/^[-•]\s/.test(t)) {
-        if (!cur) cur={title:'',content:[]}
-        cur.content.push({type:'dialogue',text:t.substring(2)})
-      } else if (t.endsWith('?')) {
-        if (!cur) cur={title:'',content:[]}
-        cur.content.push({type:'question',text:t})
-      } else if (t) {
-        if (!cur) cur={title:'',content:[]}
-        cur.content.push({type:'paragraph',text:t})
+    const lines = script.split('\n').filter(l => l.trim())
+    const sections = []
+    let currentSection = null
+    lines.forEach(line => {
+      const trimmed = line.trim()
+      if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 || /^(INTRODUCCIÓN|CAPÍTULO|PARTE|PERSONAJES|CONCLUSIÓN|ANÁLISIS)/i.test(trimmed) || /^(#|##|\*\*|__|=)/.test(trimmed)) {
+        if (currentSection) sections.push(currentSection)
+        currentSection = { type: 'section', title: trimmed.replace(/^[#*_=]+\s*/, '').replace(/[#*_=]+$/, ''), content: [] }
+      } else if (/^[-•]\s/.test(trimmed)) {
+        if (!currentSection) currentSection = { type: 'default', content: [] }
+        currentSection.content.push({ type: 'dialogue', text: trimmed.substring(2) })
+      } else if (trimmed.endsWith('?')) {
+        if (!currentSection) currentSection = { type: 'default', content: [] }
+        currentSection.content.push({ type: 'question', text: trimmed })
+      } else if (trimmed) {
+        if (!currentSection) currentSection = { type: 'default', content: [] }
+        currentSection.content.push({ type: 'paragraph', text: trimmed })
       }
     })
-    if (cur) sections.push(cur)
+    if (currentSection) sections.push(currentSection)
     return sections
   }
 
@@ -1200,21 +1233,21 @@ function PodcastTab({ book, playing, onToggle }) {
       {hasAudio && (
         <div className="podcast-player">
           <button className="podcast-play-btn" onClick={onToggle}>
-            {playing ? <Pause size={24}/> : <Play size={24}/>}
+            {playing ? <Pause size={24} /> : <Play size={24} />}
             <span>{playing ? 'Pausar podcast' : 'Reproducir podcast'}</span>
           </button>
         </div>
       )}
       {hasScript && (
         <div className="podcast-script">
-          <h3><Volume2 size={18}/>Guión del podcast</h3>
+          <h3><Volume2 size={18} />Guión del podcast</h3>
           <div className="script-content-enhanced">
-            {sections.map((sec,i) => (
-              <div key={i} className={`script-section ${sec.title ? 'section' : 'default'}`}>
-                {sec.title && <h4 className="section-title"><span className="section-marker">▸</span>{sec.title}</h4>}
-                {sec.content.map((item,j) => {
-                  if (item.type==='dialogue') return <p key={j} className="script-dialogue"><span className="dialogue-marker">•</span>{item.text}</p>
-                  if (item.type==='question') return <p key={j} className="script-question"><span className="question-marker">?</span>{item.text}</p>
+            {sections.map((section, i) => (
+              <div key={i} className={`script-section ${section.type}`}>
+                {section.title && (<h4 className="section-title"><span className="section-marker">▸</span>{section.title}</h4>)}
+                {section.content.map((item, j) => {
+                  if (item.type === 'dialogue') return <p key={j} className="script-dialogue"><span className="dialogue-marker">•</span>{item.text}</p>
+                  if (item.type === 'question') return <p key={j} className="script-question"><span className="question-marker">?</span>{item.text}</p>
                   return <p key={j} className="script-paragraph">{item.text}</p>
                 })}
               </div>
@@ -1225,3 +1258,150 @@ function PodcastTab({ book, playing, onToggle }) {
     </div>
   )
 }
+
+// ── AnalysisTab ────────────────────────────────────────────────────────────────
+// Mueve el pipeline de la cabecera a este tab, con cada fase como sección independiente
+function AnalysisTab({ status, isProcessing, isStuck, onTrigger, onCancel }) {
+  if (!status) return <p className="empty-tab">Cargando estado del análisis…</p>
+
+  const phases = [
+    {
+      id: 'phase1',
+      label: 'Fase 1 — Identificación',
+      desc:  'Ficha, sinopsis, portada, bio del autor y bibliografía',
+      done:  status.phase1_done,
+      trigger: () => onTrigger(1),
+      canTrigger: true,
+    },
+    {
+      id: 'phase2',
+      label: 'Fase 2 — Estructura',
+      desc:  'Detección de capítulos y partes del libro',
+      done:  status.phase2_done,
+      trigger: () => onTrigger(2),
+      canTrigger: status.phase1_done,
+    },
+    {
+      id: 'phase3a',
+      label: 'Fase 3a — Resúmenes de capítulos',
+      desc:  'Resumen e hitos clave de cada capítulo',
+      done:  status.chapters_summarized || status.phase3_done,
+      trigger: () => onTrigger(3),
+      canTrigger: status.phase2_done,
+      resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0,
+      progress: status.chapters_total > 0
+        ? `${status.chapters_done}/${status.chapters_total} capítulos`
+        : null,
+    },
+    {
+      id: 'phase3b',
+      label: 'Fase 3b — Análisis de personajes',
+      desc:  'Perfiles de personajes, relaciones y momentos clave',
+      done:  status.phase3_done,
+      trigger: () => onTrigger('3b'),
+      canTrigger: status.chapters_summarized || status.phase3_done,
+    },
+    {
+      id: 'phase3c',
+      label: 'Fase 3c — Resumen global y mapa mental',
+      desc:  'Resumen global de la obra y mapa mental de conceptos',
+      done:  status.phase3_done,
+      trigger: () => onTrigger('3b'),
+      canTrigger: status.chapters_summarized || status.phase3_done,
+    },
+    {
+      id: 'podcast',
+      label: 'Podcast',
+      desc:  'Generación del guión y audio del podcast',
+      done:  status.podcast_done,
+      trigger: () => onTrigger('podcast'),
+      canTrigger: status.phase3_done,
+    },
+  ]
+
+  const firstPending = phases.findIndex(p => !p.done)
+
+  return (
+    <div className="analysis-tab">
+      <h2>Estado del análisis</h2>
+      <p className="analysis-desc">Cada fase puede relanzarse de forma independiente.</p>
+
+      {isStuck && (
+        <div className="pipeline-stuck-banner">
+          <AlertCircle size={14} />
+          <span>Proceso bloqueado — el worker puede haber reiniciado</span>
+          <button className="unlock-btn" onClick={onCancel}>🔓 Desbloquear</button>
+        </div>
+      )}
+
+      <div className="analysis-phases">
+        {phases.map((phase, i) => {
+          const isActive = isProcessing && i === firstPending
+          return (
+            <div key={phase.id} className={`analysis-phase ${phase.done ? 'done' : ''} ${isActive ? 'active' : ''}`}>
+              <div className="phase-icon">
+                {phase.done
+                  ? <CheckCircle size={18} />
+                  : isActive
+                    ? <Loader size={18} className="spin" />
+                    : <div className="phase-dot">{i + 1}</div>
+                }
+              </div>
+              <div className="phase-body">
+                <div className="phase-header">
+                  <span className="phase-label">{phase.label}</span>
+                  {phase.progress && isActive && (
+                    <span className="phase-progress">{phase.progress}</span>
+                  )}
+                  <div className="phase-actions">
+                    {phase.canTrigger && !isProcessing && !isStuck && (
+                      <button className="phase-btn" onClick={phase.trigger}>
+                        {phase.done ? '↻ Repetir' : phase.resumable ? '▶ Reanudar' : '▶ Iniciar'}
+                      </button>
+                    )}
+                    {isActive && (
+                      <button className="phase-btn danger" onClick={onCancel}>✕ Cancelar</button>
+                    )}
+                  </div>
+                </div>
+                <p className="phase-desc">{phase.desc}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {status.error_msg && (
+        <div className={`pipeline-error ${status.error_msg.includes('Cuota') || status.status === 'quota_exceeded' ? 'quota-error' : ''}`}>
+          <AlertCircle size={14} />
+          <span>{status.error_msg}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── SummaryTab ─────────────────────────────────────────────────────────────────
+function SummaryTab({ book, ttsPlaying, onPlay, onPause, onStop }) {
+  return (
+    <div className="prose-content">
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
+        <h2 style={{margin:0}}>Resumen global</h2>
+        {book.global_summary && (
+          <div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+            {!ttsPlaying
+              ? <button className="info-tts-play-btn" onClick={onPlay}><Play size={15}/> Escuchar</button>
+              : <>
+                  <button className="tts-control-btn pause" onClick={onPause}><Pause size={15}/></button>
+                  <button className="tts-control-btn stop"  onClick={onStop}><Square size={15}/></button>
+                  <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo</span>
+                </>
+            }
+          </div>
+        )}
+      </div>
+      <p>{book.global_summary || 'No disponible'}</p>
+    </div>
+  )
+}
+
