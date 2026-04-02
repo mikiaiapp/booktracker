@@ -838,3 +838,18 @@
   .refs-links { grid-template-columns: 1fr; }
   .refs-grid { grid-template-columns: 1fr; }
 }
+
+/* ── Podcast reproduciendo banner ───────────────────────── */
+.podcast-playing-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: rgba(201, 169, 110, 0.08);
+  border: 1.5px solid rgba(201, 169, 110, 0.25);
+  border-radius: var(--radius-lg);
+  margin-bottom: 2rem;
+  font-size: 0.875rem;
+  color: var(--gold);
+  font-weight: 500;
+}
