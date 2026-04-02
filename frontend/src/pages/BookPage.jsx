@@ -983,8 +983,16 @@ export default function BookPage() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
+// Statuses that mean the book is stuck / should show unlock
+const STUCK_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
+
 function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = {} }) {
   if (!status) return null
+
+  // A book is "stuck" if its status is a processing state but it's not actively polling
+  // (worker died, container restarted, etc.). Show unlock button always when in these states.
+  const isStuck = STUCK_STATUSES.includes(status.status)
+
   const steps = [
     { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
     { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
@@ -993,23 +1001,40 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
     { label: 'Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
 
+  const firstPendingIdx = steps.findIndex(x => !x.done)
+
   return (
     <div className="pipeline">
+      {/* Stuck book warning + unlock button — always visible when blocked */}
+      {isStuck && (
+        <div className="pipeline-stuck-banner">
+          <AlertCircle size={13} />
+          <span>Proceso bloqueado o en curso</span>
+          <button className="unlock-btn" onClick={onCancel} title="Desbloquear: resetea el estado para poder relanzar las fases">
+            🔓 Desbloquear
+          </button>
+        </div>
+      )}
+
       {steps.map((s, i) => (
         <div key={i} className={`pipeline-step ${s.done ? 'done' : ''}`}>
           {s.done
             ? <CheckCircle size={14} />
-            : isProcessing && !s.done && i === steps.findIndex(x => !x.done)
+            : isProcessing && !s.done && i === firstPendingIdx
               ? <Loader size={14} className="spin" />
               : <div className="step-dot" />
           }
           <span>{s.label}{s.sublabel && <span className="step-sublabel"> ({s.sublabel})</span>}</span>
-          {s.canTrigger && !isProcessing && (
+          {s.canTrigger && !isProcessing && !isStuck && (
             <button className="trigger-btn" onClick={s.trigger}>
               {s.done ? 'Repetir' : s.resumable ? 'Reanudar' : 'Iniciar'}
             </button>
           )}
-          {isProcessing && i === steps.findIndex(x => !x.done) && (
+          {/* Show repeat button even for stuck books once unlocked (isStuck covers the lock) */}
+          {s.done && !isProcessing && !isStuck && (
+            null // already handled above
+          )}
+          {isProcessing && i === firstPendingIdx && (
             <button className="cancel-btn" onClick={onCancel} title="Cancelar proceso">
               Cancelar
             </button>

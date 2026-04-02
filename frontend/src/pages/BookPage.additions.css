@@ -67,3 +67,66 @@
   border-color: var(--gold);
   border-style: dashed;
 }
+
+/* ── Profile logout button ──────────────────────────────── */
+.profile-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  background: none;
+  border: 1.5px solid rgba(192, 57, 43, 0.35);
+  border-radius: 6px;
+  color: #c0392b;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.profile-logout-btn:hover {
+  background: #fff0f0;
+  border-color: #c0392b;
+}
+
+/* ── Unlock/unblock button in pipeline ──────────────────── */
+.unlock-btn {
+  margin-left: 0.4rem;
+  padding: 0.2rem 0.65rem;
+  background: none;
+  border: 1.5px solid #e67e22;
+  color: #e67e22;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.unlock-btn:hover {
+  background: #e67e22;
+  color: white;
+}
+
+/* ── Stuck book banner in pipeline ─────────────────────── */
+.pipeline-stuck-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(230, 126, 34, 0.08);
+  border: 1.5px solid rgba(230, 126, 34, 0.35);
+  border-radius: var(--radius);
+  font-size: 0.78rem;
+  color: #e67e22;
+  margin-bottom: 0.5rem;
+}
+
+.pipeline-stuck-banner svg {
+  flex-shrink: 0;
+}
+
+.pipeline-stuck-banner span {
+  flex: 1;
+}

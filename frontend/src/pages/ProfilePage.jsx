@@ -2,13 +2,14 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
-import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle } from 'lucide-react'
+import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle, LogOut } from 'lucide-react'
 import { api } from '../utils/api'
 import './ProfilePage.css'
 
 export default function ProfilePage() {
   const user = useAuthStore(s => s.user)
   const init = useAuthStore(s => s.init)
+  const logout = useAuthStore(s => s.logout)
   const navigate = useNavigate()
 
   // Change password
@@ -22,6 +23,11 @@ export default function ProfilePage() {
   const [tfaLoading, setTfaLoading] = useState(false)
   const [tfaEnabled, setTfaEnabled] = useState(!!user?.totp_enabled)
   const [disablePassword, setDisablePassword] = useState('')
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
 
   const handleChangePassword = async () => {
     if (pwForm.new !== pwForm.confirm) {
@@ -109,7 +115,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="profile-grid">
-        {/* Info usuario */}
+        {/* Info usuario + logout */}
         <div className="profile-card">
           <div className="profile-avatar">
             {user?.username?.[0]?.toUpperCase()}
@@ -118,6 +124,14 @@ export default function ProfilePage() {
             <h2>{user?.username}</h2>
             <p>{user?.email}</p>
           </div>
+          <button
+            className="profile-logout-btn"
+            onClick={handleLogout}
+            title="Cerrar sesión"
+          >
+            <LogOut size={16} />
+            <span>Cerrar sesión</span>
+          </button>
         </div>
 
         {/* Cambiar contraseña */}
