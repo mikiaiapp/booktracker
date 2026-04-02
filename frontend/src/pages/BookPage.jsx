@@ -284,10 +284,8 @@ export default function BookPage() {
 
   const playInfo = (book) => {
     stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
-    let text = ''
-    if (book.synopsis) text += `Sinopsis. ${book.synopsis}. `
-    if (book.author_bio) text += `Sobre el autor. ${book.author_bio}.`
-    if (!text) { toast('No hay contenido para reproducir', { icon: 'ℹ️' }); return }
+    const text = book.synopsis || ''
+    if (!text) { toast('No hay sinopsis disponible', { icon: 'ℹ️' }); return }
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
     _speakInfoText(text)
   }
@@ -719,7 +717,7 @@ export default function BookPage() {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} allBiblio={book.author_bibliography || []} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={() => stopInfoTTS()} />}
+            {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
               <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { stopTTS(); const q=[{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); ttsActiveRef.current=true; setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
@@ -821,11 +819,52 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
   )
 }
 
-function BookCover({ src, alt, size = 60 }) {
-  const [err, setErr] = React.useState(false)
+function BookCover({ src, alt, size = 60, title, isbn }) {
+  const [imgSrc, setImgSrc] = React.useState(src || null)
+  const [tried, setTried] = React.useState(false)
   const h = Math.round(size * 1.42)
-  if (src && !err) return (
-    <img src={src} alt={alt} onError={() => setErr(true)}
+
+  // Si no hay imagen inicial, intentar buscarla client-side
+  React.useEffect(() => {
+    if (imgSrc || tried) return
+    setTried(true)
+    const fetchCover = async () => {
+      // 1. Intentar Google Books por ISBN
+      if (isbn) {
+        try {
+          const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`)
+          const data = await r.json()
+          const links = data.items?.[0]?.volumeInfo?.imageLinks
+          if (links) {
+            const url = (links.thumbnail || links.smallThumbnail || '').replace('zoom=1','zoom=2').replace('http://','https://')
+            if (url) { setImgSrc(url); return }
+          }
+        } catch {}
+      }
+      // 2. Intentar Google Books por título
+      if (title) {
+        try {
+          const q = encodeURIComponent(title)
+          const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)
+          const data = await r.json()
+          const links = data.items?.[0]?.volumeInfo?.imageLinks
+          if (links) {
+            const url = (links.thumbnail || links.smallThumbnail || '').replace('zoom=1','zoom=2').replace('http://','https://')
+            if (url) { setImgSrc(url); return }
+          }
+        } catch {}
+      }
+      // 3. Open Library por ISBN
+      if (isbn) {
+        setImgSrc(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
+      }
+    }
+    fetchCover()
+  }, [])
+
+  if (imgSrc) return (
+    <img src={imgSrc} alt={alt}
+      onError={() => setImgSrc(null)}
       style={{ width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
   )
   return (
@@ -836,45 +875,10 @@ function BookCover({ src, alt, size = 60 }) {
   )
 }
 
-function InfoTab({ book, otherBooks = [], allBiblio = [], ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
-  // Portada de un libro de la app (cover_local o cover_url)
-  const appCoverSrc = (ob) => {
-    if (!ob.cover_local) return ob.cover_url || null
-    return ob.cover_local.includes('/covers/')
-      ? `/data/covers/${ob.cover_local.split('/covers/')[1]}`
-      : ob.cover_local
-  }
-
-  // Lista unificada: libros en la app + entradas de bibliografía no presentes en la app
-  const allWorks = React.useMemo(() => {
-    const inAppKeys = new Set()
-    otherBooks.forEach(b => {
-      inAppKeys.add((b.title || '').toLowerCase().trim())
-      if (b.isbn) inAppKeys.add(String(b.isbn))
-    })
-    const biblioItems = Array.isArray(allBiblio) ? allBiblio : []
-    const missing = biblioItems.filter(item => {
-      const title = typeof item === 'string' ? item : item?.title
-      const isbn  = typeof item === 'object' && item ? item.isbn : null
-      if (!title) return false
-      if (inAppKeys.has(title.toLowerCase().trim())) return false
-      if (isbn && inAppKeys.has(String(isbn))) return false
-      return true
-    }).map(item => ({
-      _missing: true,
-      title:     typeof item === 'string' ? item : (item.title || ''),
-      isbn:      typeof item === 'object' && item ? (item.isbn  || null) : null,
-      year:      typeof item === 'object' && item ? (item.year  || null) : null,
-      cover_url: typeof item === 'object' && item ? (item.cover_url || null) : null,
-    }))
-    const combined = [...otherBooks, ...missing]
-    combined.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0))
-    return combined
-  }, [otherBooks, allBiblio])
-
+function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
   return (
     <div className="info-tab">
-      {(book.synopsis || book.author_bio) && (
+      {book.synopsis && (
         <div className="info-tts-controls">
           {!ttsPlaying && !ttsPaused && (
             <button className="info-tts-play-btn" onClick={() => onPlay(book)}>
@@ -898,56 +902,8 @@ function InfoTab({ book, otherBooks = [], allBiblio = [], ttsPlaying, ttsPaused,
       )}
 
       {book.synopsis && <section><h3>Sinopsis</h3><p>{book.synopsis}</p></section>}
-      {book.author_bio && <section><h3>Sobre el autor</h3><p>{book.author_bio}</p></section>}
-
-      {allWorks.length > 0 && (
-        <section>
-          <h3>Otras obras del autor</h3>
-          <div className="refs-grid">
-            {allWorks.map((ob, idx) => {
-              if (ob._missing) {
-                // Libro solo en bibliografía — no está en la app
-                // Portada: cover_url de Google Books (zoom=2), fallback Open Library por ISBN
-                const coverSrc = ob.cover_url
-                  || (ob.isbn ? `https://covers.openlibrary.org/b/isbn/${ob.isbn}-M.jpg` : null)
-                return (
-                  <div key={'m' + idx} className="ref-item ref-item--missing">
-                    <div className="ref-cover">
-                      <BookCover src={coverSrc} alt={ob.title} />
-                    </div>
-                    <div className="ref-info">
-                      <h4 className="ref-title">{ob.title}</h4>
-                      {ob.year && <span className="ref-year">{ob.year}</span>}
-                      <span className="ref-badge ref-badge--missing">No añadido</span>
-                    </div>
-                  </div>
-                )
-              }
-              // Libro en la app
-              const isAnalyzed = ob.status === 'complete' || ob.phase3_done
-              const isShell    = ob.status === 'shell' || ob.status === 'shell_error'
-              const coverSrc   = appCoverSrc(ob)
-                || (ob.isbn ? `https://covers.openlibrary.org/b/isbn/${ob.isbn}-M.jpg` : null)
-              return (
-                <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{ textDecoration: 'none' }}>
-                  <div className="ref-cover">
-                    <BookCover src={coverSrc} alt={ob.title} />
-                  </div>
-                  <div className="ref-info">
-                    <h4 className="ref-title">{ob.title}</h4>
-                    {ob.year && <span className="ref-year">{ob.year}</span>}
-                    {isAnalyzed && <span className="ref-badge" style={{ color: 'var(--gold)', fontWeight: 500 }}>✦ Analizado</span>}
-                    {isShell    && <span className="ref-badge" style={{ color: 'var(--mist)' }}>Solo ficha</span>}
-                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ color: '#3498db' }}>Sin analizar</span>}
-                  </div>
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-      )}
-      {!book.synopsis && !book.author_bio && (
-        <p className="empty-tab">La información del libro aún se está cargando…</p>
+      {!book.synopsis && (
+        <p className="empty-tab">La sinopsis aún se está cargando…</p>
       )}
     </div>
   )
