@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
-  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText
+  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
@@ -18,7 +18,8 @@ const TABS = [
   { id: 'summary', label: 'Resumen global', icon: Brain },
   { id: 'mindmap', label: 'Mapa mental', icon: Map },
   { id: 'podcast', label: 'Podcast', icon: Mic },
-  { id: 'refs', label: 'Referencias', icon: ExternalLink },
+  { id: 'refs',     label: 'Referencias', icon: ExternalLink },
+  { id: 'analysis', label: 'Análisis',    icon: RefreshCw     },
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -45,17 +46,20 @@ export default function BookPage() {
 
   // TTS state for characters
   const [ttsCharPlaying, setTtsCharPlaying] = useState(false)
+  const [ttsCharPaused,  setTtsCharPaused]  = useState(false)
   const [ttsCharacter, setTtsCharacter] = useState(null)
   const [ttsCharQueue, setTtsCharQueue] = useState([])
   const [ttsCharIndex, setTtsCharIndex] = useState(0)
-  const ttsCharQueueRef = React.useRef([])
-  const ttsCharIndexRef = React.useRef(0)
+  const ttsCharQueueRef   = React.useRef([])
+  const ttsCharIndexRef   = React.useRef(0)
+  const ttsCharActiveRef  = React.useRef(false)
   const charStorageKey = `tts_char_pos_${id}`
 
   // TTS state for InfoTab (Ficha) y Resumen Global
   const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
   const [ttsInfoPaused,  setTtsInfoPaused]  = useState(false)
-  const ttsInfoTextRef = React.useRef('')
+  const ttsInfoTextRef   = React.useRef('')   // texto guardado para reanudar
+  const ttsInfoActiveRef = React.useRef(false) // controla si onend/onerror actúan
   const infoStorageKey = `tts_info_pos_${id}`
 
   const pauseTTS = () => {
@@ -222,84 +226,91 @@ export default function BookPage() {
   }
 
   const pauseCharTTS = () => {
+    ttsCharActiveRef.current = false
     window.speechSynthesis.cancel()
-    setTtsCharPlaying(false)
+    setTtsCharPlaying(false); setTtsCharPaused(true)
+  }
+
+  const resumeCharTTS = () => {
+    if (!ttsCharQueueRef.current.length) return
+    ttsCharActiveRef.current = true
+    setTtsCharPlaying(true); setTtsCharPaused(false)
+    speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current)
   }
 
   const stopCharTTS = (skipConfirm = false) => {
-    if (!skipConfirm && (ttsCharPlaying || ttsCharacter)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+    if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
     }
+    ttsCharActiveRef.current = false
     window.speechSynthesis.cancel()
-    setTtsCharPlaying(false)
-    setTtsCharacter(null)
+    setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
     localStorage.removeItem(charStorageKey)
   }
 
   const speakCharItem = (queue, idx) => {
+    if (!ttsCharActiveRef.current) return
     if (idx >= queue.length) {
-      setTtsCharPlaying(false)
-      setTtsCharacter(null)
+      ttsCharActiveRef.current = false
+      setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
       localStorage.removeItem(charStorageKey)
       return
     }
     const item = queue[idx]
-    ttsCharIndexRef.current = idx
-    ttsCharQueueRef.current = queue
+    ttsCharIndexRef.current = idx; ttsCharQueueRef.current = queue
     saveCharTTSPos(idx, queue)
-    setTtsCharIndex(idx)
-    setTtsCharacter(item.name)
-
+    setTtsCharIndex(idx); setTtsCharacter(item.name)
     const utterance = new SpeechSynthesisUtterance(item.text)
-    utterance.lang = 'es-ES'
-    utterance.rate = 0.95
-    utterance.onend = () => speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
-    utterance.onerror = (e) => {
-      if (e.error !== 'interrupted') speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
-    }
+    utterance.lang = 'es-ES'; utterance.rate = 0.95
+    utterance.onend = () => { if (ttsCharActiveRef.current) speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1) }
+    utterance.onerror = (e) => { if (e.error !== 'interrupted' && ttsCharActiveRef.current) speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1) }
     window.speechSynthesis.speak(utterance)
   }
 
-  const playCharacter = (char) => {
-    stopCharTTS()
-    stopTTS()
-    const queue = [{ name: char.name, text: characterToText(char) }]
-    ttsCharQueueRef.current = queue
-    ttsCharIndexRef.current = 0
-    setTtsCharQueue(queue)
-    setTtsCharIndex(0)
-    setTtsCharPlaying(true)
+  const _startCharTTS = (queue) => {
+    stopCharTTS(true); stopTTS(true); stopInfoTTS(true)
+    window.speechSynthesis.cancel()
+    ttsCharQueueRef.current = queue; ttsCharIndexRef.current = 0
+    setTtsCharQueue(queue); setTtsCharIndex(0)
+    ttsCharActiveRef.current = true
+    setTtsCharPlaying(true); setTtsCharPaused(false)
     speakCharItem(queue, 0)
   }
 
+  const playCharacter = (char) => {
+    _startCharTTS([{ name: char.name, text: characterToText(char) }])
+  }
+
   const playFromCharacter = (char, characters) => {
-    stopCharTTS()
-    stopTTS()
     const idx = characters.findIndex(c => c.name === char.name)
-    const queue = characters
-      .slice(idx < 0 ? 0 : idx)
-      .map(c => ({ name: c.name, text: characterToText(c) }))
+    const queue = characters.slice(idx < 0 ? 0 : idx).map(c => ({ name: c.name, text: characterToText(c) }))
     if (!queue.length) return
-    ttsCharQueueRef.current = queue
-    ttsCharIndexRef.current = 0
-    setTtsCharQueue(queue)
-    setTtsCharIndex(0)
-    setTtsCharPlaying(true)
-    speakCharItem(queue, 0)
+    _startCharTTS(queue)
   }
 
   const _speakInfoText = (text) => {
     ttsInfoTextRef.current = text
+    ttsInfoActiveRef.current = true
     const u = new SpeechSynthesisUtterance(text)
     u.lang = 'es-ES'; u.rate = 0.95
-    u.onend  = () => { setTtsInfoPlaying(false); setTtsInfoPaused(false); ttsInfoTextRef.current = ''; localStorage.removeItem(infoStorageKey) }
-    u.onerror = (e) => { if (e.error !== 'interrupted') { setTtsInfoPlaying(false); setTtsInfoPaused(false) } }
+    u.onend = () => {
+      if (!ttsInfoActiveRef.current) return  // fue pausado/stopado — no limpiar
+      ttsInfoActiveRef.current = false
+      setTtsInfoPlaying(false); setTtsInfoPaused(false)
+      ttsInfoTextRef.current = ''
+      localStorage.removeItem(infoStorageKey)
+    }
+    u.onerror = (e) => {
+      if (e.error === 'interrupted') return  // pausa o stop voluntario — no limpiar
+      ttsInfoActiveRef.current = false
+      setTtsInfoPlaying(false); setTtsInfoPaused(false)
+    }
     window.speechSynthesis.speak(u)
     localStorage.setItem(infoStorageKey, 'playing')
   }
 
   const playInfo = (book) => {
-    stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
+    stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel()
     const text = book.synopsis || ''
     if (!text) { toast('No hay sinopsis disponible', { icon: 'ℹ️' }); return }
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
@@ -307,21 +318,25 @@ export default function BookPage() {
   }
 
   const playSummary = (book) => {
-    stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
+    stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel()
     if (!book.global_summary) { toast('No hay resumen disponible', { icon: 'ℹ️' }); return }
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
     _speakInfoText(book.global_summary)
   }
 
   const pauseInfoTTS = () => {
+    ttsInfoActiveRef.current = false  // primero ref, luego cancel
     window.speechSynthesis.cancel()
     setTtsInfoPlaying(false)
     setTtsInfoPaused(true)
+    // ttsInfoTextRef se conserva para poder reanudar
   }
 
   const resumeInfoTTS = () => {
     const text = ttsInfoTextRef.current
     if (!text) return
+    // _speakInfoText activa ref y vuelve a hablar desde el principio del texto
+    // (la Web Speech API no permite reanudar desde posición exacta)
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
     _speakInfoText(text)
   }
@@ -330,6 +345,7 @@ export default function BookPage() {
     if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
     }
+    ttsInfoActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsInfoPlaying(false); setTtsInfoPaused(false)
     ttsInfoTextRef.current = ''
@@ -582,23 +598,23 @@ export default function BookPage() {
               </p>
             )}
 
-            {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || audioPlaying) && (
+            {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || ttsCharPaused || audioPlaying) && (
               <div className="hero-tts-global">
                 {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (  // alguno reproduciendo
                   <>
                     <button className="hero-tts-btn" onClick={() => {
-                      if (audioPlaying)         toggleAudio()
-                      else if (ttsPlaying)      pauseTTS()
+                      if (ttsPlaying)      pauseTTS()
                       else if (ttsInfoPlaying)  pauseInfoTTS()
                       else if (ttsCharPlaying)  pauseCharTTS()
+                      else if (audioPlaying)    toggleAudio()
                     }}>
                       <Pause size={14} /> Pausar reproducción
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
-                      if (audioPlaying)    toggleAudio()
                       if (ttsPlaying)      stopTTS()
                       if (ttsInfoPlaying)  stopInfoTTS(true)
                       if (ttsCharPlaying)  stopCharTTS(true)
+                      if (audioPlaying)    toggleAudio()
                     }}>
                       <Square size={14} /> Stop
                     </button>
@@ -606,13 +622,14 @@ export default function BookPage() {
                 ) : (
                   <>
                     <button className="hero-tts-btn hero-tts-resume" onClick={() => {
-                      if (ttsChapterPaused)    resumeCurrentTTS()
-                      else if (ttsInfoPaused)  resumeInfoTTS()
+                      if (ttsChapterPaused)   resumeCurrentTTS()
+                      else if (ttsCharPaused) resumeCharTTS()
+                      else if (ttsInfoPaused) resumeInfoTTS()
                     }}>
                       <Play size={14} /> Continuar reproducción
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
-                      stopTTS(); stopInfoTTS(true); stopCharTTS(true)
+                      stopTTS(true); stopInfoTTS(true); stopCharTTS(true)
                     }}>
                       <Square size={14} /> Stop
                     </button>
@@ -657,33 +674,7 @@ export default function BookPage() {
                 Exportar a PDF
               </button>
             )}
-
-            {!isShell && <ProcessingPipeline status={status} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={cancelProcess} book={book} />}
-            {isShell && (
-              <div className="shell-upload-area">
-                <span className="shell-label">Solo ficha — sube el PDF/EPUB para analizar</span>
-                <label className="shell-upload-btn">
-                  <input
-                    type="file"
-                    accept=".pdf,.epub"
-                    style={{display:'none'}}
-                    onChange={async (e) => {
-                      const file = e.target.files[0]
-                      if (!file) return
-                      try {
-                        toast('Subiendo archivo…', {icon: '⏳'})
-                        await uploadToShell(id, file)
-                        toast.success('Archivo subido. Identificando…')
-                        load()
-                      } catch {
-                        toast.error('Error al subir el archivo')
-                      }
-                    }}
-                  />
-                  📎 Subir PDF/EPUB
-                </label>
-              </div>
-            )}
+            {/* Pipeline movido al tab Análisis */}
           </div>
 
           <button className="delete-btn" onClick={handleDelete} title="Eliminar libro">
@@ -705,6 +696,7 @@ export default function BookPage() {
                 (t.id === 'summary' && !status?.phase3_done) ||
                 (t.id === 'mindmap' && !status?.phase3_done) ||
                 (t.id === 'podcast' && !book.podcast_audio_path)
+                // 'analysis' siempre habilitado
               }
             >
               <t.icon size={15} strokeWidth={1.5} />
@@ -716,13 +708,13 @@ export default function BookPage() {
         <div className="tabs-select-wrapper tabs-select-mobile">
           <select className="tabs-select" value={tab} onChange={(e) => setTab(e.target.value)}>
             {TABS.map(t => {
-              const disabled = (isShell && t.id !== 'info') ||
+              const disabled = (isShell && t.id !== 'info' && t.id !== 'analysis') ||
                 (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
                 (t.id === 'summary' && !status?.phase3_done) ||
                 (t.id === 'mindmap' && !status?.phase3_done) ||
                 (t.id === 'podcast' && !book.podcast_audio_path)
-              const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
+              const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗',analysis:'⚙️'}[t.id]||'•'
               return <option key={t.id} value={t.id} disabled={disabled}>{icon} {t.label}</option>
             })}
           </select>
@@ -739,7 +731,7 @@ export default function BookPage() {
               <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onResume={resumeCurrentTTS} onPlayChapter={(ch) => { stopTTS(true); const q=Object.assign([{id:ch.id,title:ch.title,text:chapterToText(ch)}],{_mode:'single'}); ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsMode('single'); setTtsChapterPaused(false); ttsActiveRef.current=true; setTtsPlaying(true); setTtsChapter(ch.id); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
-            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}
+            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharPaused={ttsCharPaused} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} onResume={resumeCharTTS} />}
 
             {tab === 'summary' && (
               <SummaryTab
@@ -760,6 +752,8 @@ export default function BookPage() {
             )}
 
             {tab === 'refs' && <RefsTab book={book} />}
+
+            {tab === 'analysis' && <AnalysisTab status={status} isProcessing={isProcessing} isShell={isShell} book={book} bookId={id} onTrigger={triggerPhase} onCancel={cancelProcess} onUpload={load} />}
             {tab === 'podcast' && (
               <PodcastTab
                 book={book}
@@ -1058,7 +1052,7 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   )
 }
 
-function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause }) {
+function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, ttsCharPaused, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause, onResume }) {
   const [reanalyzing, setReanalyzing] = React.useState(false)
 
   const handleReanalyze = async () => {
@@ -1089,12 +1083,27 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, t
               Reproduciendo personajes
             </span>
           )}
+          {ttsCharPaused && (
+            <span className="tts-indicator" style={{color:'var(--mist)'}}>
+              ⏸ Pausado — {ttsCharacter}
+            </span>
+          )}
         </div>
         <div className="characters-actions">
           {ttsPlaying && (
             <>
               <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
                 <Pause size={16} />
+              </button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
+                <Square size={16} />
+              </button>
+            </>
+          )}
+          {ttsCharPaused && (
+            <>
+              <button className="tts-control-btn resume" onClick={onResume} title="Continuar">
+                <Play size={16} />
               </button>
               <button className="tts-control-btn stop" onClick={onStop} title="Detener">
                 <Square size={16} />
@@ -1322,3 +1331,59 @@ function PodcastTab({ book, playing, onToggle }) {
     </div>
   )
 }
+
+// ── AnalysisTab ────────────────────────────────────────────────────────────────
+function AnalysisTab({ status, isProcessing, isShell, book, bookId, onTrigger, onCancel, onUpload }) {
+  const uploadHandler = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    try {
+      toast('Subiendo archivo…', { icon: '⏳' })
+      await uploadToShell(bookId, file)
+      toast.success('Archivo subido. Identificando…')
+      onUpload()
+    } catch {
+      toast.error('Error al subir el archivo')
+    }
+  }
+
+  return (
+    <div className="analysis-tab">
+      {/* Subir / reemplazar archivo */}
+      <div className="analysis-upload">
+        {isShell ? (
+          <div className="shell-upload-area" style={{marginBottom:'1.5rem'}}>
+            <span className="shell-label">Solo ficha — sube el PDF/EPUB para analizar</span>
+            <label className="shell-upload-btn">
+              <input type="file" accept=".pdf,.epub" style={{display:'none'}} onChange={uploadHandler} />
+              📎 Subir PDF/EPUB
+            </label>
+          </div>
+        ) : (
+          <label className="attach-file-btn" style={{marginBottom:'1.5rem',display:'inline-flex'}}>
+            <input type="file" accept=".pdf,.epub" style={{display:'none'}}
+              onChange={async (e) => {
+                const file = e.target.files[0]; if (!file) return
+                if (!confirm('¿Reemplazar el archivo? El análisis se conservará.')) return
+                await uploadHandler(e)
+              }} />
+            📎 Reemplazar archivo PDF/EPUB
+          </label>
+        )}
+      </div>
+
+      {/* Pipeline de fases */}
+      {!isShell && status && (
+        <ProcessingPipeline
+          status={status}
+          isProcessing={isProcessing}
+          onTrigger={onTrigger}
+          onCancel={onCancel}
+          book={book}
+        />
+      )}
+      {!status && <p className="empty-tab">Cargando estado del análisis…</p>}
+    </div>
+  )
+}
+
