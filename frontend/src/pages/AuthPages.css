@@ -3,6 +3,45 @@
   min-height: 100vh;
 }
 
+.auth-bg {
+  flex: 1;
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  padding: 3rem;
+}
+
+.auth-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 30% 50%, rgba(201,169,110,0.15) 0%, transparent 60%);
+}
+
+.auth-bg-text {
+  z-index: 1;
+  text-align: center;
+}
+
+.auth-bg-text h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 300;
+  color: rgba(201,169,110,0.85);
+  margin-bottom: 1rem;
+  line-height: 1.3;
+}
+
+.auth-bg-text p {
+  font-size: 1rem;
+  color: rgba(245,240,232,0.45);
+  line-height: 1.6;
+}
+
+/* Bloque decorativo de la versión anterior */
 .auth-deco {
   flex: 1;
   background: var(--ink);
@@ -46,6 +85,7 @@
   align-items: center;
   justify-content: center;
   padding: 3rem 2rem;
+  flex-shrink: 0;
 }
 
 .auth-form-wrap {
@@ -89,6 +129,7 @@ h2 { margin-bottom: 0.25rem; }
   margin-bottom: 0.4rem;
 }
 
+/* ── FIX: input con icono — padding-left suficiente ─────── */
 .input-wrap {
   position: relative;
   display: flex;
@@ -97,14 +138,17 @@ h2 { margin-bottom: 0.25rem; }
 
 .input-wrap svg {
   position: absolute;
-  left: 0.85rem;
+  left: 0.75rem;
   color: var(--mist);
   pointer-events: none;
+  flex-shrink: 0;
+  z-index: 1;
 }
 
-.input-wrap input, input.otp-input {
+.input-wrap input {
   width: 100%;
-  padding: 0.7rem 0.85rem 0.7rem 2.5rem;
+  /* padding-left mayor para dejar espacio al icono (16px icono + 0.75rem izq + 0.5rem gap) */
+  padding: 0.7rem 0.85rem 0.7rem 2.75rem;
   border: 1.5px solid var(--paper-dark);
   border-radius: var(--radius);
   background: var(--white);
@@ -116,14 +160,24 @@ h2 { margin-bottom: 0.25rem; }
 }
 
 input.otp-input {
+  width: 100%;
   padding: 0.75rem;
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius);
+  background: var(--white);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--ink);
+  transition: border-color var(--transition);
+  outline: none;
   text-align: center;
   font-size: 1.5rem;
   letter-spacing: 0.3em;
   font-family: monospace;
 }
 
-.input-wrap input:focus, input.otp-input:focus {
+.input-wrap input:focus,
+input.otp-input:focus {
   border-color: var(--gold);
 }
 
@@ -243,51 +297,7 @@ input.otp-input {
   color: var(--forest);
 }
 
-@media (max-width: 768px) {
-  .auth-deco { display: none; }
-  .auth-panel { width: 100%; }
-}
-
-/* Login móvil vertical simplificado */
-@media (max-width: 768px) and (orientation: portrait) {
-  .auth-container {
-    min-height: 100vh;
-    background: var(--white);
-    padding: 0;
-  }
-  
-  .auth-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 2rem 1.5rem;
-  }
-  
-  .auth-panel {
-    width: 100%;
-    max-width: 400px;
-    padding: 2rem 1.5rem;
-    border: none;
-    box-shadow: none;
-  }
-  
-  .auth-logo {
-    margin-bottom: 2rem;
-  }
-  
-  .auth-title {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
-  }
-  
-  .auth-subtitle {
-    font-size: 0.9rem;
-    margin-bottom: 2rem;
-  }
-}
-
-/* ── Recuperar contraseña ──────────────────────────────────── */
+/* ── Recuperar contraseña ─────────────────────────────────── */
 .forgot-link {
   display: block; margin: 0.75rem auto 0;
   background: none; border: none;
@@ -330,3 +340,47 @@ input.otp-input {
 }
 .forgot-submit:hover:not(:disabled) { background: #1a1a1a; }
 .forgot-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Desktop: ocultar deco si no hay espacio ─────────────── */
+@media (max-width: 768px) {
+  .auth-deco { display: none; }
+  .auth-bg   { display: none; }   /* ocultar en tablet también */
+  .auth-panel {
+    width: 100%;
+    min-height: 100vh;
+  }
+}
+
+/* ── Móvil vertical: solo el formulario centrado ─────────── */
+@media (max-width: 768px) and (orientation: portrait) {
+  /* Ocultar el bloque decorativo/informativo en móvil vertical */
+  .auth-deco { display: none; }
+  .auth-bg   { display: none; }
+
+  /* El panel ocupa toda la pantalla */
+  .auth-page {
+    flex-direction: column;
+    background: var(--white);
+  }
+
+  .auth-panel {
+    width: 100%;
+    min-height: 100vh;
+    padding: 2.5rem 1.5rem;
+    background: var(--white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .auth-form-wrap {
+    width: 100%;
+    max-width: 400px;
+  }
+}
+
+/* ── Landscape móvil: mantener el deco ───────────────────── */
+@media (max-width: 900px) and (orientation: landscape) {
+  .auth-bg, .auth-deco { display: none; }
+  .auth-panel { width: 100%; }
+}
