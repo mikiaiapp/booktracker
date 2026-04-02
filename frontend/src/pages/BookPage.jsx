@@ -36,9 +36,10 @@ export default function BookPage() {
   const [ttsChapter, setTtsChapter] = useState(null)
   const [ttsQueue, setTtsQueue] = useState([])
   const [ttsIndex, setTtsIndex] = useState(0)
-  const ttsQueueRef = React.useRef([])
-  const ttsIndexRef = React.useRef(0)
-  const storageKey = `tts_pos_${id}`
+  const ttsQueueRef  = React.useRef([])
+  const ttsIndexRef  = React.useRef(0)
+  const ttsActiveRef = React.useRef(false)
+  const storageKey   = `tts_pos_${id}`
 
   // TTS state for characters
   const [ttsCharPlaying, setTtsCharPlaying] = useState(false)
@@ -49,17 +50,22 @@ export default function BookPage() {
   const ttsCharIndexRef = React.useRef(0)
   const charStorageKey = `tts_char_pos_${id}`
 
-  // TTS state for InfoTab (Ficha)
+  // TTS state for InfoTab (Ficha) y Resumen Global
   const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
+  const [ttsInfoPaused,  setTtsInfoPaused]  = useState(false)
+  const ttsInfoTextRef = React.useRef('')
   const infoStorageKey = `tts_info_pos_${id}`
 
   const pauseTTS = () => {
+    ttsActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
+    // ttsChapter se mantiene — cabecera muestra 'Continuar'
   }
 
   const resumeCurrentTTS = () => {
     if (ttsQueueRef.current.length && ttsIndexRef.current >= 0) {
+      ttsActiveRef.current = true
       setTtsPlaying(true)
       speakItem(ttsQueueRef.current, ttsIndexRef.current)
     }
@@ -69,6 +75,7 @@ export default function BookPage() {
     if (!skipConfirm && (ttsPlaying || ttsChapter)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
+    ttsActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
     setTtsChapter(null)
@@ -76,26 +83,21 @@ export default function BookPage() {
   }
 
   const speakItem = (queue, idx) => {
+    if (!ttsActiveRef.current) return
     if (idx >= queue.length) {
-      setTtsPlaying(false)
-      setTtsChapter(null)
+      ttsActiveRef.current = false
+      setTtsPlaying(false); setTtsChapter(null)
       localStorage.removeItem(storageKey)
       return
     }
     const item = queue[idx]
-    ttsIndexRef.current = idx
-    ttsQueueRef.current = queue
+    ttsIndexRef.current = idx; ttsQueueRef.current = queue
     saveTTSPos(idx, queue)
-    setTtsIndex(idx)
-    setTtsChapter(item.id)
-
+    setTtsIndex(idx); setTtsChapter(item.id)
     const utterance = new SpeechSynthesisUtterance(item.text)
-    utterance.lang = 'es-ES'
-    utterance.rate = 0.95
-    utterance.onend = () => speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
-    utterance.onerror = (e) => {
-      if (e.error !== 'interrupted') speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
-    }
+    utterance.lang = 'es-ES'; utterance.rate = 0.95
+    utterance.onend = () => { if (ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1) }
+    utterance.onerror = (e) => { if (e.error !== 'interrupted' && ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1) }
     window.speechSynthesis.speak(utterance)
   }
 
@@ -140,6 +142,7 @@ export default function BookPage() {
     ttsIndexRef.current = 0
     setTtsQueue(queue)
     setTtsIndex(0)
+    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
   }
@@ -156,6 +159,7 @@ export default function BookPage() {
     ttsIndexRef.current = 0
     setTtsQueue(queue)
     setTtsIndex(0)
+    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
   }
@@ -268,46 +272,53 @@ export default function BookPage() {
     speakCharItem(queue, 0)
   }
 
-  const playInfo = (book) => {
-    stopTTS(true)
-    stopCharTTS(true)
-    window.speechSynthesis.cancel()
+  const _speakInfoText = (text) => {
+    ttsInfoTextRef.current = text
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = 'es-ES'; u.rate = 0.95
+    u.onend  = () => { setTtsInfoPlaying(false); setTtsInfoPaused(false); ttsInfoTextRef.current = ''; localStorage.removeItem(infoStorageKey) }
+    u.onerror = (e) => { if (e.error !== 'interrupted') { setTtsInfoPlaying(false); setTtsInfoPaused(false) } }
+    window.speechSynthesis.speak(u)
+    localStorage.setItem(infoStorageKey, 'playing')
+  }
 
+  const playInfo = (book) => {
+    stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
     let text = ''
     if (book.synopsis) text += `Sinopsis. ${book.synopsis}. `
     if (book.author_bio) text += `Sobre el autor. ${book.author_bio}.`
+    if (!text) { toast('No hay contenido para reproducir', { icon: 'ℹ️' }); return }
+    setTtsInfoPlaying(true); setTtsInfoPaused(false)
+    _speakInfoText(text)
+  }
 
-    if (!text) {
-      toast('No hay contenido para reproducir', { icon: 'ℹ️' })
-      return
-    }
-
-    setTtsInfoPlaying(true)
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'es-ES'
-    utterance.rate = 0.95
-    utterance.onend = () => {
-      setTtsInfoPlaying(false)
-      localStorage.removeItem(infoStorageKey)
-    }
-    utterance.onerror = () => {
-      setTtsInfoPlaying(false)
-    }
-    window.speechSynthesis.speak(utterance)
-    localStorage.setItem(infoStorageKey, 'playing')
+  const playSummary = (book) => {
+    stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
+    if (!book.global_summary) { toast('No hay resumen disponible', { icon: 'ℹ️' }); return }
+    setTtsInfoPlaying(true); setTtsInfoPaused(false)
+    _speakInfoText(book.global_summary)
   }
 
   const pauseInfoTTS = () => {
     window.speechSynthesis.cancel()
     setTtsInfoPlaying(false)
+    setTtsInfoPaused(true)
+  }
+
+  const resumeInfoTTS = () => {
+    const text = ttsInfoTextRef.current
+    if (!text) return
+    setTtsInfoPlaying(true); setTtsInfoPaused(false)
+    _speakInfoText(text)
   }
 
   const stopInfoTTS = (skipConfirm = false) => {
-    if (!skipConfirm && ttsInfoPlaying) {
+    if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
     }
     window.speechSynthesis.cancel()
-    setTtsInfoPlaying(false)
+    setTtsInfoPlaying(false); setTtsInfoPaused(false)
+    ttsInfoTextRef.current = ''
     localStorage.removeItem(infoStorageKey)
   }
 
@@ -557,36 +568,37 @@ export default function BookPage() {
               </p>
             )}
 
-            {(ttsPlaying || ttsChapter || ttsInfoPlaying || ttsCharPlaying) && (
+            {(ttsPlaying || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || audioPlaying) && (
               <div className="hero-tts-global">
-                {ttsPlaying || ttsInfoPlaying || ttsCharPlaying ? (
+                {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (
                   <>
                     <button className="hero-tts-btn" onClick={() => {
-                      if (ttsPlaying) pauseTTS()
-                      else if (ttsInfoPlaying) pauseInfoTTS()
-                      else if (ttsCharPlaying) pauseCharTTS()
+                      if (audioPlaying)         toggleAudio()
+                      else if (ttsPlaying)      pauseTTS()
+                      else if (ttsInfoPlaying)  pauseInfoTTS()
+                      else if (ttsCharPlaying)  pauseCharTTS()
                     }}>
                       <Pause size={14} /> Pausar reproducción
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
-                      if (ttsPlaying) stopTTS()
-                      else if (ttsInfoPlaying) stopInfoTTS()
-                      else if (ttsCharPlaying) stopCharTTS()
+                      if (audioPlaying)    toggleAudio()
+                      if (ttsPlaying)      stopTTS()
+                      if (ttsInfoPlaying)  stopInfoTTS(true)
+                      if (ttsCharPlaying)  stopCharTTS(true)
                     }}>
                       <Square size={14} /> Stop
                     </button>
                   </>
                 ) : (
                   <>
-                    <button className="hero-tts-btn" onClick={() => {
-                      if (ttsChapter) resumeCurrentTTS()
+                    <button className="hero-tts-btn hero-tts-resume" onClick={() => {
+                      if (ttsChapter)          resumeCurrentTTS()
+                      else if (ttsInfoPaused)  resumeInfoTTS()
                     }}>
                       <Play size={14} /> Continuar reproducción
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
-                      stopTTS()
-                      stopInfoTTS(true)
-                      stopCharTTS(true)
+                      stopTTS(); stopInfoTTS(true); stopCharTTS(true)
                     }}>
                       <Square size={14} /> Stop
                     </button>
@@ -707,17 +719,36 @@ export default function BookPage() {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} ttsPlaying={ttsInfoPlaying} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onStop={() => stopInfoTTS()} />}
+            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} allBiblio={book.author_bibliography || []} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { stopTTS(); const q=[{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { stopTTS(); const q=[{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); ttsActiveRef.current=true; setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}
 
             {tab === 'summary' && (
               <div className="prose-content">
-                <h2>Resumen global</h2>
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
+                  <h2 style={{margin:0}}>Resumen global</h2>
+                  {book.global_summary && (
+                    <div style={{display:'flex',gap:'0.5rem',alignItems:'center'}}>
+                      {!ttsInfoPlaying && !ttsInfoPaused && (
+                        <button className="info-tts-play-btn" onClick={() => playSummary(book)}>
+                          <Play size={15}/> Escuchar
+                        </button>
+                      )}
+                      {ttsInfoPaused && (
+                        <button className="info-tts-play-btn" onClick={resumeInfoTTS}>
+                          <Play size={15}/> Continuar
+                        </button>
+                      )}
+                      {ttsInfoPlaying && (
+                        <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo</span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <p>{book.global_summary || 'No disponible'}</p>
               </div>
             )}
@@ -790,71 +821,124 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
   )
 }
 
-function InfoTab({ book, otherBooks = [], ttsPlaying, onPlay, onPause, onStop }) {
+function BookCover({ src, alt, size = 60 }) {
+  const [err, setErr] = React.useState(false)
+  const h = Math.round(size * 1.42)
+  if (src && !err) return (
+    <img src={src} alt={alt} onError={() => setErr(true)}
+      style={{ width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
+  )
+  return (
+    <div style={{ width: size, height: h, background: '#e8e4dc', borderRadius: 4,
+      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <BookOpen size={size * 0.4} strokeWidth={1} color="#aaa" />
+    </div>
+  )
+}
+
+function InfoTab({ book, otherBooks = [], allBiblio = [], ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
+  // Portada de un libro de la app (cover_local o cover_url)
+  const appCoverSrc = (ob) => {
+    if (!ob.cover_local) return ob.cover_url || null
+    return ob.cover_local.includes('/covers/')
+      ? `/data/covers/${ob.cover_local.split('/covers/')[1]}`
+      : ob.cover_local
+  }
+
+  // Lista unificada: libros en la app + entradas de bibliografía no presentes en la app
+  const allWorks = React.useMemo(() => {
+    const inAppKeys = new Set()
+    otherBooks.forEach(b => {
+      inAppKeys.add((b.title || '').toLowerCase().trim())
+      if (b.isbn) inAppKeys.add(String(b.isbn))
+    })
+    const biblioItems = Array.isArray(allBiblio) ? allBiblio : []
+    const missing = biblioItems.filter(item => {
+      const title = typeof item === 'string' ? item : item?.title
+      const isbn  = typeof item === 'object' && item ? item.isbn : null
+      if (!title) return false
+      if (inAppKeys.has(title.toLowerCase().trim())) return false
+      if (isbn && inAppKeys.has(String(isbn))) return false
+      return true
+    }).map(item => ({
+      _missing: true,
+      title:     typeof item === 'string' ? item : (item.title || ''),
+      isbn:      typeof item === 'object' && item ? (item.isbn  || null) : null,
+      year:      typeof item === 'object' && item ? (item.year  || null) : null,
+      cover_url: typeof item === 'object' && item ? (item.cover_url || null) : null,
+    }))
+    const combined = [...otherBooks, ...missing]
+    combined.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0))
+    return combined
+  }, [otherBooks, allBiblio])
+
   return (
     <div className="info-tab">
       {(book.synopsis || book.author_bio) && (
         <div className="info-tts-controls">
-          {!ttsPlaying ? (
+          {!ttsPlaying && !ttsPaused && (
             <button className="info-tts-play-btn" onClick={() => onPlay(book)}>
-              <Play size={16} />
-              Reproducir ficha
+              <Play size={16} /> Reproducir ficha
             </button>
-          ) : (
+          )}
+          {ttsPlaying && (
             <div className="info-tts-active">
-              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
-                <Pause size={16} />
-              </button>
-              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
-                <Square size={16} />
-              </button>
-              <span className="tts-indicator">
-                <Volume2 size={14} className="pulse" />
-                Reproduciendo
-              </span>
+              <button className="tts-control-btn pause" onClick={onPause} title="Pausar"><Pause size={16} /></button>
+              <button className="tts-control-btn stop"  onClick={onStop}  title="Detener"><Square size={16} /></button>
+              <span className="tts-indicator"><Volume2 size={14} className="pulse" /> Reproduciendo</span>
+            </div>
+          )}
+          {ttsPaused && (
+            <div className="info-tts-active">
+              <button className="info-tts-play-btn" onClick={onResume}><Play size={16} /> Continuar</button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener"><Square size={16} /></button>
             </div>
           )}
         </div>
       )}
 
-      {book.synopsis && (
-        <section>
-          <h3>Sinopsis</h3>
-          <p>{book.synopsis}</p>
-        </section>
-      )}
-      {book.author_bio && (
-        <section>
-          <h3>Sobre el autor</h3>
-          <p>{book.author_bio}</p>
-        </section>
-      )}
-      {otherBooks.length > 0 && (
+      {book.synopsis && <section><h3>Sinopsis</h3><p>{book.synopsis}</p></section>}
+      {book.author_bio && <section><h3>Sobre el autor</h3><p>{book.author_bio}</p></section>}
+
+      {allWorks.length > 0 && (
         <section>
           <h3>Otras obras del autor</h3>
           <div className="refs-grid">
-            {otherBooks.map(ob => {
+            {allWorks.map((ob, idx) => {
+              if (ob._missing) {
+                // Libro solo en bibliografía — no está en la app
+                // Portada: cover_url de Google Books (zoom=2), fallback Open Library por ISBN
+                const coverSrc = ob.cover_url
+                  || (ob.isbn ? `https://covers.openlibrary.org/b/isbn/${ob.isbn}-M.jpg` : null)
+                return (
+                  <div key={'m' + idx} className="ref-item ref-item--missing">
+                    <div className="ref-cover">
+                      <BookCover src={coverSrc} alt={ob.title} />
+                    </div>
+                    <div className="ref-info">
+                      <h4 className="ref-title">{ob.title}</h4>
+                      {ob.year && <span className="ref-year">{ob.year}</span>}
+                      <span className="ref-badge ref-badge--missing">No añadido</span>
+                    </div>
+                  </div>
+                )
+              }
+              // Libro en la app
               const isAnalyzed = ob.status === 'complete' || ob.phase3_done
-              const isShell = ob.status === 'shell' || ob.status === 'shell_error'
+              const isShell    = ob.status === 'shell' || ob.status === 'shell_error'
+              const coverSrc   = appCoverSrc(ob)
+                || (ob.isbn ? `https://covers.openlibrary.org/b/isbn/${ob.isbn}-M.jpg` : null)
               return (
                 <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{ textDecoration: 'none' }}>
-                  {ob.cover_local ? (
-                    <div className="ref-cover">
-                      <img src={`/data/covers/${ob.cover_local.split('/covers/')[1]}`} alt={ob.title} />
-                    </div>
-                  ) : (
-                    <div className="ref-cover">
-                      <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <BookOpen size={24} strokeWidth={1} color="#999" />
-                      </div>
-                    </div>
-                  )}
+                  <div className="ref-cover">
+                    <BookCover src={coverSrc} alt={ob.title} />
+                  </div>
                   <div className="ref-info">
                     <h4 className="ref-title">{ob.title}</h4>
                     {ob.year && <span className="ref-year">{ob.year}</span>}
-                    {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
-                    {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
-                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
+                    {isAnalyzed && <span className="ref-badge" style={{ color: 'var(--gold)', fontWeight: 500 }}>✦ Analizado</span>}
+                    {isShell    && <span className="ref-badge" style={{ color: 'var(--mist)' }}>Solo ficha</span>}
+                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ color: '#3498db' }}>Sin analizar</span>}
                   </div>
                 </Link>
               )
