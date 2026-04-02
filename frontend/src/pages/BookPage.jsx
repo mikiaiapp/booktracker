@@ -356,6 +356,14 @@ export default function BookPage() {
     localStorage.removeItem(infoStorageKey)
   }
 
+  // Reproducir resumen global (reutiliza el mismo estado ttsInfoState que la ficha)
+  const playSummary = (book) => {
+    if (!book.global_summary) { toast('No hay resumen disponible', { icon: 'ℹ️' }); return }
+    stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
+    setTtsInfoState('playing')
+    _speakInfoText(book.global_summary)
+  }
+
   React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
   const [tab, setTab] = useState('info')
   const [expandedChapter, setExpandedChapter] = useState(null)
@@ -779,18 +787,7 @@ export default function BookPage() {
               <SummaryTab
                 book={book}
                 ttsPlaying={ttsInfoState === 'playing'}
-                onPlay={() => {
-                  stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
-                  if (!book.global_summary) { toast('No hay resumen disponible',{icon:'ℹ️'}); return }
-                  setTtsInfoPlaying(true)
-                  const u = new SpeechSynthesisUtterance(book.global_summary)
-                  u.lang='es-ES'; u.rate=0.95
-                  u.onend = () => setTtsInfoPlaying(false)
-                  u.onerror = () => setTtsInfoPlaying(false)
-                  window.speechSynthesis.speak(u)
-                }}
-                onPause={() => { window.speechSynthesis.cancel(); setTtsInfoPlaying(false) }}
-                onStop={() => { window.speechSynthesis.cancel(); setTtsInfoPlaying(false) }}
+                onPlay={() => playSummary(book)}
               />
             )}
 
