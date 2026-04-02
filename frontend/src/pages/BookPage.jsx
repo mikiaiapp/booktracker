@@ -6,21 +6,21 @@ import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText,
-  Upload, RefreshCw
+  RefreshCw, Upload
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
 import './BookPage.css'
 
 const TABS = [
-  { id: 'info',       label: 'Ficha',          icon: BookOpen    },
-  { id: 'chapters',   label: 'Capítulos',       icon: List        },
-  { id: 'characters', label: 'Personajes',      icon: User        },
-  { id: 'summary',    label: 'Resumen global',  icon: Brain       },
-  { id: 'mindmap',    label: 'Mapa mental',     icon: Map         },
-  { id: 'podcast',    label: 'Podcast',         icon: Mic         },
-  { id: 'refs',       label: 'Referencias',     icon: ExternalLink},
-  { id: 'analysis',   label: 'Análisis',        icon: RefreshCw   },
+  { id: 'info',       label: 'Ficha',         icon: BookOpen     },
+  { id: 'chapters',   label: 'Capítulos',      icon: List         },
+  { id: 'characters', label: 'Personajes',     icon: User         },
+  { id: 'summary',    label: 'Resumen global', icon: Brain        },
+  { id: 'mindmap',    label: 'Mapa mental',    icon: Map          },
+  { id: 'podcast',    label: 'Podcast',        icon: Mic          },
+  { id: 'refs',       label: 'Referencias',    icon: ExternalLink },
+  { id: 'analysis',   label: 'Análisis',       icon: RefreshCw    },
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -40,7 +40,6 @@ export default function BookPage() {
   const [ttsIndex, setTtsIndex] = useState(0)
   const ttsQueueRef = React.useRef([])
   const ttsIndexRef = React.useRef(0)
-  const ttsActiveRef = React.useRef(false)   // false = parado, true = reproduciendo
   const storageKey = `tts_pos_${id}`
 
   // TTS state for characters
@@ -50,12 +49,10 @@ export default function BookPage() {
   const [ttsCharIndex, setTtsCharIndex] = useState(0)
   const ttsCharQueueRef = React.useRef([])
   const ttsCharIndexRef = React.useRef(0)
-  const ttsCharActiveRef = React.useRef(false)  // false = parado, true = reproduciendo
   const charStorageKey = `tts_char_pos_${id}`
 
-  // TTS state for InfoTab (Ficha): 'idle' | 'playing' | 'paused'
-  const [ttsInfoState, setTtsInfoState] = useState('idle')
-  const ttsInfoTextRef = React.useRef('')   // guarda el texto completo para reanudar
+  // TTS state for InfoTab (Ficha)
+  const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
   const infoStorageKey = `tts_info_pos_${id}`
 
   const pauseTTS = () => {
@@ -74,7 +71,6 @@ export default function BookPage() {
     if (!skipConfirm && (ttsPlaying || ttsChapter)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
-    ttsActiveRef.current = false   // evita que onend lance el siguiente elemento
     window.speechSynthesis.cancel()
     setTtsPlaying(false)
     setTtsChapter(null)
@@ -82,10 +78,7 @@ export default function BookPage() {
   }
 
   const speakItem = (queue, idx) => {
-    // Si ttsActiveRef es false, alguien llamó a stop — no continuar
-    if (!ttsActiveRef.current) return
     if (idx >= queue.length) {
-      ttsActiveRef.current = false
       setTtsPlaying(false)
       setTtsChapter(null)
       localStorage.removeItem(storageKey)
@@ -101,13 +94,9 @@ export default function BookPage() {
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.lang = 'es-ES'
     utterance.rate = 0.95
-    utterance.onend = () => {
-      if (ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
-    }
+    utterance.onend = () => speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
     utterance.onerror = (e) => {
-      if (e.error !== 'interrupted' && ttsActiveRef.current) {
-        speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
-      }
+      if (e.error !== 'interrupted') speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
     }
     window.speechSynthesis.speak(utterance)
   }
@@ -153,7 +142,6 @@ export default function BookPage() {
     ttsIndexRef.current = 0
     setTtsQueue(queue)
     setTtsIndex(0)
-    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
   }
@@ -170,7 +158,6 @@ export default function BookPage() {
     ttsIndexRef.current = 0
     setTtsQueue(queue)
     setTtsIndex(0)
-    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, 0)
   }
@@ -187,7 +174,6 @@ export default function BookPage() {
     ttsIndexRef.current = idx
     setTtsQueue(queue)
     setTtsIndex(idx)
-    ttsActiveRef.current = true
     setTtsPlaying(true)
     speakItem(queue, idx)
   }
@@ -226,7 +212,6 @@ export default function BookPage() {
     if (!skipConfirm && (ttsCharPlaying || ttsCharacter)) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
-    ttsCharActiveRef.current = false  // evita que onend lance el siguiente
     window.speechSynthesis.cancel()
     setTtsCharPlaying(false)
     setTtsCharacter(null)
@@ -234,9 +219,7 @@ export default function BookPage() {
   }
 
   const speakCharItem = (queue, idx) => {
-    if (!ttsCharActiveRef.current) return
     if (idx >= queue.length) {
-      ttsCharActiveRef.current = false
       setTtsCharPlaying(false)
       setTtsCharacter(null)
       localStorage.removeItem(charStorageKey)
@@ -252,13 +235,9 @@ export default function BookPage() {
     const utterance = new SpeechSynthesisUtterance(item.text)
     utterance.lang = 'es-ES'
     utterance.rate = 0.95
-    utterance.onend = () => {
-      if (ttsCharActiveRef.current) speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
-    }
+    utterance.onend = () => speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
     utterance.onerror = (e) => {
-      if (e.error !== 'interrupted' && ttsCharActiveRef.current) {
-        speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
-      }
+      if (e.error !== 'interrupted') speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
     }
     window.speechSynthesis.speak(utterance)
   }
@@ -271,7 +250,6 @@ export default function BookPage() {
     ttsCharIndexRef.current = 0
     setTtsCharQueue(queue)
     setTtsCharIndex(0)
-    ttsCharActiveRef.current = true
     setTtsCharPlaying(true)
     speakCharItem(queue, 0)
   }
@@ -288,27 +266,8 @@ export default function BookPage() {
     ttsCharIndexRef.current = 0
     setTtsCharQueue(queue)
     setTtsCharIndex(0)
-    ttsCharActiveRef.current = true
     setTtsCharPlaying(true)
     speakCharItem(queue, 0)
-  }
-
-  const _speakInfoText = (text) => {
-    ttsInfoTextRef.current = text
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = 'es-ES'
-    utterance.rate = 0.95
-    utterance.onend = () => {
-      setTtsInfoState('idle')
-      ttsInfoTextRef.current = ''
-      localStorage.removeItem(infoStorageKey)
-    }
-    utterance.onerror = (e) => {
-      // 'interrupted' = pausado manualmente, no es un error real
-      if (e.error !== 'interrupted') setTtsInfoState('idle')
-    }
-    window.speechSynthesis.speak(utterance)
-    localStorage.setItem(infoStorageKey, 'playing')
   }
 
   const playInfo = (book) => {
@@ -325,43 +284,33 @@ export default function BookPage() {
       return
     }
 
-    setTtsInfoState('playing')
-    _speakInfoText(text)
+    setTtsInfoPlaying(true)
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'es-ES'
+    utterance.rate = 0.95
+    utterance.onend = () => {
+      setTtsInfoPlaying(false)
+      localStorage.removeItem(infoStorageKey)
+    }
+    utterance.onerror = () => {
+      setTtsInfoPlaying(false)
+    }
+    window.speechSynthesis.speak(utterance)
+    localStorage.setItem(infoStorageKey, 'playing')
   }
 
   const pauseInfoTTS = () => {
-    // Cancelar el audio pero mantener estado 'paused' y el texto guardado
     window.speechSynthesis.cancel()
-    setTtsInfoState('paused')
-    // El texto ya está guardado en ttsInfoTextRef — al reanudar se relee desde el principio
-    // (Speech Synthesis API no soporta pausa real con posición exacta)
-  }
-
-  const resumeInfoTTS = (book) => {
-    // Reanudar: volver a reproducir el texto guardado desde el principio
-    // Es la mejor aproximación posible con la Web Speech API
-    const text = ttsInfoTextRef.current
-    if (!text) { playInfo(book); return }
-    setTtsInfoState('playing')
-    _speakInfoText(text)
+    setTtsInfoPlaying(false)
   }
 
   const stopInfoTTS = (skipConfirm = false) => {
-    if (!skipConfirm && ttsInfoState !== 'idle') {
+    if (!skipConfirm && ttsInfoPlaying) {
       if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
     }
     window.speechSynthesis.cancel()
-    setTtsInfoState('idle')
-    ttsInfoTextRef.current = ''
+    setTtsInfoPlaying(false)
     localStorage.removeItem(infoStorageKey)
-  }
-
-  // Reproducir resumen global (reutiliza el mismo estado ttsInfoState que la ficha)
-  const playSummary = (book) => {
-    if (!book.global_summary) { toast('No hay resumen disponible', { icon: 'ℹ️' }); return }
-    stopTTS(true); stopCharTTS(true); window.speechSynthesis.cancel()
-    setTtsInfoState('playing')
-    _speakInfoText(book.global_summary)
   }
 
   React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
@@ -411,10 +360,10 @@ export default function BookPage() {
 
   const triggerPhase = async (phase) => {
     try {
-      if (phase === 1)          await analysisAPI.triggerPhase1(id)
-      else if (phase === 2)     await analysisAPI.triggerPhase2(id)
-      else if (phase === 3)     await analysisAPI.triggerPhase3(id)
-      else if (phase === '3b')  await analysisAPI.triggerPhase3b(id)
+      if (phase === 1)              await analysisAPI.triggerPhase1(id)
+      else if (phase === 2)         await analysisAPI.triggerPhase2(id)
+      else if (phase === 3)         await analysisAPI.triggerPhase3(id)
+      else if (phase === '3b')      await analysisAPI.triggerPhase3b(id)
       else if (phase === 'podcast') await analysisAPI.triggerPodcast(id)
       toast.success('Proceso iniciado')
       setTimeout(load, 600)
@@ -582,7 +531,7 @@ export default function BookPage() {
   const chapters = activeData?.chapters || []
   const characters = activeData?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(status?.status)
-  const isShell = book?.status === 'shell' || book?.status === 'shell_error'
+  const isShell  = book?.status === 'shell' || book?.status === 'shell_error'
   const isStuck  = ['identifying','analyzing_structure','summarizing','generating_podcast'].includes(status?.status)
 
   return (
@@ -611,32 +560,29 @@ export default function BookPage() {
               </p>
             )}
 
-            {(ttsPlaying || ttsChapter || ttsInfoState !== 'idle' || ttsCharPlaying || audioPlaying) && (
+            {(ttsPlaying || ttsChapter || ttsInfoPlaying || ttsCharPlaying) && (
               <div className="hero-tts-global">
-                {(ttsPlaying || ttsInfoState === 'playing' || ttsCharPlaying || audioPlaying) ? (
+                {ttsPlaying || ttsInfoPlaying || ttsCharPlaying ? (
                   <>
                     <button className="hero-tts-btn" onClick={() => {
-                      if (audioPlaying) toggleAudio()
-                      else if (ttsPlaying) pauseTTS()
-                      else if (ttsInfoState === 'playing') pauseInfoTTS()
+                      if (ttsPlaying) pauseTTS()
+                      else if (ttsInfoPlaying) pauseInfoTTS()
                       else if (ttsCharPlaying) pauseCharTTS()
                     }}>
                       <Pause size={14} /> Pausar reproducción
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
-                      if (audioPlaying) toggleAudio()
                       if (ttsPlaying) stopTTS()
-                      if (ttsInfoState === 'playing') stopInfoTTS()
-                      if (ttsCharPlaying) stopCharTTS()
+                      else if (ttsInfoPlaying) stopInfoTTS()
+                      else if (ttsCharPlaying) stopCharTTS()
                     }}>
                       <Square size={14} /> Stop
                     </button>
                   </>
                 ) : (
                   <>
-                    <button className="hero-tts-btn hero-tts-resume" onClick={() => {
+                    <button className="hero-tts-btn" onClick={() => {
                       if (ttsChapter) resumeCurrentTTS()
-                      else if (ttsInfoState === 'paused') resumeInfoTTS(book)
                     }}>
                       <Play size={14} /> Continuar reproducción
                     </button>
@@ -704,12 +650,12 @@ export default function BookPage() {
                 </label>
               </div>
             )}
-            {!isShell && !!book.file_path && (
-              <label className="attach-file-btn" title="Reemplazar archivo PDF/EPUB">
+            {!isShell && book.file_path && (
+              <label className="attach-file-btn">
                 <input type="file" accept=".pdf,.epub" style={{display:'none'}}
                   onChange={async (e) => {
                     const file = e.target.files[0]; if (!file) return
-                    if (!confirm('¿Reemplazar el archivo? El análisis existente se conservará.')) return
+                    if (!confirm('¿Reemplazar el archivo? El análisis se conservará.')) return
                     try { toast('Subiendo…',{icon:'⏳'}); await uploadToShell(id,file); toast.success('Archivo actualizado'); load() }
                     catch { toast.error('Error al subir el archivo') }
                   }} />
@@ -749,11 +695,11 @@ export default function BookPage() {
           <select className="tabs-select" value={tab} onChange={(e) => setTab(e.target.value)}>
             {TABS.map(t => {
               const disabled = (isShell && t.id !== 'info' && t.id !== 'analysis') ||
-                (t.id === 'chapters'   && !status?.phase2_done) ||
+                (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary'    && !status?.phase3_done) ||
-                (t.id === 'mindmap'    && !status?.phase3_done) ||
-                (t.id === 'podcast'    && !book.podcast_audio_path)
+                (t.id === 'summary' && !status?.phase3_done) ||
+                (t.id === 'mindmap' && !status?.phase3_done) ||
+                (t.id === 'podcast' && !book.podcast_audio_path)
               const icon = {info:'📖',analysis:'⚙️',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
               return <option key={t.id} value={t.id} disabled={disabled}>{icon} {t.label}</option>
             })}
@@ -765,10 +711,10 @@ export default function BookPage() {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} allBiblio={book.author_bibliography || []} ttsState={ttsInfoState} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={() => resumeInfoTTS(book)} onStop={() => stopInfoTTS()} />}
+            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} ttsPlaying={ttsInfoPlaying} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { const q = [{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); ttsActiveRef.current=true; setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { stopTTS(); const q=[{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
             )}
 
             {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} />}
@@ -784,11 +730,10 @@ export default function BookPage() {
             )}
 
             {tab === 'summary' && (
-              <SummaryTab
-                book={book}
-                ttsPlaying={ttsInfoState === 'playing'}
-                onPlay={() => playSummary(book)}
-              />
+              <div className="prose-content">
+                <h2>Resumen global</h2>
+                <p>{book.global_summary || 'No disponible'}</p>
+              </div>
             )}
 
             {tab === 'mindmap' && (
@@ -859,54 +804,17 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
   )
 }
 
-function InfoTab({ book, otherBooks = [], allBiblio = [], ttsState, onPlay, onPause, onResume, onStop }) {
-  // Construir lista unificada: misma fuente que "Bibliografía completa" en página Autores
-  // 1) Libros ya en la app (other_books del servidor)
-  // 2) Libros de la bibliografía que NO están en la app → mostrar como "No añadido"
-  const unifiedWorks = React.useMemo(() => {
-    // Índice de libros en la app por ISBN y título normalizado
-    const inApp = new Map()
-    otherBooks.forEach(b => {
-      inApp.set((b.title || '').toLowerCase().trim(), b)
-      if (b.isbn) inApp.set(b.isbn, b)
-    })
-
-    // Libros de la bibliografía que faltan en la app
-    const missing = []
-    allBiblio.forEach(item => {
-      const title   = typeof item === 'string' ? item : item?.title
-      const isbn    = typeof item === 'object' ? item?.isbn    : null
-      const year    = typeof item === 'object' ? item?.year    : null
-      const coverUrl= typeof item === 'object' ? item?.cover_url : null
-      if (!title) return
-      const key = title.toLowerCase().trim()
-      // Ya está en la app → no duplicar
-      if (inApp.has(key) || (isbn && inApp.has(isbn))) return
-      missing.push({ _missing: true, title, isbn, year, cover_url: coverUrl })
-    })
-
-    // Lista final: los de la app primero, luego los que faltan
-    // Ordenar todo por año descendente
-    return [...otherBooks, ...missing].sort((a, b) => (b.year || 0) - (a.year || 0))
-  }, [otherBooks, allBiblio])
-
-  const coverPath = (ob) => {
-    if (!ob.cover_local) return null
-    return ob.cover_local.includes('/covers/')
-      ? `/data/covers/${ob.cover_local.split('/covers/')[1]}`
-      : ob.cover_local
-  }
-
+function InfoTab({ book, otherBooks = [], ttsPlaying, onPlay, onPause, onStop }) {
   return (
     <div className="info-tab">
       {(book.synopsis || book.author_bio) && (
         <div className="info-tts-controls">
-          {ttsState === 'idle' && (
+          {!ttsPlaying ? (
             <button className="info-tts-play-btn" onClick={() => onPlay(book)}>
-              <Play size={16} /> Reproducir ficha
+              <Play size={16} />
+              Reproducir ficha
             </button>
-          )}
-          {ttsState === 'playing' && (
+          ) : (
             <div className="info-tts-active">
               <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
                 <Pause size={16} />
@@ -915,18 +823,9 @@ function InfoTab({ book, otherBooks = [], allBiblio = [], ttsState, onPlay, onPa
                 <Square size={16} />
               </button>
               <span className="tts-indicator">
-                <Volume2 size={14} className="pulse" /> Reproduciendo
+                <Volume2 size={14} className="pulse" />
+                Reproduciendo
               </span>
-            </div>
-          )}
-          {ttsState === 'paused' && (
-            <div className="info-tts-active">
-              <button className="info-tts-play-btn" onClick={onResume}>
-                <Play size={16} /> Continuar reproducción
-              </button>
-              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
-                <Square size={16} />
-              </button>
             </div>
           )}
         </div>
@@ -944,52 +843,32 @@ function InfoTab({ book, otherBooks = [], allBiblio = [], ttsState, onPlay, onPa
           <p>{book.author_bio}</p>
         </section>
       )}
-
-      {unifiedWorks.length > 0 && (
+      {otherBooks.length > 0 && (
         <section>
           <h3>Otras obras del autor</h3>
           <div className="refs-grid">
-            {unifiedWorks.map((ob, idx) => {
-              if (ob._missing) {
-                // Libro de la bibliografía que NO está en la app
-                return (
-                  <div key={`m-${idx}`} className="ref-item ref-item-missing">
-                    <div className="ref-cover">
-                      {ob.cover_url
-                        ? <img src={ob.cover_url} alt={ob.title} />
-                        : <div style={{ width:60, height:85, background:'#f0f0f0', borderRadius:4, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                            <BookOpen size={22} strokeWidth={1} color="#bbb" />
-                          </div>
-                      }
-                    </div>
-                    <div className="ref-info">
-                      <h4 className="ref-title">{ob.title}</h4>
-                      {ob.year && <span className="ref-year">{ob.year}</span>}
-                      <span className="ref-badge" style={{ color: 'var(--mist)' }}>No añadido</span>
-                    </div>
-                  </div>
-                )
-              }
-              // Libro que ya está en la app
+            {otherBooks.map(ob => {
               const isAnalyzed = ob.status === 'complete' || ob.phase3_done
-              const isShell    = ob.status === 'shell' || ob.status === 'shell_error'
-              const cp         = coverPath(ob)
+              const isShell = ob.status === 'shell' || ob.status === 'shell_error'
               return (
                 <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{ textDecoration: 'none' }}>
-                  <div className="ref-cover">
-                    {cp
-                      ? <img src={cp} alt={ob.title} />
-                      : <div style={{ width:60, height:85, background:'#f0f0f0', borderRadius:4, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          <BookOpen size={22} strokeWidth={1} color="#bbb" />
-                        </div>
-                    }
-                  </div>
+                  {ob.cover_local ? (
+                    <div className="ref-cover">
+                      <img src={`/data/covers/${ob.cover_local.split('/covers/')[1]}`} alt={ob.title} />
+                    </div>
+                  ) : (
+                    <div className="ref-cover">
+                      <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={24} strokeWidth={1} color="#999" />
+                      </div>
+                    </div>
+                  )}
                   <div className="ref-info">
                     <h4 className="ref-title">{ob.title}</h4>
                     {ob.year && <span className="ref-year">{ob.year}</span>}
-                    {isAnalyzed && <span className="ref-badge" style={{ color:'var(--gold)', fontWeight:500 }}>✦ Analizado</span>}
-                    {isShell    && <span className="ref-badge" style={{ color:'var(--mist)' }}>Solo ficha</span>}
-                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ color:'#3498db' }}>Sin analizar</span>}
+                    {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
+                    {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
+                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
                   </div>
                 </Link>
               )
@@ -997,7 +876,6 @@ function InfoTab({ book, otherBooks = [], allBiblio = [], ttsState, onPlay, onPa
           </div>
         </section>
       )}
-
       {!book.synopsis && !book.author_bio && (
         <p className="empty-tab">La información del libro aún se está cargando…</p>
       )}
@@ -1131,11 +1009,22 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, t
           </span>
           {ttsPlaying && ttsCharacter && (
             <span className="tts-indicator">
-              <Volume2 size={14} className="pulse" /> Reproduciendo — controles en cabecera
+              <Volume2 size={14} className="pulse" />
+              Reproduciendo personajes
             </span>
           )}
         </div>
         <div className="characters-actions">
+          {ttsPlaying && (
+            <>
+              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
+                <Pause size={16} />
+              </button>
+              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
+                <Square size={16} />
+              </button>
+            </>
+          )}
           {status?.phase3_done && (
             <button
               className="reanalyze-chars-btn"
@@ -1329,18 +1218,12 @@ function PodcastTab({ book, playing, onToggle }) {
 
   return (
     <div className="podcast-tab">
-      {hasAudio && !playing && (
+      {hasAudio && (
         <div className="podcast-player">
           <button className="podcast-play-btn" onClick={onToggle}>
-            <Play size={24} />
-            <span>Reproducir podcast</span>
+            {playing ? <Pause size={24} /> : <Play size={24} />}
+            <span>{playing ? 'Pausar podcast' : 'Reproducir podcast'}</span>
           </button>
-        </div>
-      )}
-      {hasAudio && playing && (
-        <div className="podcast-playing-banner">
-          <Volume2 size={16} className="pulse" />
-          <span>Reproduciendo — controles en cabecera</span>
         </div>
       )}
       {hasScript && (
@@ -1365,72 +1248,23 @@ function PodcastTab({ book, playing, onToggle }) {
 }
 
 // ── AnalysisTab ────────────────────────────────────────────────────────────────
-// Mueve el pipeline de la cabecera a este tab, con cada fase como sección independiente
 function AnalysisTab({ status, isProcessing, isStuck, onTrigger, onCancel }) {
   if (!status) return <p className="empty-tab">Cargando estado del análisis…</p>
 
   const phases = [
-    {
-      id: 'phase1',
-      label: 'Fase 1 — Identificación',
-      desc:  'Ficha, sinopsis, portada, bio del autor y bibliografía',
-      done:  status.phase1_done,
-      trigger: () => onTrigger(1),
-      canTrigger: true,
-    },
-    {
-      id: 'phase2',
-      label: 'Fase 2 — Estructura',
-      desc:  'Detección de capítulos y partes del libro',
-      done:  status.phase2_done,
-      trigger: () => onTrigger(2),
-      canTrigger: status.phase1_done,
-    },
-    {
-      id: 'phase3a',
-      label: 'Fase 3a — Resúmenes de capítulos',
-      desc:  'Resumen e hitos clave de cada capítulo',
-      done:  status.chapters_summarized || status.phase3_done,
-      trigger: () => onTrigger(3),
-      canTrigger: status.phase2_done,
-      resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0,
-      progress: status.chapters_total > 0
-        ? `${status.chapters_done}/${status.chapters_total} capítulos`
-        : null,
-    },
-    {
-      id: 'phase3b',
-      label: 'Fase 3b — Análisis de personajes',
-      desc:  'Perfiles de personajes, relaciones y momentos clave',
-      done:  status.phase3_done,
-      trigger: () => onTrigger('3b'),
-      canTrigger: status.chapters_summarized || status.phase3_done,
-    },
-    {
-      id: 'phase3c',
-      label: 'Fase 3c — Resumen global y mapa mental',
-      desc:  'Resumen global de la obra y mapa mental de conceptos',
-      done:  status.phase3_done,
-      trigger: () => onTrigger('3b'),
-      canTrigger: status.chapters_summarized || status.phase3_done,
-    },
-    {
-      id: 'podcast',
-      label: 'Podcast',
-      desc:  'Generación del guión y audio del podcast',
-      done:  status.podcast_done,
-      trigger: () => onTrigger('podcast'),
-      canTrigger: status.phase3_done,
-    },
+    { id:'p1',  label:'Fase 1 — Identificación',          desc:'Ficha, sinopsis, portada, bio y bibliografía del autor',                          done:status.phase1_done,                             canTrigger:true,                                       trigger:()=>onTrigger(1) },
+    { id:'p2',  label:'Fase 2 — Estructura',               desc:'Detección de capítulos y partes del libro',                                       done:status.phase2_done,                             canTrigger:status.phase1_done,                         trigger:()=>onTrigger(2) },
+    { id:'p3a', label:'Fase 3a — Resúmenes de capítulos',  desc:'Resumen e hitos clave de cada capítulo',                                          done:status.chapters_summarized||status.phase3_done, canTrigger:status.phase2_done,                         trigger:()=>onTrigger(3), resumable:status.phase2_done&&!status.phase3_done&&status.chapters_done>0, progress:status.chapters_total>0?`${status.chapters_done}/${status.chapters_total}`:null },
+    { id:'p3b', label:'Fase 3b — Personajes',              desc:'Perfiles de personajes, relaciones y momentos clave',                             done:status.phase3_done,                             canTrigger:status.chapters_summarized||status.phase3_done, trigger:()=>onTrigger('3b') },
+    { id:'p3c', label:'Fase 3c — Resumen global y mapa',   desc:'Resumen global de la obra y mapa mental de conceptos',                            done:status.phase3_done,                             canTrigger:status.chapters_summarized||status.phase3_done, trigger:()=>onTrigger('3b') },
+    { id:'pod', label:'Podcast',                           desc:'Generación del guión y audio del podcast',                                         done:status.podcast_done,                            canTrigger:status.phase3_done,                         trigger:()=>onTrigger('podcast') },
   ]
-
   const firstPending = phases.findIndex(p => !p.done)
 
   return (
     <div className="analysis-tab">
       <h2>Estado del análisis</h2>
       <p className="analysis-desc">Cada fase puede relanzarse de forma independiente.</p>
-
       {isStuck && (
         <div className="pipeline-stuck-banner">
           <AlertCircle size={14} />
@@ -1438,35 +1272,25 @@ function AnalysisTab({ status, isProcessing, isStuck, onTrigger, onCancel }) {
           <button className="unlock-btn" onClick={onCancel}>🔓 Desbloquear</button>
         </div>
       )}
-
       <div className="analysis-phases">
         {phases.map((phase, i) => {
           const isActive = isProcessing && i === firstPending
           return (
-            <div key={phase.id} className={`analysis-phase ${phase.done ? 'done' : ''} ${isActive ? 'active' : ''}`}>
+            <div key={phase.id} className={`analysis-phase ${phase.done?'done':''} ${isActive?'active':''}`}>
               <div className="phase-icon">
-                {phase.done
-                  ? <CheckCircle size={18} />
-                  : isActive
-                    ? <Loader size={18} className="spin" />
-                    : <div className="phase-dot">{i + 1}</div>
-                }
+                {phase.done ? <CheckCircle size={18}/> : isActive ? <Loader size={18} className="spin"/> : <div className="phase-dot">{i+1}</div>}
               </div>
               <div className="phase-body">
                 <div className="phase-header">
                   <span className="phase-label">{phase.label}</span>
-                  {phase.progress && isActive && (
-                    <span className="phase-progress">{phase.progress}</span>
-                  )}
+                  {phase.progress && isActive && <span className="phase-progress">{phase.progress} capítulos</span>}
                   <div className="phase-actions">
                     {phase.canTrigger && !isProcessing && !isStuck && (
                       <button className="phase-btn" onClick={phase.trigger}>
                         {phase.done ? '↻ Repetir' : phase.resumable ? '▶ Reanudar' : '▶ Iniciar'}
                       </button>
                     )}
-                    {isActive && (
-                      <button className="phase-btn danger" onClick={onCancel}>✕ Cancelar</button>
-                    )}
+                    {isActive && <button className="phase-btn danger" onClick={onCancel}>✕ Cancelar</button>}
                   </div>
                 </div>
                 <p className="phase-desc">{phase.desc}</p>
@@ -1475,33 +1299,11 @@ function AnalysisTab({ status, isProcessing, isStuck, onTrigger, onCancel }) {
           )
         })}
       </div>
-
       {status.error_msg && (
-        <div className={`pipeline-error ${status.error_msg.includes('Cuota') || status.status === 'quota_exceeded' ? 'quota-error' : ''}`}>
-          <AlertCircle size={14} />
-          <span>{status.error_msg}</span>
+        <div className={`pipeline-error ${status.error_msg.includes('Cuota')||status.status==='quota_exceeded'?'quota-error':''}`}>
+          <AlertCircle size={14}/><span>{status.error_msg}</span>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── SummaryTab ─────────────────────────────────────────────────────────────────
-function SummaryTab({ book, ttsPlaying, onPlay }) {
-  return (
-    <div className="prose-content">
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
-        <h2 style={{margin:0}}>Resumen global</h2>
-        {book.global_summary && !ttsPlaying && (
-          <button className="info-tts-play-btn" onClick={onPlay}>
-            <Play size={15}/> Escuchar
-          </button>
-        )}
-        {ttsPlaying && (
-          <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo — controles en cabecera</span>
-        )}
-      </div>
-      <p>{book.global_summary || 'No disponible'}</p>
     </div>
   )
 }
