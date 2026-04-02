@@ -1,9 +1,5 @@
 """
 Phase 1: Identify book and gather metadata.
-1. Extract hints from the file (title, author from metadata)
-2. Search Open Library + Google Books for book data
-3. Search Wikipedia + Open Library for author bio
-4. Download cover image
 """
 import httpx
 import re
@@ -56,7 +52,6 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
     metadata = {"title": title, "author": author}
 
     async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
-        # Open Library
         try:
             ol_data = await search_open_library(client, query)
             if ol_data:
@@ -64,7 +59,6 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Open Library error: {e}")
 
-        # Google Books
         try:
             gb_data = await search_google_books(client, query)
             if gb_data:
@@ -74,7 +68,7 @@ async def search_book_metadata(title: str, author: Optional[str] = None) -> dict
         except Exception as e:
             print(f"Google Books error: {e}")
 
-        # 1. Intentar generar synopsis con IA (completa, 250-400 palabras)
+        # Generar sinopsis con IA si no hay una buena
         if not metadata.get("synopsis") or len(metadata.get("synopsis", "")) < 200:
             try:
                 from app.services.ai_analyzer import _call_ai
@@ -94,17 +88,11 @@ Escribe en tercera persona, sin spoilers del final. No empieces con "En este lib
                 synopsis = await _call_ai(system, user, max_tokens=800)
                 if synopsis and len(synopsis) > 150:
                     metadata["synopsis"] = synopsis.strip()
-                    print(f"AI synopsis generated: {len(synopsis)} chars")
             except Exception as e:
                 print(f"AI synopsis error: {e}")
 
-        # Si la IA no pudo generar synopsis (cuota agotada), se deja vacía
-        # El usuario puede pulsar Reidentificar cuando se restablezca la cuota
-
-        # Author bio + bibliography
         author_name = metadata.get("author") or author
         if author_name:
-            # Wikipedia (es + en)
             if not metadata.get("author_bio"):
                 try:
                     bio_data = await search_wikipedia_author(client, author_name)
@@ -113,7 +101,6 @@ Escribe en tercera persona, sin spoilers del final. No empieces con "En este lib
                 except Exception as e:
                     print(f"Wikipedia error: {e}")
 
-            # Bibliografía via Google Books (más fiable que Open Library)
             author_name = metadata.get("author") or author
             if author_name:
                 try:
@@ -123,7 +110,6 @@ Escribe en tercera persona, sin spoilers del final. No empieces con "En este lib
                 except Exception as e:
                     print(f"Bibliography error: {e}")
 
-        # Limpiar clave interna
         metadata.pop("_ol_author_key", None)
 
     return metadata
@@ -155,14 +141,38 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
         result["synopsis"] = desc.get("value", desc) if isinstance(desc, dict) else str(desc)
     elif doc.get("first_sentence"):
         result["synopsis"] = doc["first_sentence"].get("value", "")
-    # Guardar author_key para obtener bibliografía después
     if doc.get("author_key"):
         result["_ol_author_key"] = doc["author_key"][0]
     return result
 
 
+def _normalize_title(title: str) -> str:
+    """Extrae el título principal quitando subtítulos de edición y variantes."""
+    # Quitar contenido entre paréntesis: (Edición Limitada), (Limited Edition), etc.
+    t = re.sub(r'\s*\([^)]*\)', '', title)
+    # Quitar traducción bilingüe después de " / "
+    t = t.split(' / ')[0]
+    # Quitar número de serie: "Inspectora Elena Blanco N", "Libro N", etc.
+    t = re.sub(r'\s*(Inspectora\s+\w+\s+\w+\s+\d+|Inspector[ao]\s+\w+\s+\d+)\s*$', '', t, flags=re.IGNORECASE)
+    # Quitar subtítulos editoriales después de ":"
+    t = re.sub(r'\s*:\s*(Inspectora|Pack|Estuche|Trilog|Tetral|Serie|Saga|Colec|Inspector).*', '', t, flags=re.IGNORECASE)
+    return re.sub(r'\s+', ' ', t).strip().lower()
+
+
+def _is_pack_or_collection(title: str) -> bool:
+    """Detecta si un título es un pack, estuche o colección, no un libro individual."""
+    patterns = [
+        r'\bpack\b', r'\bestuche\b', r'\btrilog[íi]a\b', r'\btetralog[íi]a\b',
+        r'\bsaga\b', r'\bcoleccion\b', r'\bcolecci[oó]n\b',
+        r'\bomnibus\b', r'\bcomplet[ao]\b', r'\b\d+\s+libros\b',
+        r'Premio\s+\w+\s+\d{4}\s*\(',   # "Premio Planeta 2021 (La Bestia + ...)"
+        r'Estuche\s+con',
+    ]
+    return any(re.search(p, title, re.IGNORECASE) for p in patterns)
+
+
 async def get_author_bibliography(author_name: str) -> list:
-    """Obtiene bibliografía del autor via Google Books con metadatos completos."""
+    """Obtiene bibliografía deduplicada del autor via Google Books."""
     url = f"https://www.googleapis.com/books/v1/volumes?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=newest"
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
@@ -170,88 +180,115 @@ async def get_author_bibliography(author_name: str) -> list:
         if r.status_code != 200:
             return []
         items = r.json().get("items", [])
-        seen_isbn = set()
-        seen_title = set()
-        results = []
+
+        # Primera pasada: recopilar todos los candidatos
+        candidates = []
         for item in items:
             info = item.get("volumeInfo", {})
             title = info.get("title", "").strip()
             authors = info.get("authors", [])
             if not title or not authors:
                 continue
-            # Solo libros donde el autor es el principal
             if author_name.lower() not in " ".join(authors).lower():
                 continue
-            
-            # Extraer ISBN
+
             isbn = None
             for ident in info.get("industryIdentifiers", []):
                 if ident.get("type") in ("ISBN_13", "ISBN_10"):
                     isbn = ident.get("identifier")
                     break
-            
-            # Deduplicar por ISBN primero, luego por título normalizado
-            title_key = title.lower()
-            if isbn:
-                if isbn in seen_isbn:
-                    continue
-                seen_isbn.add(isbn)
-            else:
-                if title_key in seen_title:
-                    continue
-            seen_title.add(title_key)
-            
-            # Extraer año de publicación
+
             year = None
             if info.get("publishedDate"):
                 try:
-                    year_str = info["publishedDate"][:4]
-                    if year_str.isdigit():
-                        year = int(year_str)
+                    y = info["publishedDate"][:4]
+                    if y.isdigit():
+                        year = int(y)
                 except:
                     pass
-            
-            # Extraer portada (preferir thumbnail grande)
+
+            # Portada — probar varias resoluciones y mejorar zoom de thumbnails
             cover_url = None
             if info.get("imageLinks"):
-                cover_url = (
-                    info["imageLinks"].get("large") or
-                    info["imageLinks"].get("medium") or
-                    info["imageLinks"].get("thumbnail")
-                )
-                if cover_url:
-                    cover_url = cover_url.replace("http://", "https://")
-            
-            # Extraer sinopsis
+                links = info["imageLinks"]
+                for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
+                    if links.get(key):
+                        cover_url = links[key].replace("http://", "https://")
+                        # Subir resolución: zoom=1 → zoom=2
+                        cover_url = re.sub(r'zoom=\d', 'zoom=2', cover_url)
+                        break
+
             synopsis = info.get("description", "")
-            
-            results.append({
-                "title": title,
-                "isbn": isbn,
-                "year": year,
+
+            candidates.append({
+                "title":     title,
+                "isbn":      isbn,
+                "year":      year,
                 "cover_url": cover_url,
-                "synopsis": synopsis[:500] if synopsis else None  # Limitar a 500 chars
+                "synopsis":  synopsis[:500] if synopsis else None,
+                "_norm":     _normalize_title(title),
+                "_is_pack":  _is_pack_or_collection(title),
             })
-        
+
+        # Segunda pasada: deduplicar por título normalizado
+        # Para cada grupo, conservar la mejor entrada
+        groups = {}  # norm -> list of candidates
+        for c in candidates:
+            norm = c["_norm"]
+            groups.setdefault(norm, []).append(c)
+
+        results = []
+        individual_count = sum(1 for c in candidates if not c["_is_pack"])
+
+        for norm, group in groups.items():
+            # Si hay individuales disponibles, descartar packs/colecciones
+            is_pack_group = all(c["_is_pack"] for c in group)
+            if is_pack_group and individual_count >= 2:
+                continue
+
+            # Dentro del grupo, elegir el mejor candidato:
+            # 1) Preferir individuales sobre packs
+            # 2) Preferir los que tienen portada
+            # 3) Entre los que tienen portada, preferir el más antiguo (1ª edición)
+            individuals = [c for c in group if not c["_is_pack"]]
+            pool = individuals if individuals else group
+
+            with_cover    = [c for c in pool if c["cover_url"]]
+            without_cover = [c for c in pool if not c["cover_url"]]
+
+            if with_cover:
+                # El más antiguo con portada = primera edición disponible
+                best = min(with_cover, key=lambda c: c.get("year") or 9999)
+            else:
+                # Sin portada: el más antiguo disponible
+                best = min(without_cover, key=lambda c: c.get("year") or 9999)
+
+            results.append({
+                "title":    best["title"],
+                "isbn":     best["isbn"],
+                "year":     best["year"],
+                "cover_url": best["cover_url"],
+                "synopsis": best["synopsis"],
+            })
+
         # Ordenar por año descendente (más reciente primero)
         results.sort(key=lambda x: x.get("year") or 0, reverse=True)
-        
-        print(f"Google Books bibliography: {len(results)} titles for {author_name}")
-        return results  # Sin límite - devolver todos los libros encontrados
+
+        print(f"Bibliography: {len(results)} titles for {author_name} ({len(items)} raw, {len(candidates)} candidates)")
+        return results
+
     except Exception as e:
         print(f"Google Books bibliography error: {e}")
         return []
 
 
 async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
-    # Sin API key para evitar restricciones de permisos
     url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=3"
     r = await client.get(url)
     data = r.json()
     items = data.get("items", [])
     if not items:
         return {}
-    # Buscar el resultado con más datos (preferir el que tenga descripción)
     best = items[0]
     for item in items:
         if item.get("volumeInfo", {}).get("description"):
@@ -278,12 +315,12 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
     if info.get("language"):
         result["language"] = info["language"]
     if info.get("imageLinks", {}).get("thumbnail"):
-        result["cover_url"] = info["imageLinks"]["thumbnail"].replace("http://", "https://")
+        cover = info["imageLinks"]["thumbnail"].replace("http://", "https://")
+        result["cover_url"] = re.sub(r'zoom=\d', 'zoom=2', cover)
     return result
 
 
 async def search_wikipedia_author(client: httpx.AsyncClient, author: str) -> dict:
-    """Busca biografía del autor en Wikipedia (español primero, luego inglés)."""
     for lang in ("es", "en"):
         try:
             url = f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{quote(author)}"

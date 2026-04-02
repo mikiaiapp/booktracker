@@ -757,7 +757,7 @@ export default function BookPage() {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} ttsState={ttsInfoState} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={() => resumeInfoTTS(book)} onStop={() => stopInfoTTS()} />}
+            {tab === 'info' && <InfoTab book={book} otherBooks={activeData?.other_books || []} allBiblio={book.author_bibliography || []} ttsState={ttsInfoState} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={() => resumeInfoTTS(book)} onStop={() => stopInfoTTS()} />}
 
             {tab === 'chapters' && (
               <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(ch) => { const q = [{id:ch.id,title:ch.title,text:chapterToText(ch)}]; ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); ttsActiveRef.current=true; setTtsPlaying(true); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
@@ -862,7 +862,44 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
   )
 }
 
-function InfoTab({ book, otherBooks = [], ttsState, onPlay, onPause, onResume, onStop }) {
+function InfoTab({ book, otherBooks = [], allBiblio = [], ttsState, onPlay, onPause, onResume, onStop }) {
+  // Construir lista unificada: misma fuente que "Bibliografía completa" en página Autores
+  // 1) Libros ya en la app (other_books del servidor)
+  // 2) Libros de la bibliografía que NO están en la app → mostrar como "No añadido"
+  const unifiedWorks = React.useMemo(() => {
+    // Índice de libros en la app por ISBN y título normalizado
+    const inApp = new Map()
+    otherBooks.forEach(b => {
+      inApp.set((b.title || '').toLowerCase().trim(), b)
+      if (b.isbn) inApp.set(b.isbn, b)
+    })
+
+    // Libros de la bibliografía que faltan en la app
+    const missing = []
+    allBiblio.forEach(item => {
+      const title   = typeof item === 'string' ? item : item?.title
+      const isbn    = typeof item === 'object' ? item?.isbn    : null
+      const year    = typeof item === 'object' ? item?.year    : null
+      const coverUrl= typeof item === 'object' ? item?.cover_url : null
+      if (!title) return
+      const key = title.toLowerCase().trim()
+      // Ya está en la app → no duplicar
+      if (inApp.has(key) || (isbn && inApp.has(isbn))) return
+      missing.push({ _missing: true, title, isbn, year, cover_url: coverUrl })
+    })
+
+    // Lista final: los de la app primero, luego los que faltan
+    // Ordenar todo por año descendente
+    return [...otherBooks, ...missing].sort((a, b) => (b.year || 0) - (a.year || 0))
+  }, [otherBooks, allBiblio])
+
+  const coverPath = (ob) => {
+    if (!ob.cover_local) return null
+    return ob.cover_local.includes('/covers/')
+      ? `/data/covers/${ob.cover_local.split('/covers/')[1]}`
+      : ob.cover_local
+  }
+
   return (
     <div className="info-tab">
       {(book.synopsis || book.author_bio) && (
@@ -910,32 +947,52 @@ function InfoTab({ book, otherBooks = [], ttsState, onPlay, onPause, onResume, o
           <p>{book.author_bio}</p>
         </section>
       )}
-      {otherBooks.length > 0 && (
+
+      {unifiedWorks.length > 0 && (
         <section>
           <h3>Otras obras del autor</h3>
           <div className="refs-grid">
-            {otherBooks.map(ob => {
+            {unifiedWorks.map((ob, idx) => {
+              if (ob._missing) {
+                // Libro de la bibliografía que NO está en la app
+                return (
+                  <div key={`m-${idx}`} className="ref-item ref-item-missing">
+                    <div className="ref-cover">
+                      {ob.cover_url
+                        ? <img src={ob.cover_url} alt={ob.title} />
+                        : <div style={{ width:60, height:85, background:'#f0f0f0', borderRadius:4, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                            <BookOpen size={22} strokeWidth={1} color="#bbb" />
+                          </div>
+                      }
+                    </div>
+                    <div className="ref-info">
+                      <h4 className="ref-title">{ob.title}</h4>
+                      {ob.year && <span className="ref-year">{ob.year}</span>}
+                      <span className="ref-badge" style={{ color: 'var(--mist)' }}>No añadido</span>
+                    </div>
+                  </div>
+                )
+              }
+              // Libro que ya está en la app
               const isAnalyzed = ob.status === 'complete' || ob.phase3_done
-              const isShell = ob.status === 'shell' || ob.status === 'shell_error'
+              const isShell    = ob.status === 'shell' || ob.status === 'shell_error'
+              const cp         = coverPath(ob)
               return (
                 <Link key={ob.id} to={`/book/${ob.id}`} className="ref-item" style={{ textDecoration: 'none' }}>
-                  {ob.cover_local ? (
-                    <div className="ref-cover">
-                      <img src={`/data/covers/${ob.cover_local.split('/covers/')[1]}`} alt={ob.title} />
-                    </div>
-                  ) : (
-                    <div className="ref-cover">
-                      <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <BookOpen size={24} strokeWidth={1} color="#999" />
-                      </div>
-                    </div>
-                  )}
+                  <div className="ref-cover">
+                    {cp
+                      ? <img src={cp} alt={ob.title} />
+                      : <div style={{ width:60, height:85, background:'#f0f0f0', borderRadius:4, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                          <BookOpen size={22} strokeWidth={1} color="#bbb" />
+                        </div>
+                    }
+                  </div>
                   <div className="ref-info">
                     <h4 className="ref-title">{ob.title}</h4>
                     {ob.year && <span className="ref-year">{ob.year}</span>}
-                    {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
-                    {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
-                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
+                    {isAnalyzed && <span className="ref-badge" style={{ color:'var(--gold)', fontWeight:500 }}>✦ Analizado</span>}
+                    {isShell    && <span className="ref-badge" style={{ color:'var(--mist)' }}>Solo ficha</span>}
+                    {!isShell && !isAnalyzed && <span className="ref-badge" style={{ color:'#3498db' }}>Sin analizar</span>}
                   </div>
                 </Link>
               )
@@ -943,6 +1000,7 @@ function InfoTab({ book, otherBooks = [], ttsState, onPlay, onPause, onResume, o
           </div>
         </section>
       )}
+
       {!book.synopsis && !book.author_bio && (
         <p className="empty-tab">La información del libro aún se está cargando…</p>
       )}
