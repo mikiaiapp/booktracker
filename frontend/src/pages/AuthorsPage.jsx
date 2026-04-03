@@ -333,10 +333,7 @@ export default function AuthorsPage() {
                         const norm = title.toLowerCase().trim()
                         return !author.books.some(b => {
                           const bt = (b.title || '').toLowerCase().trim()
-                          if (bt === norm) return true
-                          const longer = bt.length > norm.length ? bt : norm
-                          const shorter = bt.length > norm.length ? norm : bt
-                          return shorter.length / longer.length > 0.85 && longer.includes(shorter)
+                          return bt === norm || bt.includes(norm) || norm.includes(bt)
                         })
                       }).length
                       const total = booksInApp + booksInBiblio
@@ -509,18 +506,11 @@ export default function AuthorsPage() {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
                     if (!title || title.trim() === '') return false
-                    // Deduplicar por ISBN exacto
                     if (isbn && selected.books.some(b => b.isbn && b.isbn === isbn)) return false
-                    // Deduplicar por título: solo coincidencia exacta o casi exacta (≥85% similaridad)
                     const norm = title.toLowerCase().trim()
                     return !selected.books.some(b => {
                       const bt = (b.title || '').toLowerCase().trim()
-                      if (bt === norm) return true
-                      // Solo eliminar si uno contiene al otro Y son muy similares en longitud
-                      const longer = bt.length > norm.length ? bt : norm
-                      const shorter = bt.length > norm.length ? norm : bt
-                      const ratio = shorter.length / longer.length
-                      return ratio > 0.85 && longer.includes(shorter)
+                      return bt === norm || bt.includes(norm) || norm.includes(bt)
                     })
                   }).map((item, i) => {
                     const title = typeof item === 'string' ? item : item.title
