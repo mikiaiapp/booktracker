@@ -275,6 +275,115 @@ async def merge_authors(
     return {"merged": len(books), "target": target}
 
 
+# ── Limpiar todos los duplicados globales (libros + autores) ──
+@router.post("/authors/dedup-all")
+async def dedup_all(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    1. Elimina libros duplicados por ISBN/título para cada autor.
+    2. Unifica autores con nombres similares (inversiones, partículas).
+    """
+    import re
+    from app.models.book import Book
+    from sqlalchemy import func as sqlfunc
+
+    # ── Paso 1: dedup libros por autor ────────────────────────
+    authors_result = await db.execute(
+        select(Book.author).where(Book.author.isnot(None)).group_by(Book.author)
+    )
+    all_authors = [r.author for r in authors_result.all()]
+
+    STATUS_RANK = {"complete": 0, "analyzed": 1, "structured": 2,
+                   "identified": 3, "shell": 4, "shell_error": 5, "error": 6}
+    books_deleted = 0
+
+    for author_name in all_authors:
+        result = await db.execute(
+            select(Book).where(Book.author == author_name)
+            .order_by(Book.phase3_done.desc(), Book.status)
+        )
+        books = result.scalars().all()
+        seen_isbns: dict = {}
+        seen_titles: dict = {}
+        for book in books:
+            isbn_key = book.isbn.strip() if book.isbn else None
+            title_key = (book.title or "").lower().strip()
+            if isbn_key and isbn_key in seen_isbns:
+                if not book.phase3_done and book.status not in ("complete", "analyzed"):
+                    await db.delete(book); books_deleted += 1; continue
+            if not isbn_key and title_key in seen_titles:
+                if not book.phase3_done and book.status not in ("complete", "analyzed"):
+                    await db.delete(book); books_deleted += 1; continue
+            if isbn_key:
+                seen_isbns[isbn_key] = book.id
+            seen_titles[title_key] = book.id
+
+    await db.commit()
+
+    # ── Paso 2: unificar autores similares ───────────────────
+    def normalize(name: str) -> frozenset:
+        stop = {'i', 'y', 'de', 'del', 'la', 'el', 'von', 'van', 'di', 'da', 'du', 'le'}
+        clean = re.sub(r'[^\w\s]', ' ', name.strip(), flags=re.UNICODE)
+        return frozenset(w.lower() for w in clean.split() if w.lower() not in stop and len(w) > 1)
+
+    # Contar libros por autor (tras dedup)
+    counts_result = await db.execute(
+        select(Book.author, sqlfunc.count(Book.id).label("cnt"))
+        .where(Book.author.isnot(None))
+        .group_by(Book.author)
+    )
+    author_counts = {r.author: r.cnt for r in counts_result.all()}
+    author_names = list(author_counts.keys())
+
+    merged = {}  # autor → canónico
+    authors_merged = 0
+
+    for i, a in enumerate(author_names):
+        if a in merged:
+            continue
+        wa = normalize(a)
+        if not wa:
+            continue
+        for b in author_names[i+1:]:
+            if b in merged:
+                continue
+            wb = normalize(b)
+            if not wb:
+                continue
+            common = wa & wb
+            jaccard = len(common) / len(wa | wb) if (wa | wb) else 0
+            min_c = 1 if (len(wa) == 1 and len(wb) == 1) else 2
+            if len(common) >= min_c and jaccard >= 0.4:
+                # Canónico: más libros, luego nombre más largo
+                cnt_a = author_counts.get(a, 0)
+                cnt_b = author_counts.get(b, 0)
+                if cnt_a >= cnt_b:
+                    canonical, redundant = a, b
+                else:
+                    canonical, redundant = b, a
+                merged[redundant] = canonical
+                # Propagar bio/biblio
+                red_result = await db.execute(select(Book).where(Book.author == redundant))
+                bio = None; biblio = None
+                can_result = await db.execute(select(Book).where(Book.author == canonical).limit(1))
+                can_book = can_result.scalar_one_or_none()
+                if can_book:
+                    bio = can_book.author_bio
+                    biblio = can_book.author_bibliography
+                for bk in red_result.scalars().all():
+                    bk.author = canonical
+                    if bio and not bk.author_bio:
+                        bk.author_bio = bio
+                    if biblio and not bk.author_bibliography:
+                        bk.author_bibliography = biblio
+                authors_merged += 1
+
+    await db.commit()
+    return {"books_deleted": books_deleted, "authors_merged": authors_merged}
+
+
 # ── Eliminar duplicados de libros de un autor ─────────────────
 @router.post("/authors/dedup-books")
 async def dedup_author_books(

@@ -94,12 +94,15 @@ export default function AuthorsPage() {
   const [deletingBook, setDeletingBook] = useState({})
   const [deduping, setDeduping] = useState(false)
 
-  const handleDedupBooks = async (authorName) => {
+  const handleDedupAll = async () => {
     setDeduping(true)
     try {
-      const { data } = await authorsAPI.dedupBooks(authorName)
-      if (data.deleted > 0) {
-        toast.success(`${data.deleted} duplicado${data.deleted !== 1 ? 's' : ''} eliminado${data.deleted !== 1 ? 's' : ''}`)
+      const { data } = await authorsAPI.dedupAll()
+      const parts = []
+      if (data.books_deleted > 0) parts.push(`${data.books_deleted} libro${data.books_deleted !== 1 ? 's' : ''} duplicado${data.books_deleted !== 1 ? 's' : ''} eliminado${data.books_deleted !== 1 ? 's' : ''}`)
+      if (data.authors_merged > 0) parts.push(`${data.authors_merged} autor${data.authors_merged !== 1 ? 'es' : ''} unificado${data.authors_merged !== 1 ? 's' : ''}`)
+      if (parts.length > 0) {
+        toast.success(parts.join(' · '))
       } else {
         toast('No se encontraron duplicados', { icon: 'ℹ️' })
       }
@@ -211,6 +214,15 @@ export default function AuthorsPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <button
+            className="merge-mode-btn"
+            onClick={handleDedupAll}
+            disabled={deduping}
+            style={{ borderColor: '#e74c3c', color: '#e74c3c' }}
+            title="Eliminar libros duplicados y unificar autores similares en toda la biblioteca"
+          >
+            {deduping ? '⏳ Limpiando…' : '🗑 Limpiar duplicados'}
+          </button>
           {mergeMode ? (
             <>
               <span style={{ fontSize: '0.85rem', color: 'var(--mist)' }}>
@@ -329,25 +341,14 @@ export default function AuthorsPage() {
               <div style={{flex:1}}>
                 <h2>{selected.name}</h2>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  className="reidentify-author-btn"
-                  onClick={() => handleDedupBooks(selected.name)}
-                  disabled={deduping}
-                  title="Eliminar libros duplicados de este autor"
-                  style={{ background: 'transparent', border: '1.5px solid #e74c3c', color: '#e74c3c' }}
-                >
-                  {deduping ? '⏳' : '🗑 Limpiar duplicados'}
-                </button>
-                <button
-                  className="reidentify-author-btn"
-                  onClick={() => handleReidentifyAuthor(selected.name)}
-                  disabled={reidentifying}
-                  title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
-                >
-                  {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
-                </button>
-              </div>
+              <button
+                className="reidentify-author-btn"
+                onClick={() => handleReidentifyAuthor(selected.name)}
+                disabled={reidentifying}
+                title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
+              >
+                {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
+              </button>
             </div>
 
             {selected.bio ? (

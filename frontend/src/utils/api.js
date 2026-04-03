@@ -65,6 +65,7 @@ export const authorsAPI = {
   reidentifyBook: (bookId) => api.post(`/analysis/${bookId}/reidentify-book`),
   merge: (source, target) => api.post('/analysis/authors/merge', { source, target }),
   dedupBooks: (author) => api.post('/analysis/authors/dedup-books', { author }),
+  dedupAll: () => api.post('/analysis/authors/dedup-all'),
 }
 
 // Upload file to shell book

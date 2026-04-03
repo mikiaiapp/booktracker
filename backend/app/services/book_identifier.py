@@ -234,27 +234,86 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
 
 
 async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -> dict:
-    search_url = f"https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch={quote(author_name)}&format=json&srlimit=1"
-    try:
-        r = await client.get(search_url)
-        data = r.json()
-        results = data.get("query", {}).get("search", [])
-        if not results:
-            return {}
-        page_title = results[0]["title"]
-        content_url = f"https://es.wikipedia.org/w/api.php?action=query&titles={quote(page_title)}&prop=extracts&exintro=true&format=json"
-        r2 = await client.get(content_url)
-        data2 = r2.json()
-        pages = data2.get("query", {}).get("pages", {})
-        page = next(iter(pages.values()), {})
-        extract = page.get("extract", "")
-        if extract:
-            clean = re.sub(r"<[^>]+>", "", extract)
-            clean = re.sub(r"\s+", " ", clean).strip()
-            bio = clean[:800]
-            return {"author_bio": bio}
-    except Exception as e:
-        print(f"Wikipedia author error: {e}")
+    """Busca bio del autor: primero Wikipedia ES, luego EN con traducción IA, luego Open Library."""
+
+    async def _fetch_wikipedia(lang: str, name: str) -> str:
+        try:
+            search_url = (
+                f"https://{lang}.wikipedia.org/w/api.php"
+                f"?action=query&list=search&srsearch={quote(name)}&format=json&srlimit=1"
+            )
+            r = await client.get(search_url)
+            results = r.json().get("query", {}).get("search", [])
+            if not results:
+                return ""
+            page_title = results[0]["title"]
+            content_url = (
+                f"https://{lang}.wikipedia.org/w/api.php"
+                f"?action=query&titles={quote(page_title)}&prop=extracts&exintro=true"
+                f"&explaintext=true&format=json"
+            )
+            r2 = await client.get(content_url)
+            pages = r2.json().get("query", {}).get("pages", {})
+            page = next(iter(pages.values()), {})
+            extract = page.get("extract", "").strip()
+            if not extract:
+                return ""
+            # Verificar que el resultado es sobre el autor
+            name_parts = {p.lower() for p in name.split() if len(p) > 2}
+            if not any(p in extract.lower() for p in name_parts):
+                return ""
+            clean = re.sub(r"\s+", " ", extract).strip()
+            return clean[:1000]
+        except Exception as e:
+            print(f"Wikipedia {lang} error for '{name}': {e}")
+            return ""
+
+    async def _fetch_openlibrary(name: str) -> str:
+        try:
+            url = f"https://openlibrary.org/search/authors.json?q={quote(name)}&limit=1"
+            r = await client.get(url)
+            docs = r.json().get("docs", [])
+            if not docs:
+                return ""
+            author_key = docs[0].get("key", "")
+            if not author_key:
+                return ""
+            r2 = await client.get(f"https://openlibrary.org{author_key}.json")
+            data = r2.json()
+            bio = data.get("bio", "")
+            if isinstance(bio, dict):
+                bio = bio.get("value", "")
+            return str(bio).strip()[:800] if bio else ""
+        except Exception as e:
+            print(f"OpenLibrary bio error for '{name}': {e}")
+            return ""
+
+    # 1. Wikipedia en español
+    bio = await _fetch_wikipedia("es", author_name)
+    if bio:
+        return {"author_bio": bio}
+
+    # 2. Wikipedia en inglés + traducción con IA
+    bio = await _fetch_wikipedia("en", author_name)
+    if bio:
+        try:
+            from app.services.ai_analyzer import _call_ai
+            translated = await _call_ai(
+                "Eres un traductor experto. Traduce el texto al español de forma natural, manteniendo toda la información.",
+                f"Traduce esta biografía al español:\n\n{bio}",
+                max_tokens=600
+            )
+            if translated and len(translated) > 100:
+                return {"author_bio": translated.strip()}
+        except Exception:
+            pass
+        return {"author_bio": bio}
+
+    # 3. Open Library como último recurso
+    bio = await _fetch_openlibrary(author_name)
+    if bio:
+        return {"author_bio": bio}
+
     return {}
 
 
