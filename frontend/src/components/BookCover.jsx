@@ -4,8 +4,19 @@
  * Exporta también `coverSrc(book)` como helper para construir
  * la URL de cover_local de forma consistente en toda la app.
  *
- * Fallback: cover_local → cover_url → Google Books (ISBN) →
- *           Google Books (título) → Open Library (ISBN) → placeholder
+ * Prioridad: src (cover_local / cover_url del libro) →
+ *            Google Books (ISBN) → Google Books (título+autor) →
+ *            Open Library (ISBN) → placeholder
+ *
+ * Correcciones respecto a la versión anterior:
+ * - Eliminada la race condition entre el reset de src y el flag `fetching`.
+ *   El estado `fetching` causaba que, si el padre recargaba datos y src
+ *   llegaba ya con valor, el componente se quedaba bloqueado sin mostrar la
+ *   imagen hasta recargar la página.
+ * - El fallback externo ahora se guarda separado de src, de modo que cuando
+ *   src llega (p.ej. tras el polling de la biblioteca), tiene prioridad
+ *   inmediata sin necesidad de resetear nada.
+ * - Se añade `cancelled` flag para evitar setState en componentes desmontados.
  */
 import React from 'react'
 import { BookOpen } from 'lucide-react'
@@ -21,21 +32,31 @@ export function coverSrc(book) {
 }
 
 export default function BookCover({ src, alt, size = 60, title, isbn, author, fill = false }) {
-  const [imgSrc, setImgSrc] = React.useState(src || null)
-  const [fetching, setFetching] = React.useState(false)
+  // fallback: portada obtenida externamente cuando src no existe o falla
+  const [fallback, setFallback] = React.useState(null)
+  // fetchedKey: identifica la combinación isbn+title ya buscada, evita peticiones duplicadas
+  const [fetchedKey, setFetchedKey] = React.useState(null)
+  // srcError: true cuando la imagen de src falla al cargar (404, timeout, etc.)
+  const [srcError, setSrcError] = React.useState(false)
   const h = Math.round(size * 1.42)
 
-  // Resetear cuando cambia src (p.ej. el padre recarga datos)
+  // Cuando src cambia (el padre refresca), resetear el error para intentarla de nuevo
   React.useEffect(() => {
-    setImgSrc(src || null)
-    setFetching(false)
+    setSrcError(false)
   }, [src])
 
-  // Buscar portada externamente solo si no tenemos src
+  // Buscar portada externamente SOLO cuando no hay src válida
+  const fetchKey = `${isbn || ''}|${title || ''}`
   React.useEffect(() => {
-    if (imgSrc || fetching) return
+    const needsFallback = !src || srcError
+    if (!needsFallback) return
     if (!isbn && !title) return
-    setFetching(true)
+    // No repetir la misma búsqueda si ya la hicimos y tenemos resultado
+    if (fetchedKey === fetchKey && fallback) return
+
+    let cancelled = false
+    setFallback(null)
+    setFetchedKey(fetchKey)
 
     const fetchCover = async () => {
       // 1. Google Books por ISBN
@@ -47,11 +68,11 @@ export default function BookCover({ src, alt, size = 60, title, isbn, author, fi
           if (links) {
             const url = (links.thumbnail || links.smallThumbnail || '')
               .replace('zoom=1', 'zoom=2').replace('http://', 'https://')
-            if (url) { setImgSrc(url); return }
+            if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}
       }
-      // 2. Google Books por título + autor (más preciso que solo título)
+      // 2. Google Books por título + autor
       if (title) {
         try {
           const q = encodeURIComponent(author ? `${title} ${author}` : title)
@@ -61,23 +82,35 @@ export default function BookCover({ src, alt, size = 60, title, isbn, author, fi
           if (links) {
             const url = (links.thumbnail || links.smallThumbnail || '')
               .replace('zoom=1', 'zoom=2').replace('http://', 'https://')
-            if (url) { setImgSrc(url); return }
+            if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}
       }
-      // 3. Open Library por ISBN
-      if (isbn) {
-        setImgSrc(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
+      // 3. Open Library por ISBN como último recurso
+      if (isbn && !cancelled) {
+        setFallback(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
       }
     }
     fetchCover()
-  }, [imgSrc, fetching, isbn, title, author])
+    return () => { cancelled = true }
+  }, [src, srcError, fetchKey])
+
+  // src tiene prioridad; si falla, usar fallback externo
+  const imgSrc = (src && !srcError) ? src : (fallback || null)
 
   if (imgSrc) return (
     <img
       src={imgSrc}
       alt={alt}
-      onError={() => setImgSrc(null)}
+      onError={() => {
+        if (src && !srcError) {
+          // La imagen de src falló — marcar error para activar búsqueda de fallback
+          setSrcError(true)
+        } else {
+          // El fallback también falló — limpiar para mostrar placeholder
+          setFallback(null)
+        }
+      }}
       style={fill
         ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
         : { width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }
