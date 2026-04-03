@@ -120,6 +120,7 @@ export default function LibraryPage() {
                     src={coverSrc(book)}
                     isbn={book.isbn}
                     title={book.title}
+                    author={book.author}
                     alt={book.title}
                     fill
                   />

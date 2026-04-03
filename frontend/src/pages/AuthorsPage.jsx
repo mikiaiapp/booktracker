@@ -427,6 +427,7 @@ export default function AuthorsPage() {
                             src={coverSrc(book)}
                             isbn={book.isbn}
                             title={book.title}
+                            author={selected.name}
                             alt={book.title}
                             size={60}
                           />
@@ -489,6 +490,7 @@ export default function AuthorsPage() {
                             src={cover_url || null}
                             isbn={isbn}
                             title={title}
+                            author={selected.name}
                             alt={title}
                             size={60}
                           />

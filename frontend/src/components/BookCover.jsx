@@ -20,7 +20,7 @@ export function coverSrc(book) {
   return book.cover_url || null
 }
 
-export default function BookCover({ src, alt, size = 60, title, isbn, fill = false }) {
+export default function BookCover({ src, alt, size = 60, title, isbn, author, fill = false }) {
   const [imgSrc, setImgSrc] = React.useState(src || null)
   const [fetching, setFetching] = React.useState(false)
   const h = Math.round(size * 1.42)
@@ -51,10 +51,10 @@ export default function BookCover({ src, alt, size = 60, title, isbn, fill = fal
           }
         } catch {}
       }
-      // 2. Google Books por título
+      // 2. Google Books por título + autor (más preciso que solo título)
       if (title) {
         try {
-          const q = encodeURIComponent(title)
+          const q = encodeURIComponent(author ? `${title} ${author}` : title)
           const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)
           const data = await r.json()
           const links = data.items?.[0]?.volumeInfo?.imageLinks
@@ -71,7 +71,7 @@ export default function BookCover({ src, alt, size = 60, title, isbn, fill = fal
       }
     }
     fetchCover()
-  }, [imgSrc, fetching, isbn, title])
+  }, [imgSrc, fetching, isbn, title, author])
 
   if (imgSrc) return (
     <img
