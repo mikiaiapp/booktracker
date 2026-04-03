@@ -74,6 +74,7 @@ export const authorsAPI = {
   merge: (source, target) => api.post('/analysis/authors/merge', { source, target }),
   dedupBooks: (author) => api.post('/analysis/authors/dedup-books', { author }),
   dedupAll: () => api.post('/analysis/authors/dedup-all'),
+  deleteAuthor: (author) => api.delete('/analysis/authors/delete', { data: { author } }),
 }
 
 // Upload file to shell book

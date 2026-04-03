@@ -540,6 +540,48 @@ async def list_authors(
     return list(authors.values())
 
 
+# ── Borrar autor y todos sus libros (solo si no tiene analizados) ──────────────
+@router.delete("/authors/delete")
+async def delete_author(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    author_name = body.get("author", "").strip()
+    if not author_name:
+        raise HTTPException(400, "author requerido")
+
+    from app.models.book import Book
+
+    # Verificar que no tiene libros analizados
+    analyzed = await db.execute(
+        select(Book).where(Book.author == author_name, Book.phase3_done == True)
+    )
+    if analyzed.scalar_one_or_none():
+        raise HTTPException(400, "No se puede borrar un autor con libros analizados")
+
+    # Obtener todos sus libros
+    result = await db.execute(select(Book).where(Book.author == author_name))
+    books = result.scalars().all()
+
+    deleted_books = 0
+    for book in books:
+        # Borrar archivo PDF/EPUB
+        if book.file_path and os.path.exists(book.file_path):
+            try: os.remove(book.file_path)
+            except Exception: pass
+        # Borrar portada local
+        if book.cover_local and os.path.exists(book.cover_local):
+            try: os.remove(book.cover_local)
+            except Exception: pass
+        await db.delete(book)
+        deleted_books += 1
+
+    await db.commit()
+    return {"ok": True, "author": author_name, "deleted_books": deleted_books}
+
+
 # ── Reidentificar autor ────────────────────────────────────────
 @router.post("/authors/reidentify")
 async def reidentify_author(

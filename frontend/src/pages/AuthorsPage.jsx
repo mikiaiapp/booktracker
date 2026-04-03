@@ -93,6 +93,26 @@ export default function AuthorsPage() {
   const [biblioFilter, setBiblioFilter] = useState('all') // 'all' | 'analyzed' | 'unanalyzed'
   const [deletingBook, setDeletingBook] = useState({})
   const [deduping, setDeduping] = useState(false)
+  const [deletingAuthor, setDeletingAuthor] = useState(false)
+
+  const handleDeleteAuthor = async (authorName, hasAnalyzed) => {
+    if (hasAnalyzed) {
+      toast('No se puede borrar un autor con libros analizados', { icon: '⚠️' })
+      return
+    }
+    if (!window.confirm(`¿Borrar al autor "${authorName}" y todos sus libros? Esta acción no se puede deshacer.`)) return
+    setDeletingAuthor(true)
+    try {
+      const { data } = await authorsAPI.deleteAuthor(authorName)
+      toast.success(`Autor eliminado (${data.deleted_books} libro${data.deleted_books !== 1 ? 's' : ''} borrado${data.deleted_books !== 1 ? 's' : ''})`)
+      setSelected(null)
+      await load()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al eliminar el autor')
+    } finally {
+      setDeletingAuthor(false)
+    }
+  }
 
   const handleDedupAll = async () => {
     setDeduping(true)
@@ -341,14 +361,30 @@ export default function AuthorsPage() {
               <div style={{flex:1}}>
                 <h2>{selected.name}</h2>
               </div>
-              <button
-                className="reidentify-author-btn"
-                onClick={() => handleReidentifyAuthor(selected.name)}
-                disabled={reidentifying}
-                title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
-              >
-                {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {(() => {
+                  const hasAnalyzed = selected.books.some(b => b.phase3_done || b.status === 'complete')
+                  return !hasAnalyzed && (
+                    <button
+                      className="reidentify-author-btn"
+                      onClick={() => handleDeleteAuthor(selected.name, hasAnalyzed)}
+                      disabled={deletingAuthor}
+                      title="Borrar autor y todos sus libros"
+                      style={{ border: '1.5px solid #e74c3c', color: '#e74c3c', background: 'transparent' }}
+                    >
+                      {deletingAuthor ? '⏳' : '🗑 Borrar autor'}
+                    </button>
+                  )
+                })()}
+                <button
+                  className="reidentify-author-btn"
+                  onClick={() => handleReidentifyAuthor(selected.name)}
+                  disabled={reidentifying}
+                  title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
+                >
+                  {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
+                </button>
+              </div>
             </div>
 
             {selected.bio ? (
