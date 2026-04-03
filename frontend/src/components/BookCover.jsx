@@ -10,7 +10,7 @@
 import React from 'react'
 import { BookOpen } from 'lucide-react'
 
-export default function BookCover({ src, alt, size = 60, title, isbn }) {
+export default function BookCover({ src, alt, size = 60, title, isbn, fill = false }) {
   const [imgSrc, setImgSrc] = React.useState(src || null)
   const [tried, setTried] = React.useState(false)
   const h = Math.round(size * 1.42)
@@ -57,12 +57,18 @@ export default function BookCover({ src, alt, size = 60, title, isbn }) {
   if (imgSrc) return (
     <img src={imgSrc} alt={alt}
       onError={() => setImgSrc(null)}
-      style={{ width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
+      style={fill
+        ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+        : { width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }
+      } />
   )
   return (
-    <div style={{ width: size, height: h, background: '#e8e4dc', borderRadius: 4,
-      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <BookOpen size={size * 0.4} strokeWidth={1} color="#aaa" />
+    <div style={fill
+      ? { width: '100%', height: '100%', background: '#e8e4dc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem' }
+      : { width: size, height: h, background: '#e8e4dc', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+    }>
+      <BookOpen size={fill ? 32 : size * 0.4} strokeWidth={1} color="#aaa" />
+      {fill && <span style={{ fontSize: '0.65rem', letterSpacing: '0.1em', fontWeight: 500, color: '#aaa' }}>FICHA</span>}
     </div>
   )
 }

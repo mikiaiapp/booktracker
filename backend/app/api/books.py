@@ -109,7 +109,8 @@ async def list_books(
     return [
         {
             "id": b.id, "title": b.title, "author": b.author,
-            "cover_local": b.cover_local, "status": b.status,
+            "cover_local": b.cover_local, "cover_url": b.cover_url,
+            "isbn": b.isbn, "status": b.status,
             "read_status": b.read_status, "rating": b.rating,
             "phase1_done": b.phase1_done, "phase2_done": b.phase2_done,
             "phase3_done": b.phase3_done, "created_at": b.created_at,

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { booksAPI } from '../utils/api'
 import { BookOpen, Star, Clock, CheckCircle, Search, Filter } from 'lucide-react'
+import BookCover from '../components/BookCover'
 import './LibraryPage.css'
 
 const STATUS_LABELS = {
@@ -115,14 +116,13 @@ export default function LibraryPage() {
             >
               <Link to={`/book/${book.id}`} className="book-card">
                 <div className={`book-cover ${book.status === 'shell' || book.status === 'shell_error' ? 'is-shell' : ''}`}>
-                  {book.cover_local ? (
-                    <img src={`/data/covers/${book.cover_local.split('/covers/')[1]}`} alt={book.title} />
-                  ) : (
-                    <div className="cover-placeholder">
-                      <BookOpen size={32} strokeWidth={1} />
-                      <span>{book.file_type?.toUpperCase() || 'FICHA'}</span>
-                    </div>
-                  )}
+                  <BookCover
+                    src={book.cover_local ? `/data/covers/${book.cover_local.split('/covers/')[1]}` : (book.cover_url || null)}
+                    isbn={book.isbn}
+                    title={book.title}
+                    alt={book.title}
+                    fill
+                  />
                   {/* Overlay con estado del análisis */}
                   <div className="cover-status">
                     {book.status === 'complete' || book.phase3_done ? (
