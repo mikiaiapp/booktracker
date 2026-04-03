@@ -256,18 +256,18 @@ def process_book_phase3(self, user_id: str, book_id: str):
 
 async def _phase3(user_id: str, book_id: str):
     from app.core.database import get_user_db
-    from app.models.book import Book, Chapter, Character, AnalysisJob
-    from app.services.ai_analyzer import (
-        summarize_chapter, analyze_characters,
-        generate_global_summary, generate_mindmap
-    )
+    from app.models.book import Book, Chapter, AnalysisJob
+    from app.services.ai_analyzer import summarize_chapter
     from sqlalchemy import select
-    import json, traceback
+    import traceback
 
     async for db in get_user_db(user_id):
+        book = None
         try:
             result = await db.execute(select(Book).where(Book.id == book_id))
             book = result.scalar_one_or_none()
+            if not book:
+                return
 
             chaps_result = await db.execute(
                 select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order)
@@ -279,9 +279,6 @@ async def _phase3(user_id: str, book_id: str):
             await db.commit()
 
             total = len(chapters)
-            # Filtrar capítulos ya resumidos — permite reanudar donde se dejó
-            pending = [c for c in chapters if c.summary_status != "done" and c.raw_text]
-            done_count = total - len(pending)
 
             # Resetear capítulos pillados en 'processing' (tarea anterior murió)
             for ch in chapters:
@@ -289,14 +286,17 @@ async def _phase3(user_id: str, book_id: str):
                     ch.summary_status = 'pending'
             await db.commit()
 
+            # Filtrar pendientes — permite reanudar donde se dejó
+            pending = [c for c in chapters if c.summary_status not in ('done', 'skipped') and c.raw_text]
+            done_count = total - len(pending)
+
             if done_count > 0:
                 job.detail = f"Reanudando desde capítulo {done_count + 1}/{total}…"
                 await db.commit()
 
             import asyncio as _asyncio
             for i, chapter in enumerate(pending):
-                global_i = chapters.index(chapter)
-                job.progress = int((done_count + i + 1) / total * 60)
+                job.progress = int((done_count + i + 1) / total * 100)
                 job.detail = f"Resumiendo capítulo {done_count + i + 1}/{total}: {chapter.title}"
                 await db.commit()
 
@@ -309,72 +309,51 @@ async def _phase3(user_id: str, book_id: str):
                     )
                     chapter.summary = summary_data.get("summary")
                     chapter.key_events = summary_data.get("key_events", [])
-                    # Si el resumen es un mensaje de bloqueo, marcar como omitido
                     if chapter.summary and chapter.summary.startswith("[Contenido"):
                         chapter.summary_status = "skipped"
                     else:
                         chapter.summary_status = "done"
-                except ValueError as e:
+                except Exception as e:
                     err_msg = str(e)
                     if "QUOTA_EXCEEDED" in err_msg:
+                        # Cuota agotada: parar aquí, no tiene sentido continuar
                         chapter.summary_status = "quota_exceeded"
                         chapter.summary = _format_quota_error(e)
                         await db.commit()
-                        raise  # Detener fase 3
+                        book.status = "error"
+                        book.error_msg = _format_quota_error(e)
+                        job.status = "error"
+                        await db.commit()
+                        return
                     else:
+                        # Error puntual: marcar y continuar con el siguiente capítulo
+                        print(f"Error resumiendo '{chapter.title}': {err_msg}")
                         chapter.summary_status = "error"
-                        chapter.summary = f"Error: {err_msg}"
+                        chapter.summary = f"Error: {err_msg[:200]}"
+
                 await db.commit()
 
-                # Pausa entre capítulos para respetar rate limits (Gemini: 15 req/min, OpenAI TPM)
+                # Pausa entre capítulos para respetar rate limits
                 if i < len(pending) - 1:
                     pause = 10 if 'gemini' in (settings.AI_MODEL or '').lower() else 15
                     await _asyncio.sleep(pause)
 
-            # Analyze characters
-            job.detail = "Analizando personajes..."
-            await db.commit()
-
-            all_summaries = "\n\n".join(
-                f"[{c.title}]\n{c.summary}" for c in chapters if c.summary
-            )
-            characters_data = await analyze_characters(all_summaries, book.title)
-
-            for char_data in characters_data:
-                existing = await db.execute(
-                    select(Character).where(
-                        Character.book_id == book_id,
-                        Character.name == char_data["name"]
-                    )
-                )
-                char = existing.scalar_one_or_none()
-                if not char:
-                    char = Character(book_id=book_id, name=char_data["name"])
-                    db.add(char)
-                for k, v in char_data.items():
-                    if hasattr(char, k):
-                        setattr(char, k, v)
-
-            job.progress = 80
-            job.detail = "Generando resumen global..."
-            await db.commit()
-
-            book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
-            book.mindmap_data = await generate_mindmap(all_summaries, book.title)
-
-            book.phase3_done = True
-            book.status = "analyzed"
             job.status = "done"
             job.progress = 100
+            job.detail = f"Resúmenes completados ({total} capítulos)"
             await db.commit()
 
             # ── Encadenar automáticamente con Fase 4 (personajes + resumen global + mapa) ──
             process_phase3b_task.delay(user_id, book_id)
 
         except Exception as e:
-            book.status = "error"
-            book.error_msg = traceback.format_exc()
-            await db.commit()
+            try:
+                if book:
+                    book.status = "error"
+                    book.error_msg = traceback.format_exc()
+                    await db.commit()
+            except Exception:
+                pass
             raise
 
 
