@@ -416,46 +416,36 @@ async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -
             print(f"OpenLibrary bio error for '{name}': {e}")
             return ""
 
-    def _is_english(text: str) -> bool:
-        """Heurística rápida: si hay muchas palabras inglesas comunes, está en inglés."""
-        english_markers = ['the ', ' is ', ' are ', ' was ', ' were ', ' has ', ' have ',
-                           ' of ', ' and ', ' in ', ' to ', ' a ', ' an ', ' for ',
-                           'known as', 'born in', 'she is', 'he is', 'they are']
-        text_lower = text.lower()
-        hits = sum(1 for m in english_markers if m in text_lower)
-        return hits >= 4
-
-    async def _translate_to_spanish(bio: str) -> str:
-        """Traduce un texto al español usando la IA. Lanza excepción si falla."""
+    async def _ensure_spanish(bio: str) -> str:
+        """Garantiza que la bio esté en español, traduciendo siempre via IA."""
         from app.services.ai_analyzer import _call_ai
         translated = await _call_ai(
-            "Eres un traductor experto literario. Traduce el siguiente texto al español de forma natural y fluida, manteniendo toda la información.",
-            f"Traduce al español:\n\n{bio}",
+            "Eres un traductor y redactor literario experto. Si el texto ya está en español, devuélvelo tal cual. "
+            "Si está en otro idioma, tradúcelo al español de forma natural y fluida, manteniendo toda la información. "
+            "Devuelve ÚNICAMENTE el texto, sin comentarios ni explicaciones.",
+            f"Asegúrate de que este texto esté en español:\n\n{bio}",
             max_tokens=800
         )
         if translated and len(translated) > 80:
             return translated.strip()
-        return bio  # solo si la respuesta es vacía
+        return bio
 
-    # 1. Wikipedia en español
+    # 1. Wikipedia en español (puede tener texto en inglés — siempre pasamos por IA)
     bio = await _fetch_wikipedia("es", author_name)
     if bio:
-        # Verificar que realmente está en español
-        if _is_english(bio):
-            bio = await _translate_to_spanish(bio)
+        bio = await _ensure_spanish(bio)
         return {"author_bio": bio}
 
     # 2. Wikipedia en inglés + traducción
     bio = await _fetch_wikipedia("en", author_name)
     if bio:
-        bio = await _translate_to_spanish(bio)
+        bio = await _ensure_spanish(bio)
         return {"author_bio": bio}
 
     # 3. Open Library como último recurso
     bio = await _fetch_openlibrary(author_name)
     if bio:
-        if _is_english(bio):
-            bio = await _translate_to_spanish(bio)
+        bio = await _ensure_spanish(bio)
         return {"author_bio": bio}
 
     return {}
@@ -483,96 +473,160 @@ def _is_pack_or_collection(title: str) -> bool:
 
 
 async def get_author_bibliography(author_name: str) -> list:
-    """Obtiene bibliografía del autor via Google Books con portadas y deduplicación."""
-    url = f"https://www.googleapis.com/books/v1/volumes?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=newest"
-    try:
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
-            r = await c.get(url)
-        if r.status_code != 200:
+    """Obtiene bibliografía del autor via Google Books con portadas y deduplicación.
+    Prioriza ediciones en español y normaliza títulos al castellano publicado en España."""
+
+    async def _fetch_books(lang_restrict: str) -> list:
+        url = (
+            f"https://www.googleapis.com/books/v1/volumes"
+            f"?q=inauthor:{quote(author_name)}&maxResults=40&orderBy=newest"
+        )
+        if lang_restrict:
+            url += f"&langRestrict={lang_restrict}"
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as c:
+                r = await c.get(url)
+            if r.status_code != 200:
+                return []
+            return r.json().get("items", [])
+        except Exception as e:
+            print(f"Bibliography fetch error ({lang_restrict}): {e}")
             return []
-        items = r.json().get("items", [])
 
-        seen_normalized = {}  # normalized_title -> best_entry
+    async def _spanish_title_for(title: str, author: str) -> str:
+        """Usa la IA para obtener el título oficial en español publicado en España.
+        Si el libro no tiene edición española, devuelve el título original."""
+        from app.services.ai_analyzer import _call_ai
+        result = await _call_ai(
+            "Eres un experto en literatura y edición española. "
+            "Responde ÚNICAMENTE con el título, sin explicaciones ni puntuación adicional.",
+            f"¿Cuál es el título oficial en castellano (edición española) del libro '{title}' de {author}? "
+            f"Si no existe edición en español, devuelve el título original tal cual.",
+            max_tokens=60
+        )
+        if result:
+            clean = result.strip().strip('"').strip("'")
+            if len(clean) > 1:
+                return clean
+        return title
 
-        for item in items:
-            info = item.get("volumeInfo", {})
-            title = info.get("title", "").strip()
-            authors = info.get("authors", [])
-            if not title or not authors:
-                continue
-            # Solo libros donde el autor es el principal
-            if author_name.lower() not in " ".join(authors).lower():
-                continue
-            # Filtrar packs y colecciones
-            if _is_pack_or_collection(title):
-                continue
+    def _extract_entry(item: dict) -> dict | None:
+        info = item.get("volumeInfo", {})
+        title = info.get("title", "").strip()
+        authors = info.get("authors", [])
+        if not title or not authors:
+            return None
+        if author_name.lower() not in " ".join(authors).lower():
+            return None
+        if _is_pack_or_collection(title):
+            return None
 
-            # Extraer ISBN
-            isbn = None
-            for ident in info.get("industryIdentifiers", []):
-                if ident.get("type") in ("ISBN_13", "ISBN_10"):
-                    isbn = ident.get("identifier")
+        isbn = None
+        for ident in info.get("industryIdentifiers", []):
+            if ident.get("type") in ("ISBN_13", "ISBN_10"):
+                isbn = ident.get("identifier")
+                break
+
+        year = None
+        if info.get("publishedDate"):
+            try:
+                y = info["publishedDate"][:4]
+                if y.isdigit():
+                    year = int(y)
+            except:
+                pass
+
+        cover_url = None
+        if info.get("imageLinks"):
+            links = info["imageLinks"]
+            for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
+                if links.get(key):
+                    cover_url = links[key].replace("http://", "https://")
+                    if "zoom=1" in cover_url:
+                        cover_url = cover_url.replace("zoom=1", "zoom=2")
                     break
+        if not cover_url and isbn:
+            cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"
 
-            # Extraer año
-            year = None
-            if info.get("publishedDate"):
-                try:
-                    y = info["publishedDate"][:4]
-                    if y.isdigit():
-                        year = int(y)
-                except:
-                    pass
+        synopsis = info.get("description", "")[:300] if info.get("description") else ""
+        lang = info.get("language", "")
 
-            # Extraer portada — mejor resolución disponible
-            cover_url = None
-            if info.get("imageLinks"):
-                links = info["imageLinks"]
-                for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
-                    if links.get(key):
-                        cover_url = links[key].replace("http://", "https://")
-                        if "zoom=1" in cover_url:
-                            cover_url = cover_url.replace("zoom=1", "zoom=2")
-                        break
+        return {
+            "title": title,
+            "isbn": isbn,
+            "year": year,
+            "cover_url": cover_url,
+            "synopsis": synopsis,
+            "lang": lang,
+        }
 
-            # Fallback a Open Library si no hay portada de Google Books
-            if not cover_url and isbn:
-                cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"
+    # 1. Obtener ediciones: primero en español, luego todas
+    es_items = await _fetch_books("es")
+    all_items = await _fetch_books("")
 
-            synopsis = info.get("description", "")[:300] if info.get("description") else ""
+    seen_normalized: dict[str, dict] = {}
 
-            norm = _normalize_title(title)
-
-            if norm not in seen_normalized:
-                seen_normalized[norm] = {
-                    "title": title,
-                    "isbn": isbn,
-                    "year": year,
-                    "cover_url": cover_url,
-                    "synopsis": synopsis,
+    def _merge(entry: dict):
+        norm = _normalize_title(entry["title"])
+        if norm not in seen_normalized:
+            seen_normalized[norm] = entry
+        else:
+            ex = seen_normalized[norm]
+            # Preferir edición en español
+            if entry.get("lang") == "es" and ex.get("lang") != "es":
+                seen_normalized[norm] = {**entry,
+                    "cover_url": entry.get("cover_url") or ex.get("cover_url"),
+                    "isbn": entry.get("isbn") or ex.get("isbn"),
+                    "synopsis": entry.get("synopsis") or ex.get("synopsis"),
                 }
-            else:
-                # Mantener la entrada con más información (preferir la que tiene portada)
-                existing = seen_normalized[norm]
-                if cover_url and not existing.get("cover_url"):
-                    existing["cover_url"] = cover_url
-                if isbn and not existing.get("isbn"):
-                    existing["isbn"] = isbn
-                if year and not existing.get("year"):
-                    existing["year"] = year
-                if synopsis and not existing.get("synopsis"):
-                    existing["synopsis"] = synopsis
-                # Preferir el año más antiguo (primera publicación)
-                if year and existing.get("year") and year < existing["year"]:
-                    existing["year"] = year
+                return
+            # Completar campos vacíos
+            if entry.get("cover_url") and not ex.get("cover_url"):
+                ex["cover_url"] = entry["cover_url"]
+            if entry.get("isbn") and not ex.get("isbn"):
+                ex["isbn"] = entry["isbn"]
+            if entry.get("synopsis") and not ex.get("synopsis"):
+                ex["synopsis"] = entry["synopsis"]
+            if entry.get("year") and ex.get("year") and entry["year"] < ex["year"]:
+                ex["year"] = entry["year"]
 
-        result = list(seen_normalized.values())
-        result.sort(key=lambda x: -(x.get("year") or 0))
-        return result
+    # Procesar primero los resultados en español (tienen prioridad)
+    for item in es_items:
+        entry = _extract_entry(item)
+        if entry:
+            _merge(entry)
 
-    except Exception as e:
-        print(f"Bibliography error: {e}")
-        return []
+    # Luego el resto (rellena huecos, no sobrescribe español)
+    for item in all_items:
+        entry = _extract_entry(item)
+        if entry:
+            _merge(entry)
+
+    # 2. Normalizar títulos al castellano via IA para los que no están en español
+    import asyncio as _asyncio
+    entries = list(seen_normalized.values())
+
+    async def _normalize_entry(entry: dict) -> dict:
+        if entry.get("lang") == "es":
+            return entry  # ya está en español
+        spanish = await _spanish_title_for(entry["title"], author_name)
+        entry["title"] = spanish
+        return entry
+
+    # Procesar en paralelo con límite de concurrencia
+    semaphore = _asyncio.Semaphore(3)
+    async def _limited(entry):
+        async with semaphore:
+            return await _normalize_entry(entry)
+
+    normalized = await _asyncio.gather(*[_limited(e) for e in entries], return_exceptions=True)
+    result = [e for e in normalized if isinstance(e, dict)]
+
+    # Limpiar campo interno y ordenar por año desc
+    for e in result:
+        e.pop("lang", None)
+    result.sort(key=lambda x: -(x.get("year") or 0))
+    return result
 
 
 async def download_cover(cover_url: str, covers_dir: str, book_id: str) -> Optional[str]:
