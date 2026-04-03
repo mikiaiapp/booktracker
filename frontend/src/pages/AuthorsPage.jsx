@@ -127,6 +127,8 @@ export default function AuthorsPage() {
     setMergeSelected([])
     setMergeDialog(null)
   }
+
+  const handleAddShell = async (item, authorName) => {
     const title = typeof item === 'string' ? item : item.title
     const isbn = typeof item === 'string' ? null : (item.isbn || null)
     const year = typeof item === 'string' ? null : (item.year || null)
