@@ -492,3 +492,100 @@
   font-size: 0.75rem;
   color: var(--mist);
 }
+
+/* ── Fusión de autores ─────────────────────────────────────── */
+.merge-mode-btn {
+  padding: 0.45rem 1rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--gold);
+  background: transparent;
+  color: var(--gold);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.merge-mode-btn:hover { background: rgba(201,169,110,0.1); }
+
+.merge-confirm-btn {
+  padding: 0.45rem 1rem;
+  border-radius: 20px;
+  border: none;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.merge-confirm-btn:disabled { opacity: 0.45; cursor: default; }
+.merge-confirm-btn:not(:disabled):hover { opacity: 0.85; }
+
+.merge-cancel-btn {
+  padding: 0.45rem 1rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--mist);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.merge-cancel-btn:hover { border-color: var(--ink); }
+
+.author-item.merge-selected {
+  background: rgba(201,169,110,0.15);
+  border-left: 3px solid var(--gold);
+}
+
+.merge-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+
+.merge-dialog {
+  background: var(--paper);
+  border-radius: 14px;
+  padding: 2rem;
+  max-width: 420px;
+  width: 92%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+
+.merge-dialog h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.merge-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.merge-option-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--paper-dark);
+  background: white;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.merge-option-btn:hover {
+  border-color: var(--gold);
+  background: rgba(201,169,110,0.06);
+}
+.merge-option-btn strong { font-size: 0.95rem; color: var(--ink); }
+.merge-option-btn span  { font-size: 0.78rem; color: var(--mist); }

@@ -86,7 +86,47 @@ export default function AuthorsPage() {
     }
   }
 
-  const handleAddShell = async (item, authorName) => {
+  const [mergeMode, setMergeMode] = useState(false)
+  const [mergeSelected, setMergeSelected] = useState([]) // max 2
+  const [merging, setMerging] = useState(false)
+  const [mergeDialog, setMergeDialog] = useState(null) // { a, b } → elegir cuál es canónico
+
+  const toggleMergeSelect = (author) => {
+    setMergeSelected(prev => {
+      const exists = prev.find(a => a.name === author.name)
+      if (exists) return prev.filter(a => a.name !== author.name)
+      if (prev.length >= 2) return prev // máximo 2
+      return [...prev, author]
+    })
+  }
+
+  const handleMergeClick = () => {
+    if (mergeSelected.length === 2) {
+      setMergeDialog({ a: mergeSelected[0], b: mergeSelected[1] })
+    }
+  }
+
+  const handleMergeConfirm = async (canonical, redundant) => {
+    setMergeDialog(null)
+    setMerging(true)
+    try {
+      await authorsAPI.merge(redundant.name, canonical.name)
+      toast.success(`"${redundant.name}" fusionado en "${canonical.name}"`)
+      setMergeMode(false)
+      setMergeSelected([])
+      await load()
+    } catch {
+      toast.error('Error al fusionar autores')
+    } finally {
+      setMerging(false)
+    }
+  }
+
+  const cancelMerge = () => {
+    setMergeMode(false)
+    setMergeSelected([])
+    setMergeDialog(null)
+  }
     const title = typeof item === 'string' ? item : item.title
     const isbn = typeof item === 'string' ? null : (item.isbn || null)
     const year = typeof item === 'string' ? null : (item.year || null)
@@ -130,7 +170,55 @@ export default function AuthorsPage() {
             {authors.length} {authors.length === 1 ? 'autor' : 'autores'} en tu biblioteca
           </p>
         </div>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          {mergeMode ? (
+            <>
+              <span style={{ fontSize: '0.85rem', color: 'var(--mist)' }}>
+                {mergeSelected.length === 0 ? 'Selecciona dos autores' :
+                 mergeSelected.length === 1 ? 'Selecciona un segundo autor' :
+                 `${mergeSelected[0].name} + ${mergeSelected[1].name}`}
+              </span>
+              <button
+                className="merge-confirm-btn"
+                onClick={handleMergeClick}
+                disabled={mergeSelected.length !== 2 || merging}
+              >
+                🔀 Fusionar
+              </button>
+              <button className="merge-cancel-btn" onClick={cancelMerge}>Cancelar</button>
+            </>
+          ) : (
+            <button className="merge-mode-btn" onClick={() => setMergeMode(true)}>
+              🔀 Fusionar autores
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Diálogo: elegir cuál es el nombre canónico */}
+      {mergeDialog && (
+        <div className="merge-overlay" onClick={() => setMergeDialog(null)}>
+          <div className="merge-dialog" onClick={e => e.stopPropagation()}>
+            <h3>¿Cuál es el nombre correcto?</h3>
+            <p style={{ color: 'var(--mist)', fontSize: '0.875rem', marginBottom: '1.25rem' }}>
+              El nombre elegido será el que quede. Los libros del otro se moverán a este.
+            </p>
+            <div className="merge-options">
+              <button className="merge-option-btn" onClick={() => handleMergeConfirm(mergeDialog.a, mergeDialog.b)}>
+                <strong>{mergeDialog.a.name}</strong>
+                <span>{mergeDialog.a.books.length} libro{mergeDialog.a.books.length !== 1 ? 's' : ''} en la app</span>
+              </button>
+              <button className="merge-option-btn" onClick={() => handleMergeConfirm(mergeDialog.b, mergeDialog.a)}>
+                <strong>{mergeDialog.b.name}</strong>
+                <span>{mergeDialog.b.books.length} libro{mergeDialog.b.books.length !== 1 ? 's' : ''} en la app</span>
+              </button>
+            </div>
+            <button className="merge-cancel-btn" style={{ marginTop: '1rem' }} onClick={() => setMergeDialog(null)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="authors-layout">
         {/* Lista lateral */}
@@ -144,11 +232,15 @@ export default function AuthorsPage() {
             authors.map((author, i) => (
               <motion.div
                 key={author.name}
-                className={`author-item ${selected?.name === author.name ? 'active' : ''}`}
+                className={`author-item ${
+                  mergeMode
+                    ? mergeSelected.find(a => a.name === author.name) ? 'merge-selected' : ''
+                    : selected?.name === author.name ? 'active' : ''
+                }`}
                 initial={{ opacity: 0, x: -12 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
-                onClick={() => handleSelectAuthor(author)}
+                onClick={() => mergeMode ? toggleMergeSelect(author) : handleSelectAuthor(author)}
               >
                 <div className="author-avatar-sm">
                   {author.name[0].toUpperCase()}

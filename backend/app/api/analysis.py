@@ -219,6 +219,62 @@ async def download_book_file(
     return FileResponse(book.file_path, media_type=media_type, filename=filename)
 
 
+# ── Fusionar dos autores en uno ────────────────────────────────
+@router.post("/authors/merge")
+async def merge_authors(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fusiona todos los libros de 'source' en 'target' y elimina el autor fuente.
+    Body: { "source": "Josef Ajram i Tarés", "target": "Josef Ajram" }
+    """
+    body = await request.json()
+    source = body.get("source", "").strip()
+    target = body.get("target", "").strip()
+    if not source or not target:
+        raise HTTPException(400, "source y target son obligatorios")
+    if source == target:
+        raise HTTPException(400, "source y target deben ser distintos")
+
+    from app.models.book import Book
+    # Reasignar todos los libros del autor fuente al destino
+    result = await db.execute(select(Book).where(Book.author == source))
+    books = result.scalars().all()
+    if not books:
+        raise HTTPException(404, f"No se encontraron libros para '{source}'")
+
+    # Copiar bio/bibliography del fuente al destino si el destino no las tiene
+    target_result = await db.execute(select(Book).where(Book.author == target).limit(1))
+    target_book = target_result.scalar_one_or_none()
+
+    for book in books:
+        book.author = target
+        # Si el libro fuente tiene bio/biblio y el destino no, propagarla
+        if target_book and not target_book.author_bio and book.author_bio:
+            target_book.author_bio = book.author_bio
+        if target_book and not target_book.author_bibliography and book.author_bibliography:
+            target_book.author_bibliography = book.author_bibliography
+
+    await db.commit()
+
+    # Actualizar bio/biblio en TODOS los libros del autor destino ahora unificado
+    all_target = await db.execute(select(Book).where(Book.author == target))
+    merged_books = all_target.scalars().all()
+    # Encontrar la primera bio/biblio disponible
+    bio = next((b.author_bio for b in merged_books if b.author_bio), None)
+    biblio = next((b.author_bibliography for b in merged_books if b.author_bibliography), None)
+    for b in merged_books:
+        if bio and not b.author_bio:
+            b.author_bio = bio
+        if biblio and not b.author_bibliography:
+            b.author_bibliography = biblio
+    await db.commit()
+
+    return {"merged": len(books), "target": target}
+
+
 # ── Autores ───────────────────────────────────────────────────
 @router.get("/authors/list")
 async def list_authors(

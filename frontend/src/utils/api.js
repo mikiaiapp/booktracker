@@ -63,6 +63,7 @@ export const authorsAPI = {
   list: () => api.get('/analysis/authors/list'),
   reidentify: (author) => api.post('/analysis/authors/reidentify', { author }),
   reidentifyBook: (bookId) => api.post(`/analysis/${bookId}/reidentify-book`),
+  merge: (source, target) => api.post('/analysis/authors/merge', { source, target }),
 }
 
 // Upload file to shell book
