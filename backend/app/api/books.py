@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
+import os
 import os
 import uuid
 import aiofiles
@@ -197,6 +198,42 @@ async def update_book(
 
     await db.commit()
     return {"ok": True}
+
+
+# ── Actualizar portada ────────────────────────────────────────
+@router.patch("/{book_id}/cover")
+async def update_cover(
+    book_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Guarda una cover_url elegida por el usuario y descarga la imagen localmente."""
+    body = await request.json()
+    cover_url = body.get("cover_url", "").strip()
+    if not cover_url:
+        raise HTTPException(400, "cover_url requerida")
+
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    book.cover_url = cover_url
+
+    # Intentar descargar localmente
+    try:
+        from app.core.config import settings
+        from app.services.book_identifier import download_cover
+        covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
+        local = await download_cover(cover_url, covers_dir, book_id)
+        if local:
+            book.cover_local = local
+    except Exception as e:
+        print(f"Cover download error: {e}")
+
+    await db.commit()
+    return {"ok": True, "cover_url": cover_url, "cover_local": book.cover_local}
 
 
 # ── Delete book ───────────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ export const booksAPI = {
     })
   },
   update: (id, data) => api.patch(`/books/${id}`, data),
+  updateCover: (id, cover_url) => api.patch(`/books/${id}/cover`, { cover_url }),
   delete: (id) => api.delete(`/books/${id}`),
 }
 

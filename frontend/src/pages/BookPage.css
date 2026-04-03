@@ -923,3 +923,8 @@
   transition: opacity 0.15s;
 }
 .confirm-btn-ok:hover { opacity: 0.85; }
+
+/* ── Cover hover hint ─────────────────────────────────────── */
+.hero-cover:hover .cover-change-hint {
+  opacity: 1 !important;
+}

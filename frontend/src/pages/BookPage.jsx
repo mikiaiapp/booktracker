@@ -10,6 +10,7 @@ import {
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
 import { coverSrc } from '../components/BookCover'
+import CoverPicker from '../components/CoverPicker'
 import './BookPage.css'
 
 const TABS = [
@@ -446,6 +447,7 @@ export default function BookPage() {
   React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
   const [tab, setTab] = useState('info')
   const [expandedChapter, setExpandedChapter] = useState(null)
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false)
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [audioPaused, setAudioPaused] = useState(false)
   const [audioEl, setAudioEl] = useState(null)
@@ -680,8 +682,12 @@ export default function BookPage() {
         </button>
 
         <div className="hero-content">
-          <div className="hero-cover">
+          <div className="hero-cover" style={{ cursor: 'pointer', position: 'relative' }} onClick={() => setCoverPickerOpen(true)} title="Haz clic para cambiar la portada">
             <HeroCover book={book} />
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: '0.7rem', textAlign: 'center', padding: '4px 0', opacity: 0, transition: 'opacity 0.2s' }}
+              className="cover-change-hint">
+              ✏ Cambiar
+            </div>
           </div>
 
           <div className="hero-info">
@@ -888,6 +894,22 @@ export default function BookPage() {
         </AnimatePresence>
       </div>
       {confirmModal}
+      {coverPickerOpen && (
+        <CoverPicker
+          book={book}
+          onSelect={async (url) => {
+            try {
+              await booksAPI.updateCover(id, url)
+              toast.success('Portada actualizada')
+              await load()
+            } catch {
+              toast.error('Error al guardar la portada')
+            }
+            setCoverPickerOpen(false)
+          }}
+          onClose={() => setCoverPickerOpen(false)}
+        />
+      )}
     </div>
   )
 }

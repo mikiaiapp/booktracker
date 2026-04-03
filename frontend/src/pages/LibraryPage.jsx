@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import toast from 'react-hot-toast'
 import { booksAPI } from '../utils/api'
 import { BookOpen, Star, Clock, CheckCircle, Search, Filter } from 'lucide-react'
 import BookCover, { coverSrc } from '../components/BookCover'
+import CoverPicker from '../components/CoverPicker'
 import './LibraryPage.css'
 
 const STATUS_LABELS = {
@@ -27,6 +29,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
+  const [coverPickerBook, setCoverPickerBook] = useState(null)
 
   const load = async () => {
     try {
@@ -124,6 +127,12 @@ export default function LibraryPage() {
                     alt={book.title}
                     fill
                   />
+                  {/* Botón cambiar portada */}
+                  <button
+                    className="cover-change-btn"
+                    onClick={e => { e.preventDefault(); setCoverPickerBook(book) }}
+                    title="Cambiar portada"
+                  >✏</button>
                   {/* Overlay con estado del análisis */}
                   <div className="cover-status">
                     {book.status === 'complete' || book.phase3_done ? (
@@ -160,5 +169,21 @@ export default function LibraryPage() {
         </div>
       )}
     </div>
+    {coverPickerBook && (
+      <CoverPicker
+        book={coverPickerBook}
+        onSelect={async (url) => {
+          try {
+            await booksAPI.updateCover(coverPickerBook.id, url)
+            toast.success('Portada actualizada')
+            load()
+          } catch {
+            toast.error('Error al guardar la portada')
+          }
+          setCoverPickerBook(null)
+        }}
+        onClose={() => setCoverPickerBook(null)}
+      />
+    )}
   )
 }
