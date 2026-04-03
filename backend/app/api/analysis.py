@@ -445,12 +445,23 @@ async def list_authors(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Devuelve todos los autores únicos con sus libros (deduplicados)."""
+    """Devuelve autores que tienen al menos un libro analizado (phase3_done=True)."""
+    # Subconsulta: autores con al menos un libro analizado
+    from sqlalchemy import exists
+    analyzed_subq = (
+        select(Book.author)
+        .where(Book.phase3_done == True, Book.author.isnot(None))
+        .distinct()
+        .subquery()
+    )
     result = await db.execute(
         select(Book.author, Book.author_bio, Book.author_bibliography,
                Book.id, Book.title, Book.cover_local, Book.cover_url, Book.year, Book.status,
                Book.phase3_done, Book.isbn, Book.synopsis)
-        .where(Book.author.isnot(None))
+        .where(
+            Book.author.isnot(None),
+            Book.author.in_(select(analyzed_subq.c.author))
+        )
         .order_by(Book.author, Book.phase3_done.desc(), Book.status)
     )
     rows = result.all()

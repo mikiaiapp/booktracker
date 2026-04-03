@@ -248,12 +248,46 @@ async def delete_book(
     if not book:
         raise HTTPException(404, "Book not found")
 
-    # Remove file
+    author = book.author
+
+    # Borrar archivo físico
     if book.file_path and os.path.exists(book.file_path):
         os.remove(book.file_path)
+    # Borrar portada local si existe
+    if book.cover_local and os.path.exists(book.cover_local):
+        try:
+            os.remove(book.cover_local)
+        except Exception:
+            pass
 
     await db.delete(book)
     await db.commit()
+
+    # Si el autor no tiene más libros analizados, borrar todos sus libros shell
+    if author:
+        analyzed = await db.execute(
+            select(Book).where(
+                Book.author == author,
+                Book.phase3_done == True
+            )
+        )
+        if not analyzed.scalar_one_or_none():
+            # Sin libros analizados: eliminar todos los shells de este autor
+            shells = await db.execute(
+                select(Book).where(
+                    Book.author == author,
+                    Book.status.in_(["shell", "shell_error", "identified", "uploaded"])
+                )
+            )
+            for shell in shells.scalars().all():
+                if shell.cover_local and os.path.exists(shell.cover_local):
+                    try:
+                        os.remove(shell.cover_local)
+                    except Exception:
+                        pass
+                await db.delete(shell)
+            await db.commit()
+
     return {"ok": True}
 
 
