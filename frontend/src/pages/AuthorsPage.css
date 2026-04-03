@@ -589,3 +589,35 @@
 }
 .merge-option-btn strong { font-size: 0.95rem; color: var(--ink); }
 .merge-option-btn span  { font-size: 0.78rem; color: var(--mist); }
+
+/* ── Filtro de bibliografía ───────────────────────────────── */
+.biblio-filter-tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--paper-dark, #ede6d6);
+  border-radius: 20px;
+  padding: 3px;
+}
+
+.biblio-filter-tab {
+  padding: 0.3rem 0.85rem;
+  border-radius: 16px;
+  border: none;
+  background: transparent;
+  color: var(--mist);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.biblio-filter-tab.active {
+  background: white;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.biblio-filter-tab:not(.active):hover {
+  color: var(--ink);
+}

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { authorsAPI, shellAPI } from '../utils/api'
+import { authorsAPI, shellAPI, booksAPI } from '../utils/api'
 import { BookOpen, User, ExternalLink, Plus } from 'lucide-react'
 import BookCover, { coverSrc } from '../components/BookCover'
 import './AuthorsPage.css'
@@ -90,6 +90,8 @@ export default function AuthorsPage() {
   const [mergeSelected, setMergeSelected] = useState([]) // max 2
   const [merging, setMerging] = useState(false)
   const [mergeDialog, setMergeDialog] = useState(null) // { a, b } → elegir cuál es canónico
+  const [biblioFilter, setBiblioFilter] = useState('all') // 'all' | 'analyzed' | 'unanalyzed'
+  const [deletingBook, setDeletingBook] = useState({})
 
   const toggleMergeSelect = (author) => {
     setMergeSelected(prev => {
@@ -126,6 +128,24 @@ export default function AuthorsPage() {
     setMergeMode(false)
     setMergeSelected([])
     setMergeDialog(null)
+  }
+
+  const handleDeleteBook = async (book) => {
+    if (book.phase3_done || book.status === 'complete') {
+      toast('No se puede borrar un libro analizado', { icon: '⚠️' })
+      return
+    }
+    if (!window.confirm(`¿Borrar "${book.title}"? Esta acción no se puede deshacer.`)) return
+    setDeletingBook(d => ({ ...d, [book.id]: true }))
+    try {
+      await booksAPI.delete(book.id)
+      toast.success(`"${book.title}" eliminado`)
+      await load()
+    } catch {
+      toast.error('Error al eliminar el libro')
+    } finally {
+      setDeletingBook(d => ({ ...d, [book.id]: false }))
+    }
   }
 
   const handleAddShell = async (item, authorName) => {
@@ -334,13 +354,30 @@ export default function AuthorsPage() {
             {/* Bibliografía completa en formato Referencias */}
             {(selected.books?.length > 0 || selected.bibliography?.length > 0) && (
               <div className="author-section">
-                <h3>Bibliografía completa</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0 }}>Bibliografía completa</h3>
+                  <div className="biblio-filter-tabs">
+                    {[['all','Todos'],['analyzed','Analizados'],['unanalyzed','Sin analizar']].map(([val, label]) => (
+                      <button
+                        key={val}
+                        className={`biblio-filter-tab ${biblioFilter === val ? 'active' : ''}`}
+                        onClick={() => setBiblioFilter(val)}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
                 <div className="refs-grid">
                   {/* Libros ya en la app */}
-                  {selected.books.map(book => {
+                  {selected.books.filter(book => {
+                    const isAnalyzed = book.status === 'complete' || book.phase3_done
+                    if (biblioFilter === 'analyzed') return isAnalyzed
+                    if (biblioFilter === 'unanalyzed') return !isAnalyzed
+                    return true
+                  }).map(book => {
                     const isAnalyzed = book.status === 'complete' || book.phase3_done
                     const isShell = book.status === 'shell' || book.status === 'shell_error'
                     const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified'].includes(book.status)
+                    const canDelete = !isAnalyzed
                     return (
                       <Link
                         key={book.id}
@@ -365,35 +402,33 @@ export default function AuthorsPage() {
                           {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
                           {!isShell && !isAnalyzed && !isProcessing && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
                         </div>
-                        <button
-                          className="ref-refresh-btn"
-                          onClick={e => { e.preventDefault(); handleRefreshBook(book.id) }}
-                          disabled={refreshingBook[book.id]}
-                          title="Actualizar portada, sinopsis e ISBN"
-                          style={{
-                            position: 'absolute',
-                            top: '0.5rem',
-                            right: '0.5rem',
-                            background: 'white',
-                            border: '1.5px solid #ddd',
-                            borderRadius: '4px',
-                            width: '24px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            fontSize: '0.9rem'
-                          }}
-                        >
-                          {refreshingBook[book.id] ? '⏳' : '↻'}
-                        </button>
+                        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', display: 'flex', gap: '4px' }}>
+                          <button
+                            className="ref-refresh-btn"
+                            onClick={e => { e.preventDefault(); handleRefreshBook(book.id) }}
+                            disabled={refreshingBook[book.id]}
+                            title="Actualizar portada, sinopsis e ISBN"
+                            style={{ background: 'white', border: '1.5px solid #ddd', borderRadius: '4px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem' }}
+                          >
+                            {refreshingBook[book.id] ? '⏳' : '↻'}
+                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={e => { e.preventDefault(); handleDeleteBook(book) }}
+                              disabled={deletingBook[book.id]}
+                              title="Eliminar libro"
+                              style={{ background: 'white', border: '1.5px solid #e74c3c', borderRadius: '4px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.85rem', color: '#e74c3c' }}
+                            >
+                              {deletingBook[book.id] ? '⏳' : '×'}
+                            </button>
+                          )}
+                        </div>
                       </Link>
                     )
                   })}
 
                   {/* Libros de la bibliografía que NO están en la app */}
-                  {(selected.bibliography || []).filter(item => {
+                  {biblioFilter !== 'analyzed' && (selected.bibliography || []).filter(item => {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
                     if (!title || title.trim() === '') return false
