@@ -288,7 +288,7 @@ async def get_author_bio_rich(author_name: str) -> str:
     """
     Genera una biografía completa y rica en español para un autor.
     Estrategia:
-    1. Recopila texto crudo de Wikipedia ES y/o EN (sin límite de longitud)
+    1. Recopila texto crudo de Wikipedia ES y/o EN (sin límite de longitud )
     2. Pide a la IA que redacte una biografía extensa, fluida y en español,
        usando ese texto como fuente — nunca menor de 400 palabras.
     3. Si Wikipedia no tiene nada, la IA la genera desde su conocimiento.
