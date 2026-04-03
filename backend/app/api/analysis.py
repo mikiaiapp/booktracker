@@ -79,7 +79,7 @@ async def trigger_phase3(
         raise HTTPException(400, "Phase 2 not complete")
 
     from app.workers.tasks import process_book_phase3
-    task = process_book_phase3.delay(current_user.id, book_id)
+    task = process_book_phase3.delay(current_user.id, book_id, False)
     book.task_id = task.id
     book.status = "summarizing"
     book.error_msg = None

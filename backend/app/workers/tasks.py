@@ -270,14 +270,15 @@ async def _phase2(user_id: str, book_id: str):
 
 # ── Phase 3: AI summaries ─────────────────────────────────────────────────────
 @celery_app.task(bind=True, name="process_book_phase3")
-def process_book_phase3(self, user_id: str, book_id: str):
-    return run_async(_phase3(user_id, book_id))
+def process_book_phase3(self, user_id: str, book_id: str, chain_next: bool = True):
+    return run_async(_phase3(user_id, book_id, chain_next))
 
 
-async def _phase3(user_id: str, book_id: str):
+async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
     from app.core.database import get_user_db
     from app.models.book import Book, Chapter, AnalysisJob
     from app.services.ai_analyzer import summarize_chapter
+    from app.core.config import settings
     from sqlalchemy import select
     import asyncio as _asyncio
 
@@ -409,7 +410,8 @@ async def _phase3(user_id: str, book_id: str):
         await db.commit()
 
     print(f"Phase3 completada: {total} capítulos")
-    process_phase3b_task.delay(user_id, book_id)
+    if chain_next:
+        process_phase3b_task.delay(user_id, book_id)
 
 
 # ── Podcast generation ────────────────────────────────────────────────────────
