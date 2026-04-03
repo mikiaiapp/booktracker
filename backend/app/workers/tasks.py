@@ -279,126 +279,130 @@ async def _phase3(user_id: str, book_id: str):
     from app.models.book import Book, Chapter, AnalysisJob
     from app.services.ai_analyzer import summarize_chapter
     from sqlalchemy import select
-    import traceback, asyncio as _asyncio
+    import asyncio as _asyncio
 
-    # ── Paso 1: preparar lista de pendientes con sesión corta ──
-    chapter_ids = []
-    total = 0
-    job_id = None
+    async def _db(coro_fn):
+        """Ejecuta una función async con su propia sesión de BD."""
+        async for db in get_user_db(user_id):
+            return await coro_fn(db)
+
+    # ── Paso 1: preparar lista de pendientes ──
     book_title = ""
     book_author = None
+    total = 0
+    job_id = None
 
-    async for db in get_user_db(user_id):
-        result = await db.execute(select(Book).where(Book.id == book_id))
-        book = result.scalar_one_or_none()
+    async def _setup(db):
+        nonlocal book_title, book_author, total, job_id
+        book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
         if not book:
-            return
+            return []
         book_title = book.title
         book_author = book.author
-
-        chaps = await db.execute(
+        chaps = (await db.execute(
             select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order)
-        )
-        chapters = chaps.scalars().all()
-        total = len(chapters)
-
-        # Resetear los pillados en 'processing'
-        for ch in chapters:
+        )).scalars().all()
+        total = len(chaps)
+        for ch in chaps:
             if ch.summary_status == 'processing':
                 ch.summary_status = 'pending'
-
         job = AnalysisJob(book_id=book_id, phase=3, status="running",
                           detail=f"Iniciando resúmenes ({total} capítulos)")
         db.add(job)
         await db.commit()
         job_id = job.id
+        return [(ch.id, ch.title, ch.raw_text)
+                for ch in chaps
+                if ch.summary_status not in ('done', 'skipped') and ch.raw_text]
 
-        # Solo IDs y textos — no mantener objetos ORM vivos entre sleeps
-        chapter_ids = [
-            (ch.id, ch.title, ch.raw_text)
-            for ch in chapters
-            if ch.summary_status not in ('done', 'skipped') and ch.raw_text
-        ]
+    chapter_ids = await _db(_setup)
+    if chapter_ids is None:
+        return  # libro no encontrado
 
     done_count = total - len(chapter_ids)
     print(f"Phase3: {len(chapter_ids)} capítulos pendientes de {total} total")
 
-    # ── Paso 2: resumir cada capítulo con su propia sesión de BD ──
+    # ── Paso 2: resumir cada capítulo con reintentos ──
+    MAX_RETRIES = 3
+
     for i, (ch_id, ch_title, ch_text) in enumerate(chapter_ids):
         global_num = done_count + i + 1
 
-        # Marcar como processing en sesión propia
-        async for db in get_user_db(user_id):
-            ch = (await db.execute(select(Chapter).where(Chapter.id == ch_id))).scalar_one_or_none()
+        # Marcar como processing
+        async def _mark_processing(db, _ch_id=ch_id, _num=global_num, _title=ch_title):
+            ch = (await db.execute(select(Chapter).where(Chapter.id == _ch_id))).scalar_one_or_none()
             job = (await db.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))).scalar_one_or_none()
-            if ch:
-                ch.summary_status = 'processing'
+            if ch: ch.summary_status = 'processing'
             if job:
-                job.progress = int(global_num / total * 100)
-                job.detail = f"Resumiendo capítulo {global_num}/{total}: {ch_title}"
+                job.progress = int(_num / total * 100)
+                job.detail = f"Resumiendo capítulo {_num}/{total}: {_title}"
             await db.commit()
+        await _db(_mark_processing)
 
-        # Llamada IA fuera de cualquier sesión de BD
+        # Llamada IA con reintentos
         summary_data = None
         error_msg = None
         quota_exceeded = False
-        try:
-            summary_data = await summarize_chapter(ch_title, ch_text, book_title, book_author)
-        except Exception as e:
-            error_msg = str(e)
-            if "QUOTA_EXCEEDED" in error_msg or "rate limit" in error_msg.lower():
-                quota_exceeded = True
 
-        # Guardar resultado en sesión propia
-        async for db in get_user_db(user_id):
-            ch = (await db.execute(select(Chapter).where(Chapter.id == ch_id))).scalar_one_or_none()
+        for attempt in range(MAX_RETRIES):
+            try:
+                summary_data = await summarize_chapter(ch_title, ch_text, book_title, book_author)
+                error_msg = None
+                break  # éxito
+            except Exception as e:
+                error_msg = str(e)
+                if "QUOTA_EXCEEDED" in error_msg or "rate limit" in error_msg.lower():
+                    quota_exceeded = True
+                    break  # no reintentar si es cuota
+                wait = 15 * (attempt + 1)
+                print(f"Error en '{ch_title}' (intento {attempt+1}/{MAX_RETRIES}): {error_msg}. Reintentando en {wait}s…")
+                if attempt < MAX_RETRIES - 1:
+                    await _asyncio.sleep(wait)
+
+        # Guardar resultado
+        async def _save_result(db, _ch_id=ch_id, _title=ch_title):
+            ch = (await db.execute(select(Chapter).where(Chapter.id == _ch_id))).scalar_one_or_none()
             book_obj = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             job = (await db.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))).scalar_one_or_none()
-
             if ch:
                 if quota_exceeded:
                     ch.summary_status = 'quota_exceeded'
                     ch.summary = _format_quota_error(Exception(error_msg)) if error_msg else 'Cuota agotada'
                 elif error_msg:
-                    print(f"Error resumiendo '{ch_title}': {error_msg}")
+                    print(f"Capítulo '{_title}' marcado como error tras {MAX_RETRIES} intentos: {error_msg}")
                     ch.summary_status = 'error'
                     ch.summary = f"Error: {error_msg[:200]}"
                 elif summary_data:
                     ch.summary = summary_data.get("summary", "")
                     ch.key_events = summary_data.get("key_events", [])
-                    if ch.summary and ch.summary.startswith("[Contenido"):
-                        ch.summary_status = 'skipped'
-                    else:
-                        ch.summary_status = 'done'
-
+                    ch.summary_status = 'skipped' if (ch.summary and ch.summary.startswith("[Contenido")) else 'done'
             if quota_exceeded and book_obj:
                 book_obj.status = 'error'
                 book_obj.error_msg = ch.summary if ch else 'Cuota agotada'
-                if job:
-                    job.status = 'error'
+                if job: job.status = 'error'
             await db.commit()
+        await _db(_save_result)
 
         if quota_exceeded:
             return
 
-        # Pausa entre capítulos fuera de sesión de BD
+        # Pausa entre capítulos (fuera de BD)
         if i < len(chapter_ids) - 1:
             pause = 10 if 'gemini' in (settings.AI_MODEL or '').lower() else 15
-            print(f"Capítulo {global_num}/{total} resumido. Pausa {pause}s…")
+            print(f"Capítulo {global_num}/{total} listo. Pausa {pause}s…")
             await _asyncio.sleep(pause)
 
-    # ── Paso 3: marcar completado ──
-    async for db in get_user_db(user_id):
+    # ── Paso 3: marcar completado y encadenar ──
+    async def _finish(db):
         job = (await db.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))).scalar_one_or_none()
         if job:
             job.status = 'done'
             job.progress = 100
             job.detail = f"Resúmenes completados ({total} capítulos)"
         await db.commit()
+    await _db(_finish)
 
     print(f"Phase3 completada: {total} capítulos procesados")
-
-    # ── Encadenar con Fase 4 ──
     process_phase3b_task.delay(user_id, book_id)
 
 
@@ -597,7 +601,7 @@ async def _reidentify_author(user_id: str, author_name: str):
     async for db in get_user_db(user_id):
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
                 # 1. Actualizar bio del autor en Wikipedia
                 bio_data = await search_wikipedia_author(client, author_name)
                 new_bio = bio_data.get("author_bio")

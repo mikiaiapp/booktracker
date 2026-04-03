@@ -190,47 +190,66 @@ async def search_open_library(client: httpx.AsyncClient, query: str) -> dict:
 
 
 async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
-    url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=1"
-    r = await client.get(url)
-    data = r.json()
-    items = data.get("items", [])
-    if not items:
-        return {}
-    info = items[0].get("volumeInfo", {})
-    result = {}
-    result["title"] = info.get("title", "")
-    if info.get("authors"):
-        result["author"] = info["authors"][0]
-    ids = info.get("industryIdentifiers", [])
-    for ident in ids:
-        if ident.get("type") in ("ISBN_13", "ISBN_10"):
-            result["isbn"] = ident.get("identifier")
-            break
-    if info.get("publishedDate"):
+    # Intentar primero restringido a español, luego sin restricción
+    for lang_restrict in ("es", ""):
+        url = f"https://www.googleapis.com/books/v1/volumes?q={quote(query)}&maxResults=5"
+        if lang_restrict:
+            url += f"&langRestrict={lang_restrict}"
         try:
-            y = info["publishedDate"][:4]
-            if y.isdigit():
-                result["year"] = int(y)
-        except:
-            pass
-    if info.get("pageCount"):
-        result["pages"] = info["pageCount"]
-    if info.get("categories"):
-        result["genre"] = info["categories"][0]
-    if info.get("language"):
-        result["language"] = info["language"]
-    if info.get("description"):
-        result["synopsis"] = info["description"]
-    if info.get("imageLinks"):
-        links = info["imageLinks"]
-        for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
-            if links.get(key):
-                cover = links[key].replace("http://", "https://")
-                if "zoom=1" in cover:
-                    cover = cover.replace("zoom=1", "zoom=2")
-                result["cover_url"] = cover
+            r = await client.get(url)
+            data = r.json()
+        except Exception:
+            continue
+        items = data.get("items", [])
+        if not items:
+            continue
+
+        # Escoger el mejor resultado: preferir idioma español
+        def score(item):
+            info = item.get("volumeInfo", {})
+            lang = info.get("language", "")
+            has_cover = bool(info.get("imageLinks"))
+            has_isbn = any(i.get("type") in ("ISBN_13","ISBN_10") for i in info.get("industryIdentifiers",[]))
+            return (lang == "es") * 4 + has_cover * 2 + has_isbn * 1
+
+        best = max(items, key=score)
+        info = best.get("volumeInfo", {})
+
+        result = {}
+        result["title"] = info.get("title", "")
+        if info.get("authors"):
+            result["author"] = info["authors"][0]
+        ids = info.get("industryIdentifiers", [])
+        for ident in ids:
+            if ident.get("type") in ("ISBN_13", "ISBN_10"):
+                result["isbn"] = ident.get("identifier")
                 break
-    return result
+        if info.get("publishedDate"):
+            try:
+                y = info["publishedDate"][:4]
+                if y.isdigit():
+                    result["year"] = int(y)
+            except:
+                pass
+        if info.get("pageCount"):
+            result["pages"] = info["pageCount"]
+        if info.get("categories"):
+            result["genre"] = info["categories"][0]
+        if info.get("language"):
+            result["language"] = info["language"]
+        if info.get("description"):
+            result["synopsis"] = info["description"]
+        if info.get("imageLinks"):
+            links = info["imageLinks"]
+            for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
+                if links.get(key):
+                    cover = links[key].replace("http://", "https://")
+                    if "zoom=1" in cover:
+                        cover = cover.replace("zoom=1", "zoom=2")
+                    result["cover_url"] = cover
+                    break
+        return result
+    return {}
 
 
 async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -> dict:
@@ -288,30 +307,49 @@ async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -
             print(f"OpenLibrary bio error for '{name}': {e}")
             return ""
 
-    # 1. Wikipedia en español
-    bio = await _fetch_wikipedia("es", author_name)
-    if bio:
-        return {"author_bio": bio}
+    def _is_english(text: str) -> bool:
+        """Heurística rápida: si hay muchas palabras inglesas comunes, está en inglés."""
+        english_markers = ['the ', ' is ', ' are ', ' was ', ' were ', ' has ', ' have ',
+                           ' of ', ' and ', ' in ', ' to ', ' a ', ' an ', ' for ',
+                           'known as', 'born in', 'she is', 'he is', 'they are']
+        text_lower = text.lower()
+        hits = sum(1 for m in english_markers if m in text_lower)
+        return hits >= 4
 
-    # 2. Wikipedia en inglés + traducción con IA
-    bio = await _fetch_wikipedia("en", author_name)
-    if bio:
+    async def _translate_to_spanish(bio: str) -> str:
+        """Traduce un texto al español usando la IA configurada."""
         try:
             from app.services.ai_analyzer import _call_ai
             translated = await _call_ai(
-                "Eres un traductor experto. Traduce el texto al español de forma natural, manteniendo toda la información.",
-                f"Traduce esta biografía al español:\n\n{bio}",
-                max_tokens=600
+                "Eres un traductor experto literario. Traduce el siguiente texto al español de forma natural y fluida.",
+                f"Traduce al español:\n\n{bio}",
+                max_tokens=700
             )
-            if translated and len(translated) > 100:
-                return {"author_bio": translated.strip()}
-        except Exception:
-            pass
+            if translated and len(translated) > 80:
+                return translated.strip()
+        except Exception as e:
+            print(f"Translation error: {e}")
+        return bio  # devolver original si falla
+
+    # 1. Wikipedia en español
+    bio = await _fetch_wikipedia("es", author_name)
+    if bio:
+        # Verificar que realmente está en español
+        if _is_english(bio):
+            bio = await _translate_to_spanish(bio)
+        return {"author_bio": bio}
+
+    # 2. Wikipedia en inglés + traducción
+    bio = await _fetch_wikipedia("en", author_name)
+    if bio:
+        bio = await _translate_to_spanish(bio)
         return {"author_bio": bio}
 
     # 3. Open Library como último recurso
     bio = await _fetch_openlibrary(author_name)
     if bio:
+        if _is_english(bio):
+            bio = await _translate_to_spanish(bio)
         return {"author_bio": bio}
 
     return {}
