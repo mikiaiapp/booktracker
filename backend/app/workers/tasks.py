@@ -633,56 +633,75 @@ async def _reidentify_author(user_id: str, author_name: str):
             await db.commit()
 
             # 4. Crear fichas para libros de la bibliografía que no existan
-            import uuid
+            import uuid, re as _re
             created = 0
+
+            def _norm_title(t: str) -> str:
+                """Normaliza título para comparación: minúsculas, sin subtítulos ni artículos."""
+                t = t.lower().strip()
+                # Quitar subtítulos tras ':' o '/'
+                t = t.split(':')[0].split(' / ')[0]
+                # Quitar sufijos tipo "novela", "roman", "(edición...)"
+                t = _re.sub(r'\s*\([^)]*\)', '', t)
+                t = _re.sub(r'\b(novela|roman|novel|libro)\b', '', t, flags=_re.IGNORECASE)
+                # Quitar artículos iniciales
+                t = _re.sub(r'^(el|la|los|las|un|una|the|a|an|le|les|der|die|das)\s+', '', t.strip())
+                return _re.sub(r'\s+', ' ', t).strip()
+
+            # Construir índice de títulos ya existentes en BD (para comparación rápida)
+            all_books_result = await db.execute(
+                select(Book.title, Book.isbn).where(Book.author == author_name)
+            )
+            existing_books = all_books_result.all()
+            existing_norm_titles = {_norm_title(b.title) for b in existing_books}
+            existing_isbns = {b.isbn for b in existing_books if b.isbn}
+
             for item in (new_biblio or []):
-                    if not isinstance(item, dict):
-                        continue
-                    
-                    b_title = item.get("title")
-                    b_isbn = item.get("isbn")
-                    b_year = item.get("year")
-                    b_cover_url = item.get("cover_url")
-                    b_synopsis = item.get("synopsis")
-                    
-                    if not b_title:
-                        continue
+                if not isinstance(item, dict):
+                    continue
 
-                    # Comprobar si ya existe por ISBN o título
-                    conditions = []
-                    if b_isbn:
-                        conditions.append(Book.isbn == b_isbn)
-                    conditions.append(
-                        sqlfunc.lower(Book.title) == b_title.lower()
-                    )
-                    existing = await db.execute(
-                        select(Book).where(or_(*conditions))
-                    )
-                    if existing.scalar_one_or_none():
-                        continue
+                b_title = item.get("title")
+                b_isbn = item.get("isbn")
+                b_year = item.get("year")
+                b_cover_url = item.get("cover_url")
+                b_synopsis = item.get("synopsis")
 
-                    # Crear ficha shell con metadatos completos desde bibliografía
-                    book_id = str(uuid.uuid4())
-                    shell = Book(
-                        id=book_id,
-                        title=b_title,
-                        author=author_name,
-                        isbn=b_isbn,
-                        year=b_year,
-                        synopsis=b_synopsis,
-                        cover_url=b_cover_url,
-                        author_bio=new_bio,
-                        author_bibliography=new_biblio,
-                        status="shell",
-                        phase1_done=False,
-                    )
-                    db.add(shell)
-                    await db.commit()
+                if not b_title:
+                    continue
 
-                    # Buscar metadatos adicionales y descargar portada en background
-                    fetch_shell_metadata.delay(user_id, book_id)
-                    created += 1
-                    print(f"Shell creado: {b_title} ({b_isbn}) - año: {b_year}")
+                # Deduplicación: ISBN exacto O título normalizado
+                if b_isbn and b_isbn in existing_isbns:
+                    continue
+                if _norm_title(b_title) in existing_norm_titles:
+                    continue
+
+                # Crear ficha shell
+                book_id = str(uuid.uuid4())
+                shell = Book(
+                    id=book_id,
+                    title=b_title,
+                    author=author_name,
+                    isbn=b_isbn,
+                    year=b_year,
+                    synopsis=b_synopsis,
+                    cover_url=b_cover_url,
+                    author_bio=new_bio,
+                    author_bibliography=new_biblio,
+                    status="shell",
+                    phase1_done=False,
+                )
+                db.add(shell)
+                await db.commit()
+
+                # Actualizar índices locales para evitar duplicados dentro del mismo lote
+                existing_norm_titles.add(_norm_title(b_title))
+                if b_isbn:
+                    existing_isbns.add(b_isbn)
+
+                # Buscar metadatos adicionales y descargar portada en background
+                fetch_shell_metadata.delay(user_id, book_id)
+                created += 1
+                print(f"Shell creado: {b_title} ({b_isbn}) - año: {b_year}")
 
             # 5. Relanzar fetch_shell_metadata en fichas existentes sin portada o sinopsis
             updated = 0
