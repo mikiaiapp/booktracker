@@ -1,23 +1,42 @@
 /**
- * BookCover — componente reutilizable para portadas de libros.
- * Si no hay src, intenta buscar la portada client-side:
- *   1. Google Books por ISBN
- *   2. Google Books por título
- *   3. Open Library por ISBN
+ * BookCover — portada de libro con fallback progresivo.
  *
- * Uso: <BookCover src={ob.cover_url} isbn={ob.isbn} title={ob.title} alt={ob.title} />
+ * Exporta también `coverSrc(book)` como helper para construir
+ * la URL de cover_local de forma consistente en toda la app.
+ *
+ * Fallback: cover_local → cover_url → Google Books (ISBN) →
+ *           Google Books (título) → Open Library (ISBN) → placeholder
  */
 import React from 'react'
 import { BookOpen } from 'lucide-react'
 
+/** Convierte la ruta absoluta del servidor en URL servible por nginx */
+export function coverSrc(book) {
+  if (!book) return null
+  if (book.cover_local) {
+    const parts = book.cover_local.split('/covers/')
+    if (parts.length >= 2) return `/data/covers/${parts[parts.length - 1]}`
+  }
+  return book.cover_url || null
+}
+
 export default function BookCover({ src, alt, size = 60, title, isbn, fill = false }) {
   const [imgSrc, setImgSrc] = React.useState(src || null)
-  const [tried, setTried] = React.useState(false)
+  const [fetching, setFetching] = React.useState(false)
   const h = Math.round(size * 1.42)
 
+  // Resetear cuando cambia src (p.ej. el padre recarga datos)
   React.useEffect(() => {
-    if (imgSrc || tried) return
-    setTried(true)
+    setImgSrc(src || null)
+    setFetching(false)
+  }, [src])
+
+  // Buscar portada externamente solo si no tenemos src
+  React.useEffect(() => {
+    if (imgSrc || fetching) return
+    if (!isbn && !title) return
+    setFetching(true)
+
     const fetchCover = async () => {
       // 1. Google Books por ISBN
       if (isbn) {
@@ -52,16 +71,20 @@ export default function BookCover({ src, alt, size = 60, title, isbn, fill = fal
       }
     }
     fetchCover()
-  }, [])
+  }, [imgSrc, fetching, isbn, title])
 
   if (imgSrc) return (
-    <img src={imgSrc} alt={alt}
+    <img
+      src={imgSrc}
+      alt={alt}
       onError={() => setImgSrc(null)}
       style={fill
         ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
         : { width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }
-      } />
+      }
+    />
   )
+
   return (
     <div style={fill
       ? { width: '100%', height: '100%', background: '#e8e4dc', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '0.5rem' }

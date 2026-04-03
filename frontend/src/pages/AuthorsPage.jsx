@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { authorsAPI, shellAPI } from '../utils/api'
 import { BookOpen, User, ExternalLink, Plus } from 'lucide-react'
-import BookCover from '../components/BookCover'
+import BookCover, { coverSrc } from '../components/BookCover'
 import './AuthorsPage.css'
 
 export default function AuthorsPage() {
@@ -350,7 +350,7 @@ export default function AuthorsPage() {
                       >
                         <div className="ref-cover">
                           <BookCover
-                            src={book.cover_local ? `/data/covers/${book.cover_local.split('/covers/')[1]}` : (book.cover_url || null)}
+                            src={coverSrc(book)}
                             isbn={book.isbn}
                             title={book.title}
                             alt={book.title}

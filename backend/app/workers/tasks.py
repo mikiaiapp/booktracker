@@ -59,7 +59,7 @@ async def _phase1(user_id: str, book_id: str):
             covers_dir = os.path.join(settings.COVERS_DIR, user_id)
             os.makedirs(covers_dir, exist_ok=True)
 
-            metadata = await identify_book(book.file_path, book.file_type, book.title, covers_dir=covers_dir)
+            metadata = await identify_book(book.file_path, book.file_type, book.title, covers_dir=covers_dir, book_id=book_id)
 
             # Aplicar metadatos — lista explícita de campos válidos
             valid_fields = {
@@ -532,15 +532,11 @@ async def _fetch_shell(user_id: str, book_id: str):
                     except Exception as e:
                         print(f"Error setting {field}: {e}")
 
-            # Descargar portada: priorizar cover_url ya existente (de bibliografía)
-            # Si no existe, usar el que venga de metadata
+            # Descargar portada
             cover_url_to_use = book.cover_url or metadata.get("cover_url")
-            
             if cover_url_to_use and not book.cover_local:
                 cover_dir = os.path.join(settings.COVERS_DIR, user_id)
-                os.makedirs(cover_dir, exist_ok=True)
-                fake_path = os.path.join(settings.UPLOADS_DIR, user_id, f"{book_id}.pdf")
-                local_cover = await download_cover(cover_url_to_use, fake_path)
+                local_cover = await download_cover(cover_url_to_use, cover_dir, book_id)
                 if local_cover:
                     book.cover_local = local_cover
                     print(f"Portada descargada para {book.title}")

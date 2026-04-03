@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
+import { coverSrc } from '../components/BookCover'
 import './BookPage.css'
 
 const TABS = [
@@ -939,27 +940,30 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
 }
 
 function HeroCover({ book }) {
-  const [src, setSrc] = React.useState(() => {
-    if (book.cover_local) {
-      return book.cover_local.includes('/covers/')
-        ? `/data/covers/${book.cover_local.split('/covers/')[1]}`
-        : book.cover_local
-    }
-    return book.cover_url || null
-  })
-  const [tried, setTried] = React.useState(false)
+  const initial = coverSrc(book)
+  const [src, setSrc] = React.useState(initial)
+  const [fetching, setFetching] = React.useState(false)
 
+  // Reaccionar si el libro se recarga con nuevos datos
   React.useEffect(() => {
-    if (src || tried) return
-    setTried(true)
-    const fetchCover = async () => {
+    const s = coverSrc(book)
+    setSrc(s)
+    setFetching(false)
+  }, [book.cover_local, book.cover_url])
+
+  // Fallback a Google Books si no hay src local
+  React.useEffect(() => {
+    if (src || fetching) return
+    if (!book.isbn && !book.title) return
+    setFetching(true)
+    const go = async () => {
       if (book.isbn) {
         try {
           const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${book.isbn}&maxResults=1`)
-          const data = await r.json()
-          const links = data.items?.[0]?.volumeInfo?.imageLinks
+          const d = await r.json()
+          const links = d.items?.[0]?.volumeInfo?.imageLinks
           if (links) {
-            const url = (links.extraLarge || links.large || links.thumbnail || links.smallThumbnail || '')
+            const url = (links.extraLarge || links.large || links.thumbnail || '')
               .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
             if (url) { setSrc(url); return }
           }
@@ -967,28 +971,26 @@ function HeroCover({ book }) {
       }
       if (book.title) {
         try {
-          const q = encodeURIComponent(`${book.title}${book.author ? ' ' + book.author : ''}`)
+          const q = encodeURIComponent(`${book.title} ${book.author || ''}`.trim())
           const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)
-          const data = await r.json()
-          const links = data.items?.[0]?.volumeInfo?.imageLinks
+          const d = await r.json()
+          const links = d.items?.[0]?.volumeInfo?.imageLinks
           if (links) {
-            const url = (links.extraLarge || links.large || links.thumbnail || links.smallThumbnail || '')
+            const url = (links.extraLarge || links.large || links.thumbnail || '')
               .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
             if (url) { setSrc(url); return }
           }
         } catch {}
       }
-      if (book.isbn) {
-        setSrc(`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`)
-      }
+      if (book.isbn) setSrc(`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`)
     }
-    fetchCover()
-  }, [])
+    go()
+  }, [src, fetching, book.isbn, book.title, book.author])
 
   if (src) return (
     <img src={src} alt={book.title}
-      onError={() => { if (!tried) setTried(true); else setSrc(null) }}
-      style={{width:'100%', height:'100%', objectFit:'cover'}} />
+      onError={() => setSrc(null)}
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   )
   return (
     <div className="cover-ph-lg">
@@ -997,62 +999,6 @@ function HeroCover({ book }) {
   )
 }
 
-
-function BookCover({ src, alt, size = 60, title, isbn }) {
-  const [imgSrc, setImgSrc] = React.useState(src || null)
-  const [tried, setTried] = React.useState(false)
-  const h = Math.round(size * 1.42)
-
-  // Si no hay imagen inicial, intentar buscarla client-side
-  React.useEffect(() => {
-    if (imgSrc || tried) return
-    setTried(true)
-    const fetchCover = async () => {
-      // 1. Intentar Google Books por ISBN
-      if (isbn) {
-        try {
-          const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=1`)
-          const data = await r.json()
-          const links = data.items?.[0]?.volumeInfo?.imageLinks
-          if (links) {
-            const url = (links.thumbnail || links.smallThumbnail || '').replace('zoom=1','zoom=2').replace('http://','https://')
-            if (url) { setImgSrc(url); return }
-          }
-        } catch {}
-      }
-      // 2. Intentar Google Books por título
-      if (title) {
-        try {
-          const q = encodeURIComponent(title)
-          const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)
-          const data = await r.json()
-          const links = data.items?.[0]?.volumeInfo?.imageLinks
-          if (links) {
-            const url = (links.thumbnail || links.smallThumbnail || '').replace('zoom=1','zoom=2').replace('http://','https://')
-            if (url) { setImgSrc(url); return }
-          }
-        } catch {}
-      }
-      // 3. Open Library por ISBN
-      if (isbn) {
-        setImgSrc(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
-      }
-    }
-    fetchCover()
-  }, [])
-
-  if (imgSrc) return (
-    <img src={imgSrc} alt={alt}
-      onError={() => setImgSrc(null)}
-      style={{ width: size, height: h, objectFit: 'cover', borderRadius: 4, display: 'block' }} />
-  )
-  return (
-    <div style={{ width: size, height: h, background: '#e8e4dc', borderRadius: 4,
-      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <BookOpen size={size * 0.4} strokeWidth={1} color="#aaa" />
-    </div>
-  )
-}
 
 function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
   return (
