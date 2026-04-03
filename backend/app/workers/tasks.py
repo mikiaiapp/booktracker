@@ -57,7 +57,6 @@ async def _phase1(user_id: str, book_id: str):
 
             metadata = await identify_book(book.file_path, book.file_type, book.title)
 
-            # Update book
             # Aplicar metadatos — lista explícita de campos válidos
             valid_fields = {
                 "title", "author", "isbn", "synopsis", "genre",
@@ -71,11 +70,22 @@ async def _phase1(user_id: str, book_id: str):
                     except Exception as e:
                         print(f"Phase1 error setting {k}: {e}")
 
+            # ── Normalización de autor: unificar "Apellido Nombre" con "Nombre Apellido" ──
+            if book.author:
+                normalized_author = await _unify_author_name(db, book.author, book_id)
+                if normalized_author:
+                    book.author = normalized_author
+                    # Actualizar también en metadata para usar el nombre correcto en bibliografía
+                    metadata["author"] = normalized_author
+
             book.phase1_done = True
             book.status = "identified"
             job.status = "done"
             job.progress = 100
             await db.commit()
+
+            # ── Encadenar automáticamente con Fase 2 ──
+            process_book_phase2.delay(user_id, book_id)
 
         except Exception as e:
             book.status = "error"
@@ -87,6 +97,53 @@ async def _phase1(user_id: str, book_id: str):
                 book.error_msg = traceback.format_exc()
             await db.commit()
             raise
+
+
+async def _unify_author_name(db, author_name: str, book_id: str) -> str | None:
+    """
+    Busca si ya existe el autor con nombre invertido (ej: 'Mola Carmen' vs 'Carmen Mola').
+    Si existe, devuelve el nombre canónico (el que tiene más libros).
+    """
+    from app.models.book import Book
+    from sqlalchemy import select, func
+    import re
+
+    parts = author_name.strip().split()
+    if len(parts) < 2:
+        return None  # Nombre de una sola palabra, no hay inversión posible
+
+    # Generar variante invertida: "Carmen Mola" → "Mola Carmen"
+    mid = len(parts) // 2
+    inverted = " ".join(parts[mid:] + parts[:mid])
+
+    # Buscar libros con el nombre invertido (excluyendo el libro actual)
+    result = await db.execute(
+        select(Book.author, func.count(Book.id).label("cnt"))
+        .where(Book.author == inverted, Book.id != book_id)
+        .group_by(Book.author)
+    )
+    row = result.first()
+    if not row:
+        return None  # No existe variante invertida
+
+    # Elegir el nombre canónico: el que tiene más libros en la BD
+    result2 = await db.execute(
+        select(func.count(Book.id)).where(Book.author == author_name, Book.id != book_id)
+    )
+    current_count = result2.scalar() or 0
+    inverted_count = row.cnt
+
+    canonical = author_name if current_count >= inverted_count else inverted
+    other = inverted if canonical == author_name else author_name
+
+    print(f"Unificando autor: '{other}' → '{canonical}'")
+
+    # Actualizar todos los libros con el nombre no canónico
+    other_books = await db.execute(select(Book).where(Book.author == other))
+    for b in other_books.scalars().all():
+        b.author = canonical
+    await db.commit()
+    return canonical
 
 
 # ── Phase 2: Structure detection ──────────────────────────────────────────────
@@ -141,6 +198,9 @@ async def _phase2(user_id: str, book_id: str):
             job.status = "done"
             job.progress = 100
             await db.commit()
+
+            # ── Encadenar automáticamente con Fase 3 (resúmenes) ──
+            process_book_phase3.delay(user_id, book_id)
 
         except Exception as e:
             book.status = "error"
@@ -268,6 +328,9 @@ async def _phase3(user_id: str, book_id: str):
             job.status = "done"
             job.progress = 100
             await db.commit()
+
+            # ── Encadenar automáticamente con Fase 4 (personajes + resumen global + mapa) ──
+            process_phase3b_task.delay(user_id, book_id)
 
         except Exception as e:
             book.status = "error"
@@ -684,6 +747,9 @@ async def _phase3b(user_id: str, book_id: str):
             book.status = "analyzed"
             await db.commit()
             print(f"Phase 3b complete for {book.title}: {len(characters_data)} characters")
+
+            # ── Encadenar automáticamente con Fase 5 (Podcast) ──
+            generate_podcast.delay(user_id, book_id)
 
         except Exception as e:
             book.status = "error"

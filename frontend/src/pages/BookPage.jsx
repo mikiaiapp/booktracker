@@ -771,6 +771,31 @@ export default function BookPage() {
                 Exportar a PDF
               </button>
             )}
+            {book.file_path && (
+              <button
+                className="export-pdf-btn download-file-btn"
+                title={`Descargar ${book.file_type?.toUpperCase() || 'archivo'} original`}
+                onClick={async () => {
+                  try {
+                    const token = localStorage.getItem('bt_token')
+                    const resp = await fetch(analysisAPI.downloadUrl(id), {
+                      headers: { Authorization: `Bearer ${token}` }
+                    })
+                    if (!resp.ok) { toast.error('No se pudo descargar el archivo'); return }
+                    const blob = await resp.blob()
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `${book.title}.${book.file_type || 'pdf'}`
+                    a.click()
+                    setTimeout(() => URL.revokeObjectURL(url), 5000)
+                  } catch { toast.error('Error al descargar el archivo') }
+                }}
+              >
+                <FileText size={16} />
+                Descargar {book.file_type?.toUpperCase() || 'Libro'}
+              </button>
+            )}
             {/* Pipeline movido al tab Análisis */}
           </div>
 
@@ -873,9 +898,9 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
   const steps = [
     { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
     { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
-    { label: 'Fase 3a: Resúmenes', sublabel: 'Resumen de cada capítulo', done: status.chapters_summarized || status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
-    { label: 'Fase 3b: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.chapters_summarized || status.phase3_done },
-    { label: 'Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
+    { label: 'Fase 3: Resúmenes', sublabel: 'Resumen de cada capítulo', done: status.chapters_summarized || status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
+    { label: 'Fase 4: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger('3b'), canTrigger: status.chapters_summarized || status.phase3_done },
+    { label: 'Fase 5: Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
   ]
 
   return (

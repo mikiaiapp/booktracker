@@ -55,6 +55,7 @@ export const analysisAPI = {
   cancel: (bookId) => api.post(`/analysis/${bookId}/cancel`),
   triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
+  downloadUrl: (bookId) => `${BASE}/analysis/${bookId}/download`,
 }
 
 // Authors

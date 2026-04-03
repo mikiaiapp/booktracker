@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
+import os
 
 from app.core.security import get_current_user
 from app.core.database import get_user_db
@@ -196,6 +197,26 @@ async def get_podcast_audio(
     if not book or not book.podcast_audio_path:
         raise HTTPException(404, "Podcast not available")
     return FileResponse(book.podcast_audio_path, media_type="audio/mpeg")
+
+
+# ── Descarga del archivo original (PDF/EPUB) ──────────────────
+@router.get("/{book_id}/download")
+async def download_book_file(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if not book.file_path or not os.path.exists(book.file_path):
+        raise HTTPException(404, "File not available")
+
+    import os as _os
+    filename = f"{book.title}.{book.file_type or 'pdf'}".replace("/", "_")
+    media_type = "application/epub+zip" if book.file_type == "epub" else "application/pdf"
+    return FileResponse(book.file_path, media_type=media_type, filename=filename)
 
 
 # ── Autores ───────────────────────────────────────────────────
