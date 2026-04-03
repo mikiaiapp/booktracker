@@ -31,6 +31,50 @@ def run_async(coro):
         loop.close()
 
 
+# ── Normalización de nombre de autor ─────────────────────────────────────────
+
+def _normalize_author_words(name: str) -> set:
+    """
+    Normaliza un nombre de autor a un conjunto de palabras significativas.
+    Elimina puntuación (cubre 'Apellido, Nombre'), partículas y palabras cortas.
+    """
+    import re
+    stop = {'i', 'y', 'de', 'del', 'la', 'el', 'von', 'van', 'di', 'da', 'du', 'le'}
+    clean = re.sub(r'[^\w\s]', ' ', name.strip(), flags=re.UNICODE)
+    return {w.lower() for w in clean.split() if w.lower() not in stop and len(w) > 1}
+
+
+def _is_name_inversion(name_a: str, name_b: str) -> bool:
+    """
+    Detecta si dos nombres son el mismo autor con apellido/nombre invertidos.
+    Ej: 'Mikel Santiago' == 'Santiago, Mikel'
+    Funciona con 2 o más palabras, ignorando comas.
+    """
+    import re
+    clean = lambda s: re.sub(r'[^\w\s]', ' ', s.strip(), flags=re.UNICODE).lower().split()
+    words_a = set(clean(name_a))
+    words_b = set(clean(name_b))
+    # Mismas palabras en cualquier orden = inversión segura
+    return len(words_a) >= 2 and words_a == words_b
+
+
+def _normalize_title(t: str) -> str:
+    """Normaliza título para comparación: minúsculas, sin subtítulos ni artículos."""
+    import re
+    t = t.lower().strip()
+    t = t.split(':')[0].split(' / ')[0]
+    t = re.sub(r'\s*\([^)]*\)', '', t)
+    t = re.sub(r'\b(novela|roman|novel|libro)\b', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'^(el|la|los|las|un|una|the|a|an|le|les|der|die|das)\s+', '', t.strip())
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _isbn_base(isbn: str) -> str:
+    """Primeros 9 dígitos del ISBN-13 = misma obra, distintas ediciones."""
+    digits = ''.join(c for c in (isbn or '') if c.isdigit())
+    return digits[:9] if len(digits) >= 9 else digits
+
+
 # ── Phase 1: Book identification ──────────────────────────────────────────────
 @celery_app.task(bind=True, name="process_book_phase1")
 def process_book_phase1(self, user_id: str, book_id: str):
@@ -78,15 +122,46 @@ async def _phase1(user_id: str, book_id: str):
                         print(f"Phase1 error setting {k}: {e}")
 
             # ── Normalización de autor ──
-            # Unificar el nuevo nombre detectado con variantes ya existentes en BD.
-            # Se pasan AMBOS nombres (el original y el nuevo) para que la búsqueda
-            # sea más completa y no dependa del estado de la sesión SQLAlchemy.
-            new_author = book.author  # puede haber cambiado al aplicar metadata
+            new_author = book.author
             if new_author:
                 normalized = await _unify_author_name(db, new_author, book_id, original_author)
                 if normalized:
                     book.author = normalized
                     metadata["author"] = normalized
+
+            # ── Deduplicación: comprobar si este libro ya existe como shell ──
+            # Buscar por ISBN primero (más fiable), luego por título normalizado
+            final_author = book.author
+            final_isbn = book.isbn
+            final_title = book.title
+
+            duplicate_shell = await _find_duplicate_shell(
+                db, book_id, final_title, final_author, final_isbn
+            )
+            if duplicate_shell:
+                print(f"Phase1: libro '{final_title}' coincide con shell {duplicate_shell.id} — promoviendo")
+                # Transferir el archivo al shell existente y eliminar este libro
+                duplicate_shell.file_path = book.file_path
+                duplicate_shell.file_type = book.file_type
+                duplicate_shell.file_size = book.file_size
+                duplicate_shell.status = "uploaded"
+                duplicate_shell.phase1_done = False
+                duplicate_shell.phase2_done = False
+                duplicate_shell.phase3_done = False
+                # Enriquecer con metadatos recién obtenidos si el shell no los tenía
+                if not duplicate_shell.cover_local and book.cover_local:
+                    duplicate_shell.cover_local = book.cover_local
+                if not duplicate_shell.cover_url and book.cover_url:
+                    duplicate_shell.cover_url = book.cover_url
+                if not duplicate_shell.synopsis and book.synopsis:
+                    duplicate_shell.synopsis = book.synopsis
+                if not duplicate_shell.isbn and final_isbn:
+                    duplicate_shell.isbn = final_isbn
+                await db.delete(book)
+                await db.commit()
+                # Relanzar fase 1 sobre el shell promovido
+                process_book_phase1.delay(user_id, duplicate_shell.id)
+                return
 
             book.phase1_done = True
             book.status = "identified"
@@ -113,24 +188,100 @@ async def _phase1(user_id: str, book_id: str):
             raise
 
 
+async def _find_duplicate_shell(db, current_book_id: str, title: str, author: str, isbn: str):
+    """
+    Busca si existe una ficha shell del mismo libro.
+    Comprueba por ISBN exacto O por título normalizado + autor.
+    Solo devuelve shells (libros sin archivo), nunca libros analizados.
+    """
+    from app.models.book import Book
+    from sqlalchemy import select, or_
+
+    conditions = []
+
+    # Por ISBN exacto (si tenemos ISBN)
+    if isbn:
+        conditions.append(
+            (Book.isbn == isbn) &
+            Book.id.isnot(current_book_id) &
+            Book.status.in_(["shell", "shell_error"])
+        )
+
+    # Por ISBN base (misma obra, diferente edición)
+    if isbn and _isbn_base(isbn):
+        base = _isbn_base(isbn)
+        # No podemos hacer SUBSTR en SQLAlchemy de forma genérica fácilmente,
+        # lo haremos en Python después de cargar candidatos
+
+    # Por título normalizado + autor
+    if title:
+        conditions.append(
+            Book.status.in_(["shell", "shell_error"]) &
+            Book.id.isnot(current_book_id)
+        )
+
+    if not conditions:
+        return None
+
+    # Cargar todos los shells del mismo autor (o sin autor aún)
+    author_filter = []
+    if author:
+        author_filter = [Book.author == author, Book.author.is_(None)]
+    else:
+        author_filter = [Book.author.is_(None)]
+
+    result = await db.execute(
+        select(Book).where(
+            Book.status.in_(["shell", "shell_error"]),
+            Book.id != current_book_id,
+        )
+    )
+    shells = result.scalars().all()
+
+    norm_title = _normalize_title(title or "")
+    isbn_base = _isbn_base(isbn or "")
+    author_words = _normalize_author_words(author or "")
+
+    for shell in shells:
+        # Comprobar que el autor coincide (o el shell aún no tiene autor)
+        if shell.author and author:
+            shell_words = _normalize_author_words(shell.author)
+            author_match = (
+                shell.author == author or
+                _is_name_inversion(shell.author, author) or
+                (len(shell_words & author_words) >= 2)
+            )
+            if not author_match:
+                continue
+
+        # Match por ISBN exacto
+        if isbn and shell.isbn and shell.isbn == isbn:
+            return shell
+
+        # Match por ISBN base (misma obra, edición diferente)
+        if isbn_base and shell.isbn and _isbn_base(shell.isbn) == isbn_base:
+            return shell
+
+        # Match por título normalizado
+        if norm_title and shell.title:
+            shell_norm = _normalize_title(shell.title)
+            if shell_norm == norm_title:
+                return shell
+
+    return None
+
+
 async def _unify_author_name(db, author_name: str, book_id: str, original_author: str = None) -> str | None:
     """
     Busca autores existentes cuyo nombre comparte suficientes palabras con author_name
     o con original_author (el nombre que tenía el libro antes del análisis).
-    Cubre inversiones, nombres compuestos y partículas.
+    Cubre inversiones (Apellido, Nombre), nombres compuestos y partículas.
     """
     from app.models.book import Book
     from sqlalchemy import select, func
 
-    def normalize(name: str) -> set:
-        import re
-        stop = {'i', 'y', 'de', 'del', 'la', 'el', 'von', 'van', 'di', 'da', 'du', 'le'}
-        # Eliminar puntuación antes de dividir (cubre "Santiago, Mikel" → "Santiago Mikel")
-        clean = re.sub(r'[^\w\s]', ' ', name.strip(), flags=re.UNICODE)
-        return {w.lower() for w in clean.split() if w.lower() not in stop and len(w) > 1}
-
-    my_words = normalize(author_name)
-    orig_words = normalize(original_author) if original_author else set()
+    my_words = _normalize_author_words(author_name)
+    orig_words = _normalize_author_words(original_author) if original_author else set()
     if not my_words:
         return None
 
@@ -151,11 +302,26 @@ async def _unify_author_name(db, author_name: str, book_id: str, original_author
 
     for row in rows:
         other_name = row.author
-        other_words = normalize(other_name)
+        other_words = _normalize_author_words(other_name)
         if not other_words:
             continue
 
-        # Comprobar similitud con el nombre nuevo Y con el original
+        # ── Caso especial: inversión nombre/apellido garantizada ──
+        # Si las palabras son exactamente las mismas (en cualquier orden), es el mismo autor
+        if _is_name_inversion(author_name, other_name):
+            print(f"Inversión detectada: '{author_name}' ↔ '{other_name}'")
+            best_match = (other_name, row.cnt)
+            best_score = 999  # prioridad máxima
+            break
+
+        # También comprobar con el nombre original
+        if original_author and _is_name_inversion(original_author, other_name):
+            print(f"Inversión detectada (original): '{original_author}' ↔ '{other_name}'")
+            best_match = (other_name, row.cnt)
+            best_score = 999
+            break
+
+        # ── Similitud general por palabras compartidas ──
         common_new = my_words & other_words
         common_orig = orig_words & other_words if orig_words else set()
         common = common_new if len(common_new) >= len(common_orig) else common_orig
@@ -326,7 +492,6 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
         global_num = done_count + i + 1
         print(f"Phase3: iniciando capítulo {global_num}/{total}: {ch_title}")
 
-        # Marcar como processing — sesión propia
         async for db in get_user_db(user_id):
             ch = (await db.execute(select(Chapter).where(Chapter.id == ch_id))).scalar_one_or_none()
             job = (await db.execute(select(AnalysisJob).where(AnalysisJob.id == job_id))).scalar_one_or_none()
@@ -337,7 +502,6 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
                 job.detail = f"Resumiendo capítulo {global_num}/{total}: {ch_title}"
             await db.commit()
 
-        # Llamada IA fuera de cualquier sesión de BD — con reintentos
         summary_data = None
         error_msg = None
         quota_exceeded = False
@@ -358,7 +522,6 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
                 if attempt < MAX_RETRIES - 1:
                     await _asyncio.sleep(wait)
 
-        # Guardar resultado — sesión propia, variables locales capturadas por valor
         _summary_data = summary_data
         _error_msg = error_msg
         _quota_exceeded = quota_exceeded
@@ -394,7 +557,6 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
         if quota_exceeded:
             return
 
-        # Pausa entre capítulos — fuera de BD
         if i < len(chapter_ids) - 1:
             pause = 10 if 'gemini' in (settings.AI_MODEL or '').lower() else 15
             print(f"Phase3: pausa {pause}s antes del siguiente capítulo")
@@ -452,7 +614,7 @@ async def _podcast(user_id: str, book_id: str):
                 book.podcast_audio_path = audio_path
             except Exception as audio_err:
                 print(f"TTS audio failed (script saved anyway): {audio_err}")
-                book.podcast_audio_path = None  # Sin audio pero con guión
+                book.podcast_audio_path = None
 
             book.status = "complete"
             await db.commit()
@@ -536,7 +698,6 @@ async def _fetch_shell(user_id: str, book_id: str):
             metadata = await search_book_metadata(book.title, book.author)
 
             # Si encontramos un ISBN, comprobar si ya existe otro libro con ese ISBN
-            # (deduplicación definitiva por ISBN)
             found_isbn = metadata.get("isbn")
             if found_isbn and found_isbn != book.isbn:
                 dup = await db.execute(
@@ -546,11 +707,30 @@ async def _fetch_shell(user_id: str, book_id: str):
                     )
                 )
                 if dup.scalar_one_or_none():
-                    # Ya existe un libro con ese ISBN — eliminar este duplicado
                     await db.delete(book)
                     await db.commit()
                     print(f"Shell duplicado eliminado: {book.title} (ISBN {found_isbn} ya existe)")
                     return
+
+            # Comprobar duplicado por título normalizado + autor (por si el ISBN llegó después)
+            if metadata.get("title") or book.title:
+                check_title = metadata.get("title") or book.title
+                check_author = metadata.get("author") or book.author
+                norm_check = _normalize_title(check_title)
+                candidates = await db.execute(
+                    select(Book).where(
+                        Book.id != book_id,
+                        Book.author == check_author if check_author else True,
+                    )
+                )
+                for candidate in candidates.scalars().all():
+                    if _normalize_title(candidate.title or "") == norm_check:
+                        # Si el candidato ya está analizado o es más completo, eliminar este shell
+                        if candidate.phase3_done or candidate.status not in ("shell", "shell_error"):
+                            await db.delete(book)
+                            await db.commit()
+                            print(f"Shell duplicado por título eliminado: {check_title}")
+                            return
 
             # Aplicar metadatos encontrados — lista explícita de campos válidos
             field_map = {
@@ -613,7 +793,7 @@ async def _reidentify_author(user_id: str, author_name: str):
                 get_author_bio_in_spanish, get_author_bibliography
             )
 
-            # 1. Obtener bio en español (función autónoma con traducción integrada)
+            # 1. Obtener bio en español
             new_bio = await get_author_bio_in_spanish(author_name)
             print(f"Bio final para '{author_name}': {repr(new_bio[:100]) if new_bio else 'no encontrada'}")
 
@@ -632,29 +812,29 @@ async def _reidentify_author(user_id: str, author_name: str):
                     book.author_bibliography = new_biblio
             await db.commit()
 
-            # 4. Crear fichas para libros de la bibliografía que no existan
+            # 4. Construir índice de libros ya existentes en BD para este autor
             import uuid, re as _re
             created = 0
 
-            def _norm_title(t: str) -> str:
-                """Normaliza título para comparación: minúsculas, sin subtítulos ni artículos."""
-                t = t.lower().strip()
-                # Quitar subtítulos tras ':' o '/'
-                t = t.split(':')[0].split(' / ')[0]
-                # Quitar sufijos tipo "novela", "roman", "(edición...)"
-                t = _re.sub(r'\s*\([^)]*\)', '', t)
-                t = _re.sub(r'\b(novela|roman|novel|libro)\b', '', t, flags=_re.IGNORECASE)
-                # Quitar artículos iniciales
-                t = _re.sub(r'^(el|la|los|las|un|una|the|a|an|le|les|der|die|das)\s+', '', t.strip())
-                return _re.sub(r'\s+', ' ', t).strip()
-
-            # Construir índice de títulos ya existentes en BD (para comparación rápida)
             all_books_result = await db.execute(
-                select(Book.title, Book.isbn).where(Book.author == author_name)
+                select(Book.title, Book.isbn, Book.status, Book.phase3_done)
+                .where(Book.author == author_name)
             )
             existing_books = all_books_result.all()
-            existing_norm_titles = {_norm_title(b.title) for b in existing_books}
+
+            # Índices para deduplicación
+            existing_norm_titles = {_normalize_title(b.title) for b in existing_books}
             existing_isbns = {b.isbn for b in existing_books if b.isbn}
+            existing_isbn_bases = {_isbn_base(b.isbn) for b in existing_books if b.isbn}
+            # Títulos de libros que ya tienen archivo o están analizados
+            analyzed_norm_titles = {
+                _normalize_title(b.title) for b in existing_books
+                if b.phase3_done or b.status not in ("shell", "shell_error")
+            }
+            analyzed_isbns = {
+                b.isbn for b in existing_books
+                if b.isbn and (b.phase3_done or b.status not in ("shell", "shell_error"))
+            }
 
             for item in (new_biblio or []):
                 if not isinstance(item, dict):
@@ -669,10 +849,24 @@ async def _reidentify_author(user_id: str, author_name: str):
                 if not b_title:
                     continue
 
-                # Deduplicación: ISBN exacto O título normalizado
+                norm = _normalize_title(b_title)
+                b_isbn_base = _isbn_base(b_isbn or "")
+
+                # ── Deduplicación rigurosa ──
+
+                # 1. ISBN exacto ya existe → skip
                 if b_isbn and b_isbn in existing_isbns:
                     continue
-                if _norm_title(b_title) in existing_norm_titles:
+
+                # 2. ISBN base ya existe (misma obra, edición diferente) → skip
+                if b_isbn_base and b_isbn_base in existing_isbn_bases:
+                    continue
+
+                # 3. Título normalizado ya existe → skip
+                if norm in existing_norm_titles:
+                    # Si el libro existente ya está analizado, actualizar su status
+                    # para que no aparezca como "Solo ficha" en la bibliografía
+                    # (ya se maneja en el frontend con phase3_done)
                     continue
 
                 # Crear ficha shell
@@ -694,9 +888,11 @@ async def _reidentify_author(user_id: str, author_name: str):
                 await db.commit()
 
                 # Actualizar índices locales para evitar duplicados dentro del mismo lote
-                existing_norm_titles.add(_norm_title(b_title))
+                existing_norm_titles.add(norm)
                 if b_isbn:
                     existing_isbns.add(b_isbn)
+                if b_isbn_base:
+                    existing_isbn_bases.add(b_isbn_base)
 
                 # Buscar metadatos adicionales y descargar portada en background
                 fetch_shell_metadata.delay(user_id, book_id)
@@ -747,7 +943,6 @@ async def _reanalyze_characters(user_id: str, book_id: str):
             if not book:
                 return
 
-            # Obtener todos los resúmenes de capítulos
             chaps = await db.execute(
                 select(Chapter).where(
                     Chapter.book_id == book_id,
@@ -763,11 +958,9 @@ async def _reanalyze_characters(user_id: str, book_id: str):
                 print(f"No hay resúmenes disponibles para {book.title}")
                 return
 
-            # Borrar personajes existentes
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
 
-            # Reanalizar con el nuevo prompt mejorado
             characters_data = await analyze_characters(all_summaries, book.title)
 
             for char_data in characters_data:
@@ -822,7 +1015,6 @@ async def _phase3b(user_id: str, book_id: str):
                 await db.commit()
                 return
 
-            # Borrar personajes existentes y reanalizar
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
 

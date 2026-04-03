@@ -4,7 +4,6 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 import os
-import os
 import uuid
 import aiofiles
 
@@ -22,6 +21,94 @@ async def get_db(current_user: User = Depends(get_current_user)):
         yield session
 
 
+def _normalize_title(t: str) -> str:
+    """Normaliza título para comparación: minúsculas, sin subtítulos ni artículos."""
+    import re
+    t = t.lower().strip()
+    t = t.split(':')[0].split(' / ')[0]
+    t = re.sub(r'\s*\([^)]*\)', '', t)
+    t = re.sub(r'\b(novela|roman|novel|libro)\b', '', t, flags=re.IGNORECASE)
+    t = re.sub(r'^(el|la|los|las|un|una|the|a|an|le|les|der|die|das)\s+', '', t.strip())
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _isbn_base(isbn: str) -> str:
+    """Primeros 9 dígitos del ISBN-13 = misma obra, distintas ediciones."""
+    digits = ''.join(c for c in (isbn or '') if c.isdigit())
+    return digits[:9] if len(digits) >= 9 else digits
+
+
+def _normalize_author_words(name: str) -> set:
+    import re
+    stop = {'i', 'y', 'de', 'del', 'la', 'el', 'von', 'van', 'di', 'da', 'du', 'le'}
+    clean = re.sub(r'[^\w\s]', ' ', name.strip(), flags=re.UNICODE)
+    return {w.lower() for w in clean.split() if w.lower() not in stop and len(w) > 1}
+
+
+def _is_name_inversion(name_a: str, name_b: str) -> bool:
+    import re
+    clean = lambda s: set(re.sub(r'[^\w\s]', ' ', s.strip(), flags=re.UNICODE).lower().split())
+    words_a = clean(name_a)
+    words_b = clean(name_b)
+    return len(words_a) >= 2 and words_a == words_b
+
+
+async def _find_existing_book(db, title: str, author: str, isbn: str, exclude_id: str = None):
+    """
+    Busca si ya existe un libro en la BD con el mismo ISBN o título+autor.
+    Retorna (libro, es_duplicado_exacto) o (None, False).
+    Considera libros en cualquier estado (shell, analizado, etc).
+    """
+    from sqlalchemy import func as sqlfunc
+
+    result = await db.execute(
+        select(Book).where(
+            Book.id != exclude_id if exclude_id else True
+        )
+    )
+    all_books = result.scalars().all()
+
+    norm_title = _normalize_title(title or "")
+    isbn_b = _isbn_base(isbn or "")
+    author_words = _normalize_author_words(author or "")
+
+    best_match = None
+
+    for b in all_books:
+        if exclude_id and b.id == exclude_id:
+            continue
+
+        # Comprobar autor
+        author_match = False
+        if not author or not b.author:
+            author_match = True  # sin autor, no podemos descartar
+        elif b.author == author:
+            author_match = True
+        elif _is_name_inversion(b.author, author):
+            author_match = True
+        else:
+            bw = _normalize_author_words(b.author)
+            if bw and author_words and len(bw & author_words) >= 2:
+                author_match = True
+
+        if not author_match:
+            continue
+
+        # Match por ISBN exacto
+        if isbn and b.isbn and b.isbn == isbn:
+            return b
+
+        # Match por ISBN base
+        if isbn_b and b.isbn and _isbn_base(b.isbn) == isbn_b:
+            return b
+
+        # Match por título normalizado
+        if norm_title and b.title and _normalize_title(b.title) == norm_title:
+            best_match = b
+
+    return best_match
+
+
 # ── Upload book ───────────────────────────────────────────────────────────────
 @router.post("/upload", status_code=201)
 async def upload_book(
@@ -34,6 +121,37 @@ async def upload_book(
     if ext not in ("pdf", "epub"):
         raise HTTPException(400, "Only PDF and EPUB files are supported")
 
+    content = await file.read()
+
+    # ── Detección temprana de duplicado por nombre de archivo ──
+    # Extraer título del nombre del archivo como pista inicial
+    base_title = file.filename.rsplit(".", 1)[0]
+
+    # Buscar si hay un libro existente con ese título que ya esté analizado
+    from sqlalchemy import func as sqlfunc
+    existing_analyzed = await db.execute(
+        select(Book).where(
+            sqlfunc.lower(Book.title) == base_title.lower(),
+            Book.phase3_done == True
+        )
+    )
+    analyzed_book = existing_analyzed.scalar_one_or_none()
+    if analyzed_book:
+        raise HTTPException(
+            400,
+            f"El libro '{analyzed_book.title}' ya está analizado en tu biblioteca. "
+            f"No se puede duplicar."
+        )
+
+    # Buscar shell existente con ese título
+    existing_shell = await db.execute(
+        select(Book).where(
+            sqlfunc.lower(Book.title) == base_title.lower(),
+            Book.status.in_(["shell", "shell_error"])
+        )
+    )
+    shell_book = existing_shell.scalar_one_or_none()
+
     book_id = str(uuid.uuid4())
     filename = f"{book_id}.{ext}"
     user_dir = os.path.join(settings.UPLOADS_DIR, current_user.id)
@@ -41,32 +159,10 @@ async def upload_book(
     file_path = os.path.join(user_dir, filename)
 
     async with aiofiles.open(file_path, "wb") as f:
-        content = await file.read()
         await f.write(content)
 
-    # Comprobar si ya existe una ficha shell con el mismo nombre de fichero
-    from sqlalchemy import func as sqlfunc
-    base_title = file.filename.rsplit(".", 1)[0]
-    existing_shell = await db.execute(
-        select(Book).where(
-            Book.status.in_(["shell", "shell_error"]),
-            sqlfunc.lower(Book.title) == base_title.lower()
-        )
-    )
-    shell_book = existing_shell.scalar_one_or_none()
-    # También buscar por título exacto entre todos los libros (no solo shells)
-    if not shell_book:
-        existing_any = await db.execute(
-            select(Book).where(
-                sqlfunc.lower(Book.title) == base_title.lower()
-            )
-        )
-        existing_any_book = existing_any.scalar_one_or_none()
-        if existing_any_book and existing_any_book.status in ("shell", "shell_error"):
-            shell_book = existing_any_book
-
     if shell_book:
-        # Reusar la ficha shell existente
+        # Promover el shell existente añadiéndole el archivo
         shell_book.file_path = file_path
         shell_book.file_type = ext
         shell_book.file_size = len(content)
@@ -76,6 +172,7 @@ async def upload_book(
         await db.commit()
         book = shell_book
         book_id = shell_book.id
+        print(f"Upload: reutilizando shell '{shell_book.title}' (id={shell_book.id})")
     else:
         book = Book(
             id=book_id,
@@ -89,7 +186,7 @@ async def upload_book(
         await db.commit()
         await db.refresh(book)
 
-    # Queue phase 1
+    # Queue phase 1 — la fase 1 hará la deduplicación completa con metadatos reales
     from app.workers.tasks import process_book_phase1
     task = process_book_phase1.delay(current_user.id, book_id)
     book.task_id = task.id
@@ -272,7 +369,6 @@ async def delete_book(
             )
         )
         if not analyzed.scalar_one_or_none():
-            # Sin libros analizados: eliminar todos los shells de este autor
             shells = await db.execute(
                 select(Book).where(
                     Book.author == author,
@@ -299,19 +395,19 @@ async def upload_cover(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Sube una imagen desde el equipo del usuario como portada del libro."""
+    """Sube una imagen desde el equipo del usuario como portada del libro.
+    Acepta cualquier formato gráfico soportado por Pillow (JPEG, PNG, WebP,
+    AVIF, HEIC, BMP, TIFF, GIF, ICO, TGA, PPM y más).
+    """
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
 
-    # Validar que tiene contenido (el tipo MIME lo verifica Pillow al abrir)
     contents = await file.read()
     if len(contents) < 500:
         raise HTTPException(400, "El archivo es demasiado pequeño")
 
-    # Usar _bytes_to_jpeg para aceptar cualquier formato gráfico soportado por Pillow:
-    # JPEG, PNG, WebP, AVIF, BMP, TIFF, GIF, ICO, TGA, PPM, HEIC*, SVG-raster, etc.
     try:
         from app.services.book_identifier import _bytes_to_jpeg
         from app.core.config import settings
@@ -342,7 +438,6 @@ async def upload_cover(
         raise HTTPException(500, f"Error al guardar la imagen: {e}")
 
 
-
 class CreateShellRequest(BaseModel):
     title: str
     author: Optional[str] = None
@@ -359,19 +454,10 @@ async def create_shell_book(
     db: AsyncSession = Depends(get_db),
 ):
     """Crea una ficha de libro sin archivo — busca metadatos automáticamente."""
-    import uuid
 
     # Comprobar duplicados por ISBN (si viene) o por título+autor
-    from sqlalchemy import func as sqlfunc, or_
-    conditions = []
-    if req.isbn:
-        conditions.append(Book.isbn == req.isbn)
-    conditions.append(
-        (sqlfunc.lower(Book.title) == req.title.lower()) &
-        (sqlfunc.lower(Book.author) == req.author.lower() if req.author else True)
-    )
-    existing = await db.execute(select(Book).where(or_(*conditions)))
-    if existing.scalar_one_or_none():
+    existing = await _find_existing_book(db, req.title, req.author, req.isbn)
+    if existing:
         raise HTTPException(400, "Este libro ya está en tu biblioteca")
 
     book_id = str(uuid.uuid4())

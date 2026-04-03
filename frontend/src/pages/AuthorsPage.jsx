@@ -195,6 +195,38 @@ export default function AuthorsPage() {
     }
   }
 
+  // Normalización de título para comparación en frontend (espejo del backend)
+  const normTitle = (t) => {
+    if (!t) return ''
+    let s = t.toLowerCase().trim()
+    s = s.split(':')[0].split(' / ')[0]
+    s = s.replace(/\s*\([^)]*\)/g, '')
+    s = s.replace(/\b(novela|roman|novel|libro)\b/gi, '')
+    s = s.replace(/^(el|la|los|las|un|una|the|a|an|le|les|der|die|das)\s+/, '')
+    return s.replace(/\s+/g, ' ').trim()
+  }
+
+  // Extrae los primeros 9 dígitos del ISBN (base de obra independiente de edición)
+  const isbnBase = (isbn) => {
+    if (!isbn) return ''
+    const digits = isbn.replace(/\D/g, '')
+    return digits.length >= 9 ? digits.slice(0, 9) : digits
+  }
+
+  // Comprueba si un item de bibliografía ya está en la app (por ISBN exacto, ISBN base o título)
+  const isAlreadyInApp = (item, books) => {
+    const title = typeof item === 'string' ? item : item.title
+    const isbn = typeof item === 'string' ? null : item.isbn
+    if (!title && !isbn) return false
+    return books.some(b => {
+      if (isbn && b.isbn && b.isbn === isbn) return true
+      if (isbn && b.isbn && isbnBase(b.isbn) === isbnBase(isbn) && isbnBase(isbn)) return true
+      const nt = normTitle(title)
+      const bt = normTitle(b.title || '')
+      return nt && bt && nt === bt
+    })
+  }
+
   const handleAddShell = async (item, authorName) => {
     const title = typeof item === 'string' ? item : item.title
     const isbn = typeof item === 'string' ? null : (item.isbn || null)
@@ -327,20 +359,11 @@ export default function AuthorsPage() {
                   <span className="author-item-name">{author.name}</span>
                   <span className="author-item-count">
                     {(() => {
-                      // Calcular total de libros únicos en bibliografía
                       const booksInApp = author.books.length
                       const booksInBiblio = (author.bibliography || []).filter(item => {
                         const title = typeof item === 'string' ? item : item.title
-                        const isbn = typeof item === 'string' ? null : item.isbn
                         if (!title || title.trim() === '') return false
-                        // Comprobar por ISBN
-                        if (isbn && author.books.some(b => b.isbn && b.isbn === isbn)) return false
-                        // Comprobar por título
-                        const norm = title.toLowerCase().trim()
-                        return !author.books.some(b => {
-                          const bt = (b.title || '').toLowerCase().trim()
-                          return bt === norm || bt.includes(norm) || norm.includes(bt)
-                        })
+                        return !isAlreadyInApp(item, author.books)
                       }).length
                       const total = booksInApp + booksInBiblio
                       return `${total} ${total === 1 ? 'libro' : 'libros'}`
@@ -454,8 +477,9 @@ export default function AuthorsPage() {
                     return true
                   }).map(book => {
                     const isAnalyzed = book.status === 'complete' || book.phase3_done
-                    const isShell = book.status === 'shell' || book.status === 'shell_error'
-                    const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified'].includes(book.status)
+                    // Un libro "solo ficha" es shell puro — si tiene archivo ya es otra cosa
+                    const isShell = (book.status === 'shell' || book.status === 'shell_error') && !book.file_path
+                    const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified', 'uploading', 'uploaded'].includes(book.status)
                     const canDelete = !isAnalyzed
                     return (
                       <Link
@@ -510,14 +534,8 @@ export default function AuthorsPage() {
                   {/* Libros de la bibliografía que NO están en la app */}
                   {biblioFilter !== 'analyzed' && (selected.bibliography || []).filter(item => {
                     const title = typeof item === 'string' ? item : item.title
-                    const isbn = typeof item === 'string' ? null : item.isbn
                     if (!title || title.trim() === '') return false
-                    if (isbn && selected.books.some(b => b.isbn && b.isbn === isbn)) return false
-                    const norm = title.toLowerCase().trim()
-                    return !selected.books.some(b => {
-                      const bt = (b.title || '').toLowerCase().trim()
-                      return bt === norm || bt.includes(norm) || norm.includes(bt)
-                    })
+                    return !isAlreadyInApp(item, selected.books)
                   }).map((item, i) => {
                     const title = typeof item === 'string' ? item : item.title
                     const isbn = typeof item === 'string' ? null : item.isbn
