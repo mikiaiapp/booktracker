@@ -126,3 +126,30 @@
   animation: spin 1s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Zona de subida de archivo ────────────────────────────── */
+.cp-upload-section {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--paper-dark);
+  flex-shrink: 0;
+}
+
+.cp-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  border: 2px dashed var(--paper-dark);
+  border-radius: 10px;
+  color: var(--mist);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cp-dropzone:hover, .cp-dropzone.drag-over {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(201,169,110,0.06);
+}

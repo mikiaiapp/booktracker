@@ -1,10 +1,9 @@
 /**
  * CoverPicker — modal para elegir portada alternativa.
- * Busca en Google Books y Open Library, muestra miniaturas,
- * y al elegir una llama a onSelect(url).
+ * Opciones: elegir de resultados web, pegar URL, o subir archivo local.
  */
-import React, { useState, useEffect } from 'react'
-import { X, Search, Loader } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { X, Search, Loader, Upload } from 'lucide-react'
 import './CoverPicker.css'
 
 async function searchCovers(title, author, isbn) {
@@ -54,10 +53,8 @@ async function searchCovers(title, author, isbn) {
 
   // 3. Open Library por ISBN
   if (isbn) {
-    const sizes = ['L','M']
-    for (const s of sizes) {
-      addCover(`https://covers.openlibrary.org/b/isbn/${isbn}-${s}.jpg`)
-    }
+    addCover(`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`)
+    addCover(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
   }
 
   // 4. Open Library por título
@@ -77,11 +74,14 @@ async function searchCovers(title, author, isbn) {
   return results
 }
 
-export default function CoverPicker({ book, onSelect, onClose }) {
+export default function CoverPicker({ book, onSelect, onUpload, onClose }) {
   const [covers, setCovers] = useState([])
   const [loading, setLoading] = useState(true)
   const [customUrl, setCustomUrl] = useState('')
   const [selecting, setSelecting] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     searchCovers(book.title, book.author, book.isbn).then(r => {
@@ -96,6 +96,23 @@ export default function CoverPicker({ book, onSelect, onClose }) {
     setSelecting(null)
   }
 
+  const handleFileUpload = async (file) => {
+    if (!file || !file.type.startsWith('image/')) return
+    setUploading(true)
+    try {
+      await onUpload(file)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFileUpload(file)
+  }
+
   return (
     <div className="cp-overlay" onClick={onClose}>
       <div className="cp-modal" onClick={e => e.stopPropagation()}>
@@ -107,10 +124,34 @@ export default function CoverPicker({ book, onSelect, onClose }) {
           <button className="cp-close" onClick={onClose}><X size={18} /></button>
         </div>
 
+        {/* Sección de subida de archivo */}
+        <div className="cp-upload-section">
+          <div
+            className={`cp-dropzone ${dragOver ? 'drag-over' : ''}`}
+            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading
+              ? <><Loader size={20} className="spin" /> Subiendo imagen…</>
+              : <><Upload size={18} /> Sube desde tu equipo — arrastra o haz clic</>
+            }
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }}
+          />
+        </div>
+
+        {/* Resultados de búsqueda */}
         {loading ? (
           <div className="cp-loading"><Loader size={24} className="spin" /> Buscando portadas…</div>
         ) : covers.length === 0 ? (
-          <p className="cp-empty">No se encontraron portadas. Prueba con una URL personalizada.</p>
+          <p className="cp-empty">No se encontraron portadas en internet.</p>
         ) : (
           <div className="cp-grid">
             {covers.map((url, i) => (
@@ -118,7 +159,7 @@ export default function CoverPicker({ book, onSelect, onClose }) {
                 key={i}
                 className={`cp-thumb ${selecting === url ? 'loading' : ''}`}
                 onClick={() => handleSelect(url)}
-                disabled={!!selecting}
+                disabled={!!selecting || uploading}
               >
                 <img
                   src={url}
@@ -131,6 +172,7 @@ export default function CoverPicker({ book, onSelect, onClose }) {
           </div>
         )}
 
+        {/* URL personalizada */}
         <div className="cp-custom">
           <p className="cp-custom-label">O introduce una URL de imagen:</p>
           <div className="cp-custom-row">
@@ -144,7 +186,7 @@ export default function CoverPicker({ book, onSelect, onClose }) {
             <button
               className="cp-custom-btn"
               onClick={() => customUrl.trim() && handleSelect(customUrl.trim())}
-              disabled={!customUrl.trim() || !!selecting}
+              disabled={!customUrl.trim() || !!selecting || uploading}
             >
               <Search size={14} /> Usar
             </button>

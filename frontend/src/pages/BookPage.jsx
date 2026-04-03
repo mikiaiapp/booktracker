@@ -907,6 +907,16 @@ export default function BookPage() {
             }
             setCoverPickerOpen(false)
           }}
+          onUpload={async (file) => {
+            try {
+              await booksAPI.uploadCover(id, file)
+              toast.success('Portada actualizada')
+              await load()
+            } catch {
+              toast.error('Error al subir la imagen')
+            }
+            setCoverPickerOpen(false)
+          }}
           onClose={() => setCoverPickerOpen(false)}
         />
       )}

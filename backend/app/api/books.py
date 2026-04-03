@@ -257,7 +257,60 @@ async def delete_book(
     return {"ok": True}
 
 
-# ── Crear ficha vacía desde bibliografía ──────────────────────
+# ── Subir portada desde archivo ──────────────────────────────
+@router.post("/{book_id}/cover/upload")
+async def upload_cover(
+    book_id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sube una imagen desde el equipo del usuario como portada del libro."""
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+
+    # Validar tipo de archivo
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(400, "El archivo debe ser una imagen")
+
+    try:
+        from app.core.config import settings
+        covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
+        os.makedirs(covers_dir, exist_ok=True)
+        filename = f"{book_id}_cover.jpg"
+        local_path = os.path.join(covers_dir, filename)
+
+        contents = await file.read()
+        if len(contents) < 1000:
+            raise HTTPException(400, "La imagen es demasiado pequeña")
+
+        # Convertir a JPEG si es necesario usando pillow (si disponible), si no guardar tal cual
+        try:
+            from PIL import Image
+            import io
+            img = Image.open(io.BytesIO(contents))
+            img = img.convert("RGB")
+            with open(local_path, "wb") as f:
+                img.save(f, "JPEG", quality=90)
+        except ImportError:
+            # Sin pillow: guardar directamente
+            with open(local_path, "wb") as f:
+                f.write(contents)
+
+        book.cover_local = local_path
+        book.cover_url = None  # ya tenemos local, limpiar URL externa
+        await db.commit()
+        return {"ok": True, "cover_local": local_path}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Error al guardar la imagen: {e}")
+
+
+
 class CreateShellRequest(BaseModel):
     title: str
     author: Optional[str] = None

@@ -43,6 +43,13 @@ export const booksAPI = {
   },
   update: (id, data) => api.patch(`/books/${id}`, data),
   updateCover: (id, cover_url) => api.patch(`/books/${id}/cover`, { cover_url }),
+  uploadCover: (id, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post(`/books/${id}/cover/upload`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   delete: (id) => api.delete(`/books/${id}`),
 }
 
