@@ -6,69 +6,146 @@ import React, { useState, useEffect, useRef } from 'react'
 import { X, Search, Loader, Upload } from 'lucide-react'
 import './CoverPicker.css'
 
+/** Extrae la mejor URL de imageLinks de Google Books */
+function gbBestCover(links) {
+  for (const key of ['extraLarge', 'large', 'medium', 'small', 'thumbnail', 'smallThumbnail']) {
+    if (links[key]) return links[key].replace(/zoom=\d/, 'zoom=3').replace('http://', 'https://')
+  }
+  return null
+}
+
 async function searchCovers(title, author, isbn) {
-  const results = []
   const seen = new Set()
+  const buckets = [] // array de arrays, para intercalar resultados de fuentes distintas
 
-  const addCover = (url) => {
-    if (!url || seen.has(url)) return
-    seen.add(url)
-    results.push(url)
+  const collect = async (fn) => {
+    try { return await fn() } catch { return [] }
   }
 
-  // 1. Google Books por ISBN
-  if (isbn) {
-    try {
-      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=5`)
+  // ── Todas las búsquedas en paralelo ──────────────────────────────────────
+  const [
+    gbIsbn,
+    gbTitleAuthor,
+    gbTitleOnly,
+    gbAuthorOnly,
+    gbTitleEs,
+    olIsbnL, olIsbnM,
+    olTitleAuthor,
+    olTitleOnly,
+    olAuthorOnly,
+  ] = await Promise.all([
+
+    // 1. Google Books — ISBN (máxima precisión)
+    collect(async () => {
+      if (!isbn) return []
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=10`)
       const d = await r.json()
-      for (const item of d.items || []) {
-        const links = item.volumeInfo?.imageLinks || {}
-        for (const key of ['extraLarge','large','medium','thumbnail','smallThumbnail']) {
-          if (links[key]) {
-            addCover(links[key].replace('zoom=1','zoom=3').replace('http://','https://'))
-            break
-          }
-        }
-      }
-    } catch {}
-  }
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
 
-  // 2. Google Books por título + autor
-  if (title) {
-    try {
-      const q = encodeURIComponent(author ? `${title} ${author}` : title)
-      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=10`)
+    // 2. Google Books — título + autor
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(author ? `intitle:${title} inauthor:${author}` : `intitle:${title}`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=20`)
       const d = await r.json()
-      for (const item of d.items || []) {
-        const links = item.volumeInfo?.imageLinks || {}
-        for (const key of ['extraLarge','large','medium','thumbnail','smallThumbnail']) {
-          if (links[key]) {
-            addCover(links[key].replace('zoom=1','zoom=3').replace('http://','https://'))
-            break
-          }
-        }
-      }
-    } catch {}
-  }
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
 
-  // 3. Open Library por ISBN
-  if (isbn) {
-    addCover(`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`)
-    addCover(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`)
-  }
-
-  // 4. Open Library por título
-  if (title) {
-    try {
-      const q = encodeURIComponent(author ? `${title} ${author}` : title)
-      const r = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=5`)
+    // 3. Google Books — solo título (captura ediciones sin autor bien catalogado)
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(`intitle:${title}`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=20`)
       const d = await r.json()
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
+
+    // 4. Google Books — solo autor (trae toda su bibliografía con portadas)
+    collect(async () => {
+      if (!author) return []
+      const q = encodeURIComponent(`inauthor:${author} intitle:${title || ''}`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=20`)
+      const d = await r.json()
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
+
+    // 5. Google Books — búsqueda libre en español (langRestrict)
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(`${title} ${author || ''}`.trim())
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&langRestrict=es&maxResults=20`)
+      const d = await r.json()
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
+
+    // 6. Open Library — ISBN tamaño L
+    collect(async () => {
+      if (!isbn) return []
+      return [`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`]
+    }),
+
+    // 7. Open Library — ISBN tamaño M (distinta URL, puede funcionar cuando L falla)
+    collect(async () => {
+      if (!isbn) return []
+      return [`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`]
+    }),
+
+    // 8. Open Library — búsqueda título + autor, extrae cover_i y work_id
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(`${title} ${author || ''}`.trim())
+      const r = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=15&fields=cover_i,key`)
+      const d = await r.json()
+      const urls = []
       for (const doc of d.docs || []) {
         if (doc.cover_i) {
-          addCover(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
+          urls.push(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
+        }
+        // Work covers (distintos de edition covers)
+        if (doc.key) {
+          const workId = doc.key.replace('/works/', '')
+          urls.push(`https://covers.openlibrary.org/b/works/${workId}-L.jpg`)
         }
       }
-    } catch {}
+      return urls
+    }),
+
+    // 9. Open Library — solo título
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(title)
+      const r = await fetch(`https://openlibrary.org/search.json?title=${q}&limit=10&fields=cover_i`)
+      const d = await r.json()
+      return (d.docs || []).filter(doc => doc.cover_i)
+        .map(doc => `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
+    }),
+
+    // 10. Open Library — solo autor
+    collect(async () => {
+      if (!author) return []
+      const q = encodeURIComponent(author)
+      const r = await fetch(`https://openlibrary.org/search.json?author=${q}&q=${encodeURIComponent(title || '')}&limit=10&fields=cover_i`)
+      const d = await r.json()
+      return (d.docs || []).filter(doc => doc.cover_i)
+        .map(doc => `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
+    }),
+  ])
+
+  // Intercalar resultados de todas las fuentes para mostrar variedad desde el inicio
+  buckets.push(gbIsbn, gbTitleAuthor, gbTitleEs, gbTitleOnly, gbAuthorOnly,
+               olIsbnL, olIsbnM, olTitleAuthor, olTitleOnly, olAuthorOnly)
+
+  const results = []
+  const maxLen = Math.max(...buckets.map(b => b.length))
+  for (let i = 0; i < maxLen; i++) {
+    for (const bucket of buckets) {
+      const url = bucket[i]
+      if (url && !seen.has(url)) {
+        seen.add(url)
+        results.push(url)
+      }
+    }
   }
 
   return results
@@ -84,6 +161,8 @@ export default function CoverPicker({ book, onSelect, onUpload, onClose }) {
   const fileInputRef = useRef(null)
 
   useEffect(() => {
+    setLoading(true)
+    setCovers([])
     searchCovers(book.title, book.author, book.isbn).then(r => {
       setCovers(r)
       setLoading(false)
@@ -98,8 +177,6 @@ export default function CoverPicker({ book, onSelect, onUpload, onClose }) {
 
   const handleFileUpload = async (file) => {
     if (!file) return
-    // Aceptar cualquier imagen — el backend convierte a JPEG con Pillow
-    // Algunos formatos (AVIF, HEIC, TIFF) pueden tener MIME poco estándar según el SO
     const isImage = file.type.startsWith('image/') ||
       /\.(avif|webp|heic|heif|tiff?|bmp|ico|jfif|pjpeg|pjp|svg)$/i.test(file.name)
     if (!isImage) return
@@ -158,23 +235,26 @@ export default function CoverPicker({ book, onSelect, onUpload, onClose }) {
         ) : covers.length === 0 ? (
           <p className="cp-empty">No se encontraron portadas en internet.</p>
         ) : (
-          <div className="cp-grid">
-            {covers.map((url, i) => (
-              <button
-                key={i}
-                className={`cp-thumb ${selecting === url ? 'loading' : ''}`}
-                onClick={() => handleSelect(url)}
-                disabled={!!selecting || uploading}
-              >
-                <img
-                  src={url}
-                  alt={`Portada ${i + 1}`}
-                  onError={e => { e.target.closest('.cp-thumb').style.display = 'none' }}
-                />
-                {selecting === url && <div className="cp-thumb-overlay"><Loader size={16} className="spin" /></div>}
-              </button>
-            ))}
-          </div>
+          <>
+            <p className="cp-count">{covers.length} portadas encontradas</p>
+            <div className="cp-grid">
+              {covers.map((url, i) => (
+                <button
+                  key={i}
+                  className={`cp-thumb ${selecting === url ? 'loading' : ''}`}
+                  onClick={() => handleSelect(url)}
+                  disabled={!!selecting || uploading}
+                >
+                  <img
+                    src={url}
+                    alt={`Portada ${i + 1}`}
+                    onError={e => { e.target.closest('.cp-thumb').style.display = 'none' }}
+                  />
+                  {selecting === url && <div className="cp-thumb-overlay"><Loader size={16} className="spin" /></div>}
+                </button>
+              ))}
+            </div>
+          </>
         )}
 
         {/* URL personalizada */}
