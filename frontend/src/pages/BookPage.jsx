@@ -834,10 +834,47 @@ function HeroCover({ book }) {
     }
     return book.cover_url || null
   })
+  const [tried, setTried] = React.useState(false)
+
+  React.useEffect(() => {
+    if (src || tried) return
+    setTried(true)
+    const fetchCover = async () => {
+      if (book.isbn) {
+        try {
+          const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${book.isbn}&maxResults=1`)
+          const data = await r.json()
+          const links = data.items?.[0]?.volumeInfo?.imageLinks
+          if (links) {
+            const url = (links.extraLarge || links.large || links.thumbnail || links.smallThumbnail || '')
+              .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
+            if (url) { setSrc(url); return }
+          }
+        } catch {}
+      }
+      if (book.title) {
+        try {
+          const q = encodeURIComponent(`${book.title}${book.author ? ' ' + book.author : ''}`)
+          const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=1`)
+          const data = await r.json()
+          const links = data.items?.[0]?.volumeInfo?.imageLinks
+          if (links) {
+            const url = (links.extraLarge || links.large || links.thumbnail || links.smallThumbnail || '')
+              .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
+            if (url) { setSrc(url); return }
+          }
+        } catch {}
+      }
+      if (book.isbn) {
+        setSrc(`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`)
+      }
+    }
+    fetchCover()
+  }, [])
 
   if (src) return (
     <img src={src} alt={book.title}
-      onError={() => setSrc(null)}
+      onError={() => { if (!tried) setTried(true); else setSrc(null) }}
       style={{width:'100%', height:'100%', objectFit:'cover'}} />
   )
   return (
