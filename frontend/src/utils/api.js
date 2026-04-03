@@ -53,6 +53,22 @@ export const booksAPI = {
   delete: (id) => api.delete(`/books/${id}`),
 }
 
+// Task status
+export const taskAPI = {
+  status: (taskId) => api.get(`/analysis/tasks/${taskId}/status`),
+  /** Poll until done. Returns final status object. Timeout en ms (default 120s). */
+  pollUntilDone: async (taskId, { interval = 3000, timeout = 120000, onPoll } = {}) => {
+    const start = Date.now()
+    while (Date.now() - start < timeout) {
+      await new Promise(r => setTimeout(r, interval))
+      const { data } = await api.get(`/analysis/tasks/${taskId}/status`)
+      if (onPoll) onPoll(data)
+      if (data.done) return data
+    }
+    return { task_id: taskId, state: 'TIMEOUT', done: true, success: false }
+  },
+}
+
 // Analysis
 export const analysisAPI = {
   status: (bookId) => api.get(`/analysis/${bookId}/status`),

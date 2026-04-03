@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { authorsAPI, shellAPI, booksAPI } from '../utils/api'
+import { authorsAPI, shellAPI, booksAPI, taskAPI } from '../utils/api'
 import { BookOpen, User, ExternalLink, Plus } from 'lucide-react'
 import BookCover, { coverSrc } from '../components/BookCover'
 import './AuthorsPage.css'
@@ -17,15 +17,23 @@ export default function AuthorsPage() {
   const navigate = useNavigate()
   const location = useLocation()
 
-  const load = useCallback(() =>
-    authorsAPI.list().then(r => {
+  // selectedRef permite que load siempre acceda al selected actual sin ser una dep
+  const selectedRef = React.useRef(selected)
+  React.useEffect(() => { selectedRef.current = selected }, [selected])
+
+  const load = useCallback(async () => {
+    try {
+      const r = await authorsAPI.list()
       setAuthors(r.data)
-      if (selected) {
-        const updated = r.data.find(a => a.name === selected.name)
+      const cur = selectedRef.current
+      if (cur) {
+        const updated = r.data.find(a => a.name === cur.name)
         if (updated) setSelected(updated)
       }
-    }).finally(() => setLoading(false))
-  , [selected])
+    } finally {
+      setLoading(false)
+    }
+  }, [])  // sin dependencias — usa selectedRef
 
   useEffect(() => {
     authorsAPI.list().then(r => {
@@ -49,23 +57,21 @@ export default function AuthorsPage() {
   const handleReidentifyAuthor = async (authorName) => {
     setReidentifying(true)
     try {
-      await authorsAPI.reidentify(authorName)
-      toast('Reidentificando autor y creando fichas…', { icon: '⏳' })
-      // Poll hasta que termine (aprox 10-30 segundos)
-      let attempts = 0
-      const poll = setInterval(async () => {
-        attempts++
-        await load()
-        if (attempts > 20) clearInterval(poll)
-      }, 3000)
-      setTimeout(() => {
-        clearInterval(poll)
-        setReidentifying(false)
-        toast.success('Autor actualizado')
-        load()
-      }, 30000)
-    } catch {
-      toast.error('Error al reidentificar el autor')
+      const { data } = await authorsAPI.reidentify(authorName)
+      toast('Actualizando autor y bibliografía…', { icon: '⏳' })
+
+      // Polling cada 4s hasta que Celery confirme que terminó (máx 3 minutos)
+      await taskAPI.pollUntilDone(data.task_id, {
+        interval: 4000,
+        timeout: 180000,
+        onPoll: () => load(),   // actualizar UI en cada ciclo
+      })
+
+      await load()
+      toast.success('Autor actualizado correctamente')
+    } catch (e) {
+      toast.error('Error al actualizar el autor')
+    } finally {
       setReidentifying(false)
     }
   }

@@ -609,6 +609,24 @@ async def reidentify_author(
     return {"task_id": task.id, "status": "processing"}
 
 
+# ── Estado de tarea Celery ────────────────────────────────────
+@router.get("/tasks/{task_id}/status")
+async def get_task_status(
+    task_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve el estado actual de una tarea Celery."""
+    from app.workers.celery_app import celery_app
+    result = celery_app.AsyncResult(task_id)
+    state = result.state  # PENDING, STARTED, SUCCESS, FAILURE, RETRY
+    return {
+        "task_id": task_id,
+        "state": state,
+        "done": state in ("SUCCESS", "FAILURE"),
+        "success": state == "SUCCESS",
+    }
+
+
 # ── Reidentificar libro individual ─────────────────────────────
 @router.post("/{book_id}/reidentify-book")
 async def reidentify_book(
