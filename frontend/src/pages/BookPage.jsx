@@ -769,7 +769,7 @@ export default function BookPage() {
             {status?.phase3_done && (
               <button className="export-pdf-btn" onClick={exportToPDF} title="Exportar análisis completo">
                 <FileText size={16} />
-                Exportar a PDF
+                Genera PDF del análisis
               </button>
             )}
             {book.file_path && (
