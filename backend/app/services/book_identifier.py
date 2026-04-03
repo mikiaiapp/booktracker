@@ -317,19 +317,16 @@ async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -
         return hits >= 4
 
     async def _translate_to_spanish(bio: str) -> str:
-        """Traduce un texto al español usando la IA configurada."""
-        try:
-            from app.services.ai_analyzer import _call_ai
-            translated = await _call_ai(
-                "Eres un traductor experto literario. Traduce el siguiente texto al español de forma natural y fluida.",
-                f"Traduce al español:\n\n{bio}",
-                max_tokens=700
-            )
-            if translated and len(translated) > 80:
-                return translated.strip()
-        except Exception as e:
-            print(f"Translation error: {e}")
-        return bio  # devolver original si falla
+        """Traduce un texto al español usando la IA. Lanza excepción si falla."""
+        from app.services.ai_analyzer import _call_ai
+        translated = await _call_ai(
+            "Eres un traductor experto literario. Traduce el siguiente texto al español de forma natural y fluida, manteniendo toda la información.",
+            f"Traduce al español:\n\n{bio}",
+            max_tokens=800
+        )
+        if translated and len(translated) > 80:
+            return translated.strip()
+        return bio  # solo si la respuesta es vacía
 
     # 1. Wikipedia en español
     bio = await _fetch_wikipedia("es", author_name)

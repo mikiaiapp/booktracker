@@ -605,6 +605,29 @@ async def _reidentify_author(user_id: str, author_name: str):
                 # 1. Actualizar bio del autor en Wikipedia
                 bio_data = await search_wikipedia_author(client, author_name)
                 new_bio = bio_data.get("author_bio")
+                print(f"Bio obtenida para '{author_name}': {repr(new_bio[:100]) if new_bio else 'None'}")
+
+                # Si la bio está en inglés, traducirla explícitamente aquí
+                if new_bio:
+                    english_markers = ['the ', ' is ', ' are ', ' was ', ' were ',
+                                       ' has ', ' have ', ' of ', ' and ', 'known as', 'born in']
+                    hits = sum(1 for m in english_markers if m in new_bio.lower())
+                    if hits >= 4:
+                        print(f"Bio en inglés detectada ({hits} marcadores). Traduciendo…")
+                        try:
+                            from app.services.ai_analyzer import _call_ai
+                            translated = await _call_ai(
+                                "Eres un traductor experto. Traduce el texto al español de forma natural y fluida, manteniendo toda la información original.",
+                                f"Traduce esta biografía al español:\n\n{new_bio}",
+                                max_tokens=800
+                            )
+                            if translated and len(translated) > 80:
+                                print(f"Traducción exitosa: {repr(translated[:80])}")
+                                new_bio = translated.strip()
+                            else:
+                                print(f"Traducción vacía o muy corta: {repr(translated)}")
+                        except Exception as e:
+                            print(f"Error en traducción de bio: {e}")
 
                 # 2. Obtener bibliografía actualizada de Google Books (con metadatos completos)
                 new_biblio = await get_author_bibliography(author_name)
