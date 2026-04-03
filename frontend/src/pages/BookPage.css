@@ -853,3 +853,63 @@
   color: var(--gold);
   font-weight: 500;
 }
+
+/* ── Modal de confirmación propio ─────────────────────────────────────────── */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+
+.confirm-box {
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 1.75rem 2rem;
+  max-width: 360px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+}
+
+.confirm-msg {
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 1.5rem 0;
+}
+
+.confirm-btns {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.confirm-btn-cancel {
+  padding: 0.5rem 1.2rem;
+  border-radius: 20px;
+  border: 1.5px solid var(--mist);
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.confirm-btn-cancel:hover { border-color: var(--ink); }
+
+.confirm-btn-ok {
+  padding: 0.5rem 1.2rem;
+  border-radius: 20px;
+  border: none;
+  background: var(--gold);
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.confirm-btn-ok:hover { opacity: 0.85; }

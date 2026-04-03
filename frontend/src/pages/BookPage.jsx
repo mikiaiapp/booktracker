@@ -24,9 +24,36 @@ const TABS = [
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
 
+// ── Modal de confirmación propio (evita el checkbox del window.confirm nativo) ──
+function ConfirmModal({ message, onConfirm, onCancel }) {
+  return (
+    <div className="confirm-overlay" onClick={onCancel}>
+      <div className="confirm-box" onClick={e => e.stopPropagation()}>
+        <p className="confirm-msg">{message}</p>
+        <div className="confirm-btns">
+          <button className="confirm-btn-cancel" onClick={onCancel}>Cancelar</button>
+          <button className="confirm-btn-ok" onClick={onConfirm}>Aceptar</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function useConfirm() {
+  const [state, setState] = useState(null) // { message, resolve }
+  const confirm = (message) => new Promise(resolve => setState({ message, resolve }))
+  const handleConfirm = () => { state.resolve(true);  setState(null) }
+  const handleCancel  = () => { state.resolve(false); setState(null) }
+  const modal = state
+    ? <ConfirmModal message={state.message} onConfirm={handleConfirm} onCancel={handleCancel} />
+    : null
+  return { confirm, modal }
+}
+
 export default function BookPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { confirm, modal: confirmModal } = useConfirm()
   const [data, setData] = useState(null)
   const [prevData, setPrevData] = useState(null)
   const [status, setStatus] = useState(null)
@@ -82,9 +109,9 @@ export default function BookPage() {
     _speakChapterSentence(ttsSentencesRef.current, ttsSentIdxRef.current)
   }
 
-  const stopTTS = (skipConfirm = false) => {
+  const stopTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsPlaying || ttsChapter || ttsChapterPaused)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+      if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     ttsActiveRef.current = false
     window.speechSynthesis.cancel()
@@ -263,9 +290,9 @@ export default function BookPage() {
     _speakCharSentence(ttsCharSentRef.current, ttsCharSentIdxRef.current)
   }
 
-  const stopCharTTS = (skipConfirm = false) => {
+  const stopCharTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+      if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     ttsCharActiveRef.current = false
     window.speechSynthesis.cancel()
@@ -404,9 +431,9 @@ export default function BookPage() {
     _speakInfoFromIndex(sentences, idx)
   }
 
-  const stopInfoTTS = (skipConfirm = false) => {
+  const stopInfoTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+      if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     ttsInfoActiveRef.current = false
     window.speechSynthesis.cancel()
@@ -519,9 +546,9 @@ export default function BookPage() {
     }
   }
 
-  const stopAudio = (skipConfirm = false) => {
+  const stopAudio = async (skipConfirm = false) => {
     if (!skipConfirm && (audioPlaying || audioPaused)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
+      if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     if (audioEl) { audioEl.pause(); audioEl.currentTime = 0 }
     setAudioPlaying(false); setAudioPaused(false)
@@ -834,6 +861,7 @@ export default function BookPage() {
           </motion.div>
         </AnimatePresence>
       </div>
+      {confirmModal}
     </div>
   )
 }
