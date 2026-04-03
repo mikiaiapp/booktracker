@@ -228,9 +228,10 @@ Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni bloques d
 Resúmenes de todos los capítulos:
 {all_summaries[:30000]}
 
-Identifica y analiza TODOS los personajes con profundidad (mínimo 12 si aparecen). Incluye protagonistas, antagonistas, secundarios y personajes menores relevantes.
+Identifica y analiza TODOS los personajes con profundidad (mínimo 20 si aparecen). Incluye protagonistas, antagonistas, secundarios, personajes menores, personajes episódicos y cualquier figura con nombre o función reconocible en la trama (familiares, amigos, colegas, vecinos, antagonistas secundarios, figuras de autoridad, etc.).
+No omitas personajes por parecer poco importantes: incluso los que aparecen en pocos capítulos pero tienen nombre o influyen en la trama merecen una entrada.
 Para los personajes principales (protagonist/antagonist), el análisis debe ser EXHAUSTIVO: mínimo 5 frases en personalidad y 5 frases en evolución.
-Para los secundarios, al menos 3 frases en cada campo.
+Para los secundarios y menores, al menos 3 frases en cada campo.
 
 Devuelve un array JSON donde cada elemento tiene:
 {{
@@ -247,7 +248,7 @@ Devuelve un array JSON donde cada elemento tiene:
   "quotes": ["cita o momento memorable que define al personaje"]
 }}"""
 
-    result = await _call_ai(system, user, max_tokens=8000)
+    result = await _call_ai(system, user, max_tokens=12000)
     try:
         data = _parse_json(result)
         return data if isinstance(data, list) else []

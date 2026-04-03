@@ -97,7 +97,12 @@ export default function CoverPicker({ book, onSelect, onUpload, onClose }) {
   }
 
   const handleFileUpload = async (file) => {
-    if (!file || !file.type.startsWith('image/')) return
+    if (!file) return
+    // Aceptar cualquier imagen — el backend convierte a JPEG con Pillow
+    // Algunos formatos (AVIF, HEIC, TIFF) pueden tener MIME poco estándar según el SO
+    const isImage = file.type.startsWith('image/') ||
+      /\.(avif|webp|heic|heif|tiff?|bmp|ico|jfif|pjpeg|pjp|svg)$/i.test(file.name)
+    if (!isImage) return
     setUploading(true)
     try {
       await onUpload(file)
@@ -135,13 +140,13 @@ export default function CoverPicker({ book, onSelect, onUpload, onClose }) {
           >
             {uploading
               ? <><Loader size={20} className="spin" /> Subiendo imagen…</>
-              : <><Upload size={18} /> Sube desde tu equipo — arrastra o haz clic</>
+              : <><Upload size={18} /> Sube desde tu equipo — arrastra o haz clic<br/><small style={{opacity:0.6,fontSize:'0.7rem'}}>JPG · PNG · WebP · AVIF · HEIC · BMP · TIFF · GIF y más</small></>
             }
           </div>
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.avif,.webp,.heic,.heif,.tiff,.tif,.bmp,.ico,.svg,.jfif,.pjpeg,.pjp"
             style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) handleFileUpload(f) }}
           />

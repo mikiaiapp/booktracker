@@ -252,203 +252,118 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
     return {}
 
 
-async def get_author_bio_in_spanish(author_name: str) -> str:
-    """
-    Obtiene la biografía del autor en español.
-    Crea su propio cliente HTTP y traduce si es necesario.
-    Retorna string vacío si no encuentra nada.
-    """
-    def _is_english(text: str) -> bool:
-        markers = ['the ', ' is ', ' are ', ' was ', ' were ', ' has ',
-                   ' have ', ' of ', ' and ', 'known as', 'born in']
-        hits = sum(1 for m in markers if m in text.lower())
-        return hits >= 4
-
-    async def _translate(text: str) -> str:
-        from app.services.ai_analyzer import _call_ai
-        result = await _call_ai(
-            "Eres un traductor experto. Traduce el texto COMPLETO al español de forma natural y fluida. "
-            "Devuelve ÚNICAMENTE la traducción, sin comentarios ni explicaciones.",
-            f"Traduce al español:\n\n{text}",
-            max_tokens=800
+async def _fetch_wikipedia_extract(client: httpx.AsyncClient, lang: str, author_name: str) -> str:
+    """Obtiene el extracto completo de intro de Wikipedia para un autor."""
+    try:
+        search_url = (
+            f"https://{lang}.wikipedia.org/w/api.php"
+            f"?action=query&list=search&srsearch={quote(author_name)}&format=json&srlimit=3"
         )
-        if result and len(result) > 60:
-            return result.strip()
-        return ""
+        r = await client.get(search_url)
+        results = r.json().get("query", {}).get("search", [])
+        if not results:
+            return ""
 
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        # 1. Wikipedia ES
-        try:
-            r = await client.get(
-                f"https://es.wikipedia.org/w/api.php?action=query&list=search"
-                f"&srsearch={quote(author_name)}&format=json&srlimit=1"
-            )
-            results = r.json().get("query", {}).get("search", [])
-            if results:
-                page_title = results[0]["title"]
-                r2 = await client.get(
-                    f"https://es.wikipedia.org/w/api.php?action=query&titles={quote(page_title)}"
-                    f"&prop=extracts&exintro=true&explaintext=true&format=json"
-                )
-                pages = r2.json().get("query", {}).get("pages", {})
-                extract = next(iter(pages.values()), {}).get("extract", "").strip()
-                if extract and len(extract) > 60:
-                    name_parts = {p.lower() for p in author_name.split() if len(p) > 2}
-                    if any(p in extract.lower() for p in name_parts):
-                        clean = re.sub(r"\s+", " ", extract).strip()[:1000]
-                        if not _is_english(clean):
-                            print(f"Bio ES encontrada para '{author_name}'")
-                            return clean
-                        # Está en inglés — traducir
-                        print(f"Bio ES en inglés para '{author_name}', traduciendo…")
-                        translated = await _translate(clean)
-                        if translated:
-                            return translated
-        except Exception as e:
-            print(f"Wikipedia ES error para '{author_name}': {e}")
-
-        # 2. Wikipedia EN + traducción
-        try:
-            r = await client.get(
-                f"https://en.wikipedia.org/w/api.php?action=query&list=search"
-                f"&srsearch={quote(author_name)}&format=json&srlimit=1"
-            )
-            results = r.json().get("query", {}).get("search", [])
-            if results:
-                page_title = results[0]["title"]
-                r2 = await client.get(
-                    f"https://en.wikipedia.org/w/api.php?action=query&titles={quote(page_title)}"
-                    f"&prop=extracts&exintro=true&explaintext=true&format=json"
-                )
-                pages = r2.json().get("query", {}).get("pages", {})
-                extract = next(iter(pages.values()), {}).get("extract", "").strip()
-                if extract and len(extract) > 60:
-                    name_parts = {p.lower() for p in author_name.split() if len(p) > 2}
-                    if any(p in extract.lower() for p in name_parts):
-                        clean = re.sub(r"\s+", " ", extract).strip()[:1000]
-                        print(f"Bio EN encontrada para '{author_name}', traduciendo…")
-                        translated = await _translate(clean)
-                        if translated:
-                            return translated
-        except Exception as e:
-            print(f"Wikipedia EN error para '{author_name}': {e}")
-
-        # 3. Open Library
-        try:
-            r = await client.get(
-                f"https://openlibrary.org/search/authors.json?q={quote(author_name)}&limit=1"
-            )
-            docs = r.json().get("docs", [])
-            if docs:
-                key = docs[0].get("key", "")
-                if key:
-                    r2 = await client.get(f"https://openlibrary.org{key}.json")
-                    bio = r2.json().get("bio", "")
-                    if isinstance(bio, dict):
-                        bio = bio.get("value", "")
-                    bio = str(bio).strip()[:800]
-                    if bio and len(bio) > 60:
-                        if _is_english(bio):
-                            translated = await _translate(bio)
-                            if translated:
-                                return translated
-                        else:
-                            return bio
-        except Exception as e:
-            print(f"OpenLibrary error para '{author_name}': {e}")
-
-    print(f"No se encontró bio para '{author_name}'")
-    return ""
-
-
-async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -> dict:
-    """Busca bio del autor: primero Wikipedia ES, luego EN con traducción IA, luego Open Library."""
-
-    async def _fetch_wikipedia(lang: str, name: str) -> str:
-        try:
-            search_url = (
-                f"https://{lang}.wikipedia.org/w/api.php"
-                f"?action=query&list=search&srsearch={quote(name)}&format=json&srlimit=1"
-            )
-            r = await client.get(search_url)
-            results = r.json().get("query", {}).get("search", [])
-            if not results:
-                return ""
-            page_title = results[0]["title"]
+        # Intentar los primeros 3 resultados — el primero puede no ser el autor
+        name_parts = {p.lower() for p in author_name.split() if len(p) > 2}
+        for hit in results:
+            page_title = hit["title"]
             content_url = (
                 f"https://{lang}.wikipedia.org/w/api.php"
-                f"?action=query&titles={quote(page_title)}&prop=extracts&exintro=true"
-                f"&explaintext=true&format=json"
+                f"?action=query&titles={quote(page_title)}&prop=extracts"
+                f"&exintro=false&explaintext=true&format=json"
             )
             r2 = await client.get(content_url)
             pages = r2.json().get("query", {}).get("pages", {})
-            page = next(iter(pages.values()), {})
-            extract = page.get("extract", "").strip()
-            if not extract:
-                return ""
-            # Verificar que el resultado es sobre el autor
-            name_parts = {p.lower() for p in name.split() if len(p) > 2}
-            if not any(p in extract.lower() for p in name_parts):
-                return ""
-            clean = re.sub(r"\s+", " ", extract).strip()
-            return clean[:1000]
-        except Exception as e:
-            print(f"Wikipedia {lang} error for '{name}': {e}")
-            return ""
+            extract = next(iter(pages.values()), {}).get("extract", "").strip()
+            if extract and any(p in extract.lower() for p in name_parts):
+                return re.sub(r"\s+", " ", extract).strip()
+        return ""
+    except Exception as e:
+        print(f"Wikipedia {lang} error for '{author_name}': {e}")
+        return ""
 
-    async def _fetch_openlibrary(name: str) -> str:
-        try:
-            url = f"https://openlibrary.org/search/authors.json?q={quote(name)}&limit=1"
-            r = await client.get(url)
-            docs = r.json().get("docs", [])
-            if not docs:
-                return ""
-            author_key = docs[0].get("key", "")
-            if not author_key:
-                return ""
-            r2 = await client.get(f"https://openlibrary.org{author_key}.json")
-            data = r2.json()
-            bio = data.get("bio", "")
-            if isinstance(bio, dict):
-                bio = bio.get("value", "")
-            return str(bio).strip()[:800] if bio else ""
-        except Exception as e:
-            print(f"OpenLibrary bio error for '{name}': {e}")
-            return ""
 
-    async def _ensure_spanish(bio: str) -> str:
-        """Garantiza que la bio esté en español, traduciendo siempre via IA."""
-        from app.services.ai_analyzer import _call_ai
-        translated = await _call_ai(
-            "Eres un traductor y redactor literario experto. Si el texto ya está en español, devuélvelo tal cual. "
-            "Si está en otro idioma, tradúcelo al español de forma natural y fluida, manteniendo toda la información. "
-            "Devuelve ÚNICAMENTE el texto, sin comentarios ni explicaciones.",
-            f"Asegúrate de que este texto esté en español:\n\n{bio}",
-            max_tokens=800
+async def get_author_bio_rich(author_name: str) -> str:
+    """
+    Genera una biografía completa y rica en español para un autor.
+    Estrategia:
+    1. Recopila texto crudo de Wikipedia ES y/o EN (sin límite de longitud)
+    2. Pide a la IA que redacte una biografía extensa, fluida y en español,
+       usando ese texto como fuente — nunca menor de 400 palabras.
+    3. Si Wikipedia no tiene nada, la IA la genera desde su conocimiento.
+    Devuelve string vacío si falla todo.
+    """
+    from app.services.ai_analyzer import _call_ai
+
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        # Recopilar fuentes — ES primero, EN como complemento
+        es_extract = await _fetch_wikipedia_extract(client, "es", author_name)
+        en_extract = await _fetch_wikipedia_extract(client, "en", author_name)
+
+    # Construir contexto para la IA (hasta ~6000 chars entre las dos fuentes)
+    sources = []
+    if es_extract:
+        sources.append(f"[Wikipedia ES]\n{es_extract[:3000]}")
+    if en_extract:
+        sources.append(f"[Wikipedia EN]\n{en_extract[:3000]}")
+    source_text = "\n\n".join(sources)
+
+    if source_text:
+        system = (
+            "Eres un biógrafo literario experto. Redactas biografías de autores en español "
+            "de forma fluida, rica y bien estructurada, dirigidas a lectores interesados en literatura."
         )
-        if translated and len(translated) > 80:
-            return translated.strip()
-        return bio
+        user = (
+            f"Redacta una biografía completa en español de {author_name} usando como fuente "
+            f"los siguientes textos de Wikipedia. La biografía debe:\n"
+            f"- Estar íntegramente en español, con prosa natural y elegante\n"
+            f"- Tener entre 400 y 600 palabras\n"
+            f"- Cubrir: datos biográficos esenciales, formación y trayectoria, "
+            f"obras más importantes, estilo literario, premios y reconocimientos, "
+            f"curiosidades o datos relevantes\n"
+            f"- No incluir secciones ni títulos — solo texto corrido\n"
+            f"- No mencionar que proviene de Wikipedia\n\n"
+            f"Fuentes:\n{source_text}"
+        )
+    else:
+        # Sin fuentes — la IA genera desde su conocimiento
+        print(f"Bio: sin fuentes Wikipedia para '{author_name}', generando desde conocimiento IA")
+        system = (
+            "Eres un biógrafo literario experto. Redactas biografías de autores en español "
+            "de forma fluida, rica y bien estructurada."
+        )
+        user = (
+            f"Redacta una biografía completa en español de {author_name}. La biografía debe:\n"
+            f"- Estar íntegramente en español, con prosa natural y elegante\n"
+            f"- Tener entre 400 y 600 palabras\n"
+            f"- Cubrir: datos biográficos esenciales, formación y trayectoria, "
+            f"obras más importantes, estilo literario, premios y reconocimientos, "
+            f"curiosidades o datos relevantes\n"
+            f"- No incluir secciones ni títulos — solo texto corrido\n"
+            f"Si no conoces al autor, indica brevemente que no hay información disponible."
+        )
 
-    # 1. Wikipedia en español (puede tener texto en inglés — siempre pasamos por IA)
-    bio = await _fetch_wikipedia("es", author_name)
-    if bio:
-        bio = await _ensure_spanish(bio)
-        return {"author_bio": bio}
+    try:
+        bio = await _call_ai(system, user, max_tokens=3000)
+        if bio and len(bio) > 100:
+            print(f"Bio generada para '{author_name}': {len(bio)} chars")
+            return bio.strip()
+    except Exception as e:
+        print(f"Error generando bio para '{author_name}': {e}")
 
-    # 2. Wikipedia en inglés + traducción
-    bio = await _fetch_wikipedia("en", author_name)
-    if bio:
-        bio = await _ensure_spanish(bio)
-        return {"author_bio": bio}
+    return ""
 
-    # 3. Open Library como último recurso
-    bio = await _fetch_openlibrary(author_name)
-    if bio:
-        bio = await _ensure_spanish(bio)
-        return {"author_bio": bio}
 
-    return {}
+# Alias para compatibilidad con llamadas existentes
+async def get_author_bio_in_spanish(author_name: str) -> str:
+    return await get_author_bio_rich(author_name)
+
+
+async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -> dict:
+    """Wrapper para fase 1: obtiene bio rica en español."""
+    bio = await get_author_bio_rich(author_name)
+    return {"author_bio": bio} if bio else {}
 
 
 def _normalize_title(title: str) -> str:
@@ -629,18 +544,49 @@ async def get_author_bibliography(author_name: str) -> list:
     return result
 
 
+def _bytes_to_jpeg(data: bytes) -> bytes:
+    """Convierte cualquier formato de imagen soportado por Pillow a JPEG RGB.
+    Soporta: JPEG, PNG, WebP, AVIF, BMP, TIFF, GIF, ICO, TGA, PPM, HEIC* y más.
+    (*HEIC requiere pillow-heif instalado aparte)
+    Devuelve los bytes JPEG resultantes, o los bytes originales si falla la conversión."""
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(data))
+        # Aplanar transparencia sobre fondo blanco (PNG, WebP con alpha, etc.)
+        if img.mode in ("RGBA", "LA", "P"):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "P":
+                img = img.convert("RGBA")
+            background.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=92, optimize=True)
+        return out.getvalue()
+    except Exception as e:
+        print(f"Image conversion error: {e}")
+        return data  # fallback: devolver original sin convertir
+
+
 async def download_cover(cover_url: str, covers_dir: str, book_id: str) -> Optional[str]:
-    """Download cover image and save locally as {book_id}_cover.jpg"""
+    """Descarga una imagen de cualquier formato y la guarda como JPEG."""
     try:
         os.makedirs(covers_dir, exist_ok=True)
         filename = f"{book_id}_cover.jpg"
         local_path = os.path.join(covers_dir, filename)
 
-        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; BookTracker/2.0)",
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
             r = await client.get(cover_url)
-            if r.status_code == 200 and len(r.content) > 1000:
+            if r.status_code == 200 and len(r.content) > 500:
+                jpeg_data = _bytes_to_jpeg(r.content)
                 with open(local_path, "wb") as f:
-                    f.write(r.content)
+                    f.write(jpeg_data)
                 return local_path
     except Exception as e:
         print(f"Cover download error: {e}")

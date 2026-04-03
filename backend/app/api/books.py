@@ -305,33 +305,31 @@ async def upload_cover(
     if not book:
         raise HTTPException(404, "Book not found")
 
-    # Validar tipo de archivo
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(400, "El archivo debe ser una imagen")
+    # Validar que tiene contenido (el tipo MIME lo verifica Pillow al abrir)
+    contents = await file.read()
+    if len(contents) < 500:
+        raise HTTPException(400, "El archivo es demasiado pequeño")
 
+    # Usar _bytes_to_jpeg para aceptar cualquier formato gráfico soportado por Pillow:
+    # JPEG, PNG, WebP, AVIF, BMP, TIFF, GIF, ICO, TGA, PPM, HEIC*, SVG-raster, etc.
     try:
+        from app.services.book_identifier import _bytes_to_jpeg
         from app.core.config import settings
         covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
         os.makedirs(covers_dir, exist_ok=True)
         filename = f"{book_id}_cover.jpg"
         local_path = os.path.join(covers_dir, filename)
 
-        contents = await file.read()
-        if len(contents) < 1000:
-            raise HTTPException(400, "La imagen es demasiado pequeña")
-
-        # Convertir a JPEG si es necesario usando pillow (si disponible), si no guardar tal cual
         try:
-            from PIL import Image
-            import io
-            img = Image.open(io.BytesIO(contents))
-            img = img.convert("RGB")
-            with open(local_path, "wb") as f:
-                img.save(f, "JPEG", quality=90)
-        except ImportError:
-            # Sin pillow: guardar directamente
-            with open(local_path, "wb") as f:
-                f.write(contents)
+            jpeg_data = _bytes_to_jpeg(contents)
+        except Exception as e:
+            raise HTTPException(400, f"Formato de imagen no soportado: {e}")
+
+        if len(jpeg_data) < 500:
+            raise HTTPException(400, "La imagen no pudo procesarse correctamente")
+
+        with open(local_path, "wb") as f:
+            f.write(jpeg_data)
 
         book.cover_local = local_path
         book.cover_url = None  # ya tenemos local, limpiar URL externa
