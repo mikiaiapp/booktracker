@@ -39,10 +39,12 @@ export default function BookPage() {
   const [ttsMode,          setTtsMode]          = useState('single') // 'single' | 'from'
   const [ttsQueue,         setTtsQueue]         = useState([])
   const [ttsIndex,         setTtsIndex]         = useState(0)
-  const ttsQueueRef  = React.useRef([])
-  const ttsIndexRef  = React.useRef(0)
-  const ttsActiveRef = React.useRef(false)
-  const storageKey   = `tts_pos_${id}`
+  const ttsQueueRef       = React.useRef([])
+  const ttsIndexRef       = React.useRef(0)
+  const ttsActiveRef      = React.useRef(false)
+  const ttsSentencesRef   = React.useRef([])   // frases del item actual
+  const ttsSentIdxRef     = React.useRef(0)    // índice de frase dentro del item
+  const storageKey        = `tts_pos_${id}`
 
   // TTS state for characters
   const [ttsCharPlaying, setTtsCharPlaying] = useState(false)
@@ -50,9 +52,11 @@ export default function BookPage() {
   const [ttsCharacter, setTtsCharacter] = useState(null)
   const [ttsCharQueue, setTtsCharQueue] = useState([])
   const [ttsCharIndex, setTtsCharIndex] = useState(0)
-  const ttsCharQueueRef   = React.useRef([])
-  const ttsCharIndexRef   = React.useRef(0)
-  const ttsCharActiveRef  = React.useRef(false)
+  const ttsCharQueueRef    = React.useRef([])
+  const ttsCharIndexRef    = React.useRef(0)
+  const ttsCharActiveRef   = React.useRef(false)
+  const ttsCharSentRef     = React.useRef([])  // frases del personaje actual
+  const ttsCharSentIdxRef  = React.useRef(0)   // índice de frase dentro del personaje
   const charStorageKey = `tts_char_pos_${id}`
 
   // TTS state for InfoTab (Ficha) y Resumen Global
@@ -71,11 +75,11 @@ export default function BookPage() {
   }
 
   const resumeCurrentTTS = () => {
-    if (ttsQueueRef.current.length && ttsIndexRef.current >= 0) {
-      ttsActiveRef.current = true
-      setTtsPlaying(true); setTtsChapterPaused(false)
-      speakItem(ttsQueueRef.current, ttsIndexRef.current)
-    }
+    if (!ttsQueueRef.current.length) return
+    ttsActiveRef.current = true
+    setTtsPlaying(true); setTtsChapterPaused(false)
+    // Reanudar desde la frase exacta donde se pausó
+    _speakChapterSentence(ttsSentencesRef.current, ttsSentIdxRef.current)
   }
 
   const stopTTS = (skipConfirm = false) => {
@@ -85,12 +89,43 @@ export default function BookPage() {
     ttsActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false); setTtsMode('single')
+    ttsSentencesRef.current = []; ttsSentIdxRef.current = 0
     localStorage.removeItem(storageKey)
+  }
+
+  // Habla una frase dentro del capítulo actual; al terminar, avanza frase o pasa al siguiente capítulo
+  const _speakChapterSentence = (sentences, sIdx) => {
+    if (!ttsActiveRef.current) return
+    if (sIdx >= sentences.length) {
+      // Acabó este capítulo — pasar al siguiente item de la cola
+      const nextIdx = ttsIndexRef.current + 1
+      const queue = ttsQueueRef.current
+      if (queue._mode === 'single' && nextIdx >= queue.length) {
+        ttsActiveRef.current = false
+        setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
+        localStorage.removeItem(storageKey)
+      } else {
+        speakItem(queue, nextIdx)
+      }
+      return
+    }
+    ttsSentIdxRef.current = sIdx
+    saveTTSPos(ttsIndexRef.current, ttsQueueRef.current, sIdx)
+    const u = new SpeechSynthesisUtterance(sentences[sIdx])
+    u.lang = 'es-ES'; u.rate = 0.95
+    u.onend = () => {
+      if (!ttsActiveRef.current) return
+      _speakChapterSentence(sentences, sIdx + 1)
+    }
+    u.onerror = (e) => {
+      if (e.error === 'interrupted') return
+      if (ttsActiveRef.current) _speakChapterSentence(sentences, sIdx + 1)
+    }
+    window.speechSynthesis.speak(u)
   }
 
   const speakItem = (queue, idx) => {
     if (!ttsActiveRef.current) return
-    // En modo 'single' paramos al acabar el único ítem de la cola
     if (idx >= queue.length) {
       ttsActiveRef.current = false
       setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
@@ -99,31 +134,19 @@ export default function BookPage() {
     }
     const item = queue[idx]
     ttsIndexRef.current = idx; ttsQueueRef.current = queue
-    saveTTSPos(idx, queue)
+    saveTTSPos(idx, queue, 0)
     setTtsIndex(idx); setTtsChapter(item.id)
-    const utterance = new SpeechSynthesisUtterance(item.text)
-    utterance.lang = 'es-ES'; utterance.rate = 0.95
-    utterance.onend = () => {
-      if (!ttsActiveRef.current) return
-      // Si es modo single y ya no hay más ítems después del actual, parar
-      const nextIdx = ttsIndexRef.current + 1
-      if (ttsQueueRef.current._mode === 'single' && nextIdx >= ttsQueueRef.current.length) {
-        ttsActiveRef.current = false
-        setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
-        localStorage.removeItem(storageKey)
-      } else {
-        speakItem(ttsQueueRef.current, nextIdx)
-      }
-    }
-    utterance.onerror = (e) => {
-      if (e.error !== 'interrupted' && ttsActiveRef.current) speakItem(ttsQueueRef.current, ttsIndexRef.current + 1)
-    }
-    window.speechSynthesis.speak(utterance)
+    // Dividir texto del capítulo en frases
+    const raw = item.text.match(/[^.!?]+[.!?]+[\s]*/g) || [item.text]
+    const sentences = raw.map(s => s.trim()).filter(Boolean)
+    ttsSentencesRef.current = sentences
+    ttsSentIdxRef.current = 0
+    _speakChapterSentence(sentences, 0)
   }
 
-  const saveTTSPos = (idx, queue) => {
+  const saveTTSPos = (idx, queue, sentIdx = 0) => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ idx, chapterId: queue[idx]?.id }))
+      localStorage.setItem(storageKey, JSON.stringify({ idx, chapterId: queue[idx]?.id, sentIdx }))
     } catch {}
   }
 
@@ -230,23 +253,46 @@ export default function BookPage() {
     ttsCharActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsCharPlaying(false); setTtsCharPaused(true)
+    // ttsCharSentRef y ttsCharSentIdxRef conservan posición exacta
   }
 
   const resumeCharTTS = () => {
     if (!ttsCharQueueRef.current.length) return
     ttsCharActiveRef.current = true
     setTtsCharPlaying(true); setTtsCharPaused(false)
-    speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current)
+    _speakCharSentence(ttsCharSentRef.current, ttsCharSentIdxRef.current)
   }
 
   const stopCharTTS = (skipConfirm = false) => {
     if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     ttsCharActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
+    ttsCharSentRef.current = []; ttsCharSentIdxRef.current = 0
     localStorage.removeItem(charStorageKey)
+  }
+
+  // Habla una frase dentro del personaje actual; al terminar avanza frase o pasa al siguiente personaje
+  const _speakCharSentence = (sentences, sIdx) => {
+    if (!ttsCharActiveRef.current) return
+    if (sIdx >= sentences.length) {
+      speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1)
+      return
+    }
+    ttsCharSentIdxRef.current = sIdx
+    const u = new SpeechSynthesisUtterance(sentences[sIdx])
+    u.lang = 'es-ES'; u.rate = 0.95
+    u.onend = () => {
+      if (!ttsCharActiveRef.current) return
+      _speakCharSentence(sentences, sIdx + 1)
+    }
+    u.onerror = (e) => {
+      if (e.error === 'interrupted') return
+      if (ttsCharActiveRef.current) _speakCharSentence(sentences, sIdx + 1)
+    }
+    window.speechSynthesis.speak(u)
   }
 
   const speakCharItem = (queue, idx) => {
@@ -261,11 +307,12 @@ export default function BookPage() {
     ttsCharIndexRef.current = idx; ttsCharQueueRef.current = queue
     saveCharTTSPos(idx, queue)
     setTtsCharIndex(idx); setTtsCharacter(item.name)
-    const utterance = new SpeechSynthesisUtterance(item.text)
-    utterance.lang = 'es-ES'; utterance.rate = 0.95
-    utterance.onend = () => { if (ttsCharActiveRef.current) speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1) }
-    utterance.onerror = (e) => { if (e.error !== 'interrupted' && ttsCharActiveRef.current) speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1) }
-    window.speechSynthesis.speak(utterance)
+    // Dividir texto del personaje en frases
+    const raw = item.text.match(/[^.!?]+[.!?]+[\s]*/g) || [item.text]
+    const sentences = raw.map(s => s.trim()).filter(Boolean)
+    ttsCharSentRef.current = sentences
+    ttsCharSentIdxRef.current = 0
+    _speakCharSentence(sentences, 0)
   }
 
   const _startCharTTS = (queue) => {
@@ -372,6 +419,7 @@ export default function BookPage() {
   const [tab, setTab] = useState('info')
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [audioPlaying, setAudioPlaying] = useState(false)
+  const [audioPaused, setAudioPaused] = useState(false)
   const [audioEl, setAudioEl] = useState(null)
   const [rating, setRating] = useState(0)
 
@@ -461,14 +509,22 @@ export default function BookPage() {
       const url = audioUrl || await loadAudio()
       if (!url) return
       const el = new Audio(url)
-      el.onended = () => setAudioPlaying(false)
+      el.onended = () => { setAudioPlaying(false); setAudioPaused(false) }
       setAudioEl(el)
       el.play()
-      setAudioPlaying(true)
+      setAudioPlaying(true); setAudioPaused(false)
     } else {
-      if (audioPlaying) { audioEl.pause(); setAudioPlaying(false) }
-      else { audioEl.play(); setAudioPlaying(true) }
+      if (audioPlaying) { audioEl.pause(); setAudioPlaying(false); setAudioPaused(true) }
+      else { audioEl.play(); setAudioPlaying(true); setAudioPaused(false) }
     }
+  }
+
+  const stopAudio = (skipConfirm = false) => {
+    if (!skipConfirm && (audioPlaying || audioPaused)) {
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance.')) return
+    }
+    if (audioEl) { audioEl.pause(); audioEl.currentTime = 0 }
+    setAudioPlaying(false); setAudioPaused(false)
   }
 
   const exportToPDF = async () => {
@@ -608,12 +664,12 @@ export default function BookPage() {
               </p>
             )}
 
-            {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || ttsCharPaused || audioPlaying) && (
+            {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || ttsCharPaused || audioPlaying || audioPaused) && (
               <div className="hero-tts-global">
                 {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (  // alguno reproduciendo
                   <>
                     <button className="hero-tts-btn" onClick={() => {
-                      if (ttsPlaying)      pauseTTS()
+                      if (ttsPlaying)          pauseTTS()
                       else if (ttsInfoPlaying)  pauseInfoTTS()
                       else if (ttsCharPlaying)  pauseCharTTS()
                       else if (audioPlaying)    toggleAudio()
@@ -622,9 +678,9 @@ export default function BookPage() {
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
                       if (ttsPlaying)      stopTTS()
-                      if (ttsInfoPlaying)  stopInfoTTS(true)
-                      if (ttsCharPlaying)  stopCharTTS(true)
-                      if (audioPlaying)    toggleAudio()
+                      if (ttsInfoPlaying)  stopInfoTTS()
+                      if (ttsCharPlaying)  stopCharTTS()
+                      if (audioPlaying)    stopAudio()
                     }}>
                       <Square size={14} /> Stop
                     </button>
@@ -635,11 +691,15 @@ export default function BookPage() {
                       if (ttsChapterPaused)   resumeCurrentTTS()
                       else if (ttsCharPaused) resumeCharTTS()
                       else if (ttsInfoPaused) resumeInfoTTS()
+                      else if (audioPaused)   toggleAudio()
                     }}>
                       <Play size={14} /> Continuar reproducción
                     </button>
                     <button className="hero-tts-btn hero-tts-stop" onClick={() => {
-                      stopTTS(true); stopInfoTTS(true); stopCharTTS(true)
+                      if (ttsChapterPaused || ttsChapter) stopTTS()
+                      if (ttsInfoPaused)  stopInfoTTS()
+                      if (ttsCharPaused)  stopCharTTS()
+                      if (audioPaused)    stopAudio()
                     }}>
                       <Square size={14} /> Stop
                     </button>
