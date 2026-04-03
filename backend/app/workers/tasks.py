@@ -601,53 +601,33 @@ async def _reidentify_author(user_id: str, author_name: str):
     async for db in get_user_db(user_id):
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-                # 1. Actualizar bio del autor en Wikipedia
-                bio_data = await search_wikipedia_author(client, author_name)
-                new_bio = bio_data.get("author_bio")
-                print(f"Bio obtenida para '{author_name}': {repr(new_bio[:100]) if new_bio else 'None'}")
+            from app.services.book_identifier import (
+                get_author_bio_in_spanish, get_author_bibliography
+            )
 
-                # Si la bio está en inglés, traducirla explícitamente aquí
+            # 1. Obtener bio en español (función autónoma con traducción integrada)
+            new_bio = await get_author_bio_in_spanish(author_name)
+            print(f"Bio final para '{author_name}': {repr(new_bio[:100]) if new_bio else 'no encontrada'}")
+
+            # 2. Obtener bibliografía actualizada de Google Books
+            new_biblio = await get_author_bibliography(author_name)
+
+            # 3. Actualizar todos los libros del autor con nueva bio y bibliografía
+            result = await db.execute(
+                select(Book).where(Book.author == author_name)
+            )
+            books = result.scalars().all()
+            for book in books:
                 if new_bio:
-                    english_markers = ['the ', ' is ', ' are ', ' was ', ' were ',
-                                       ' has ', ' have ', ' of ', ' and ', 'known as', 'born in']
-                    hits = sum(1 for m in english_markers if m in new_bio.lower())
-                    if hits >= 4:
-                        print(f"Bio en inglés detectada ({hits} marcadores). Traduciendo…")
-                        try:
-                            from app.services.ai_analyzer import _call_ai
-                            translated = await _call_ai(
-                                "Eres un traductor experto. Traduce el texto al español de forma natural y fluida, manteniendo toda la información original.",
-                                f"Traduce esta biografía al español:\n\n{new_bio}",
-                                max_tokens=800
-                            )
-                            if translated and len(translated) > 80:
-                                print(f"Traducción exitosa: {repr(translated[:80])}")
-                                new_bio = translated.strip()
-                            else:
-                                print(f"Traducción vacía o muy corta: {repr(translated)}")
-                        except Exception as e:
-                            print(f"Error en traducción de bio: {e}")
+                    book.author_bio = new_bio
+                if new_biblio:
+                    book.author_bibliography = new_biblio
+            await db.commit()
 
-                # 2. Obtener bibliografía actualizada de Google Books (con metadatos completos)
-                new_biblio = await get_author_bibliography(author_name)
-
-                # 3. Actualizar todos los libros del autor con nueva bio y bibliografía
-                result = await db.execute(
-                    select(Book).where(Book.author == author_name)
-                )
-                books = result.scalars().all()
-                for book in books:
-                    if new_bio:
-                        book.author_bio = new_bio
-                    if new_biblio:
-                        book.author_bibliography = new_biblio
-                await db.commit()
-
-                # 4. Crear fichas para libros de la bibliografía que no existan
-                import uuid
-                created = 0
-                for item in (new_biblio or []):
+            # 4. Crear fichas para libros de la bibliografía que no existan
+            import uuid
+            created = 0
+            for item in (new_biblio or []):
                     if not isinstance(item, dict):
                         continue
                     
@@ -696,9 +676,9 @@ async def _reidentify_author(user_id: str, author_name: str):
                     created += 1
                     print(f"Shell creado: {b_title} ({b_isbn}) - año: {b_year}")
 
-                # 5. Relanzar fetch_shell_metadata en fichas existentes sin portada o sinopsis
-                updated = 0
-                result2 = await db.execute(
+            # 5. Relanzar fetch_shell_metadata en fichas existentes sin portada o sinopsis
+            updated = 0
+            result2 = await db.execute(
                     select(Book).where(
                         Book.author == author_name,
                         Book.status.in_(["shell", "shell_error"]),
@@ -707,13 +687,13 @@ async def _reidentify_author(user_id: str, author_name: str):
                             Book.synopsis.is_(None),
                         )
                     )
-                )
-                incomplete_shells = result2.scalars().all()
-                for shell in incomplete_shells:
+            )
+            incomplete_shells = result2.scalars().all()
+            for shell in incomplete_shells:
                     fetch_shell_metadata.delay(user_id, shell.id)
                     updated += 1
 
-                print(f"Autor {author_name} reidentificado. {created} fichas nuevas, {updated} fichas actualizadas.")
+            print(f"Autor {author_name} reidentificado. {created} fichas nuevas, {updated} fichas actualizadas.")
 
         except Exception as e:
             print(f"Error reidentifying author {author_name}: {traceback.format_exc()}")

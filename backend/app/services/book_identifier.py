@@ -252,6 +252,115 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
     return {}
 
 
+async def get_author_bio_in_spanish(author_name: str) -> str:
+    """
+    Obtiene la biografía del autor en español.
+    Crea su propio cliente HTTP y traduce si es necesario.
+    Retorna string vacío si no encuentra nada.
+    """
+    def _is_english(text: str) -> bool:
+        markers = ['the ', ' is ', ' are ', ' was ', ' were ', ' has ',
+                   ' have ', ' of ', ' and ', 'known as', 'born in']
+        hits = sum(1 for m in markers if m in text.lower())
+        return hits >= 4
+
+    async def _translate(text: str) -> str:
+        from app.services.ai_analyzer import _call_ai
+        result = await _call_ai(
+            "Eres un traductor experto. Traduce el texto COMPLETO al español de forma natural y fluida. "
+            "Devuelve ÚNICAMENTE la traducción, sin comentarios ni explicaciones.",
+            f"Traduce al español:\n\n{text}",
+            max_tokens=800
+        )
+        if result and len(result) > 60:
+            return result.strip()
+        return ""
+
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        # 1. Wikipedia ES
+        try:
+            r = await client.get(
+                f"https://es.wikipedia.org/w/api.php?action=query&list=search"
+                f"&srsearch={quote(author_name)}&format=json&srlimit=1"
+            )
+            results = r.json().get("query", {}).get("search", [])
+            if results:
+                page_title = results[0]["title"]
+                r2 = await client.get(
+                    f"https://es.wikipedia.org/w/api.php?action=query&titles={quote(page_title)}"
+                    f"&prop=extracts&exintro=true&explaintext=true&format=json"
+                )
+                pages = r2.json().get("query", {}).get("pages", {})
+                extract = next(iter(pages.values()), {}).get("extract", "").strip()
+                if extract and len(extract) > 60:
+                    name_parts = {p.lower() for p in author_name.split() if len(p) > 2}
+                    if any(p in extract.lower() for p in name_parts):
+                        clean = re.sub(r"\s+", " ", extract).strip()[:1000]
+                        if not _is_english(clean):
+                            print(f"Bio ES encontrada para '{author_name}'")
+                            return clean
+                        # Está en inglés — traducir
+                        print(f"Bio ES en inglés para '{author_name}', traduciendo…")
+                        translated = await _translate(clean)
+                        if translated:
+                            return translated
+        except Exception as e:
+            print(f"Wikipedia ES error para '{author_name}': {e}")
+
+        # 2. Wikipedia EN + traducción
+        try:
+            r = await client.get(
+                f"https://en.wikipedia.org/w/api.php?action=query&list=search"
+                f"&srsearch={quote(author_name)}&format=json&srlimit=1"
+            )
+            results = r.json().get("query", {}).get("search", [])
+            if results:
+                page_title = results[0]["title"]
+                r2 = await client.get(
+                    f"https://en.wikipedia.org/w/api.php?action=query&titles={quote(page_title)}"
+                    f"&prop=extracts&exintro=true&explaintext=true&format=json"
+                )
+                pages = r2.json().get("query", {}).get("pages", {})
+                extract = next(iter(pages.values()), {}).get("extract", "").strip()
+                if extract and len(extract) > 60:
+                    name_parts = {p.lower() for p in author_name.split() if len(p) > 2}
+                    if any(p in extract.lower() for p in name_parts):
+                        clean = re.sub(r"\s+", " ", extract).strip()[:1000]
+                        print(f"Bio EN encontrada para '{author_name}', traduciendo…")
+                        translated = await _translate(clean)
+                        if translated:
+                            return translated
+        except Exception as e:
+            print(f"Wikipedia EN error para '{author_name}': {e}")
+
+        # 3. Open Library
+        try:
+            r = await client.get(
+                f"https://openlibrary.org/search/authors.json?q={quote(author_name)}&limit=1"
+            )
+            docs = r.json().get("docs", [])
+            if docs:
+                key = docs[0].get("key", "")
+                if key:
+                    r2 = await client.get(f"https://openlibrary.org{key}.json")
+                    bio = r2.json().get("bio", "")
+                    if isinstance(bio, dict):
+                        bio = bio.get("value", "")
+                    bio = str(bio).strip()[:800]
+                    if bio and len(bio) > 60:
+                        if _is_english(bio):
+                            translated = await _translate(bio)
+                            if translated:
+                                return translated
+                        else:
+                            return bio
+        except Exception as e:
+            print(f"OpenLibrary error para '{author_name}': {e}")
+
+    print(f"No se encontró bio para '{author_name}'")
+    return ""
+
+
 async def search_wikipedia_author(client: httpx.AsyncClient, author_name: str) -> dict:
     """Busca bio del autor: primero Wikipedia ES, luego EN con traducción IA, luego Open Library."""
 
