@@ -406,7 +406,7 @@ export default function BookPage() {
 
   const stopInfoTTS = (skipConfirm = false) => {
     if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción?')) return
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     ttsInfoActiveRef.current = false
     window.speechSynthesis.cancel()
@@ -521,7 +521,7 @@ export default function BookPage() {
 
   const stopAudio = (skipConfirm = false) => {
     if (!skipConfirm && (audioPlaying || audioPaused)) {
-      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance.')) return
+      if (!window.confirm('¿Seguro que quieres parar la reproducción? Se perderá el punto de avance guardado.')) return
     }
     if (audioEl) { audioEl.pause(); audioEl.currentTime = 0 }
     setAudioPlaying(false); setAudioPaused(false)
