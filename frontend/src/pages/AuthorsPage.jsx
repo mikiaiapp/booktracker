@@ -92,6 +92,24 @@ export default function AuthorsPage() {
   const [mergeDialog, setMergeDialog] = useState(null) // { a, b } → elegir cuál es canónico
   const [biblioFilter, setBiblioFilter] = useState('all') // 'all' | 'analyzed' | 'unanalyzed'
   const [deletingBook, setDeletingBook] = useState({})
+  const [deduping, setDeduping] = useState(false)
+
+  const handleDedupBooks = async (authorName) => {
+    setDeduping(true)
+    try {
+      const { data } = await authorsAPI.dedupBooks(authorName)
+      if (data.deleted > 0) {
+        toast.success(`${data.deleted} duplicado${data.deleted !== 1 ? 's' : ''} eliminado${data.deleted !== 1 ? 's' : ''}`)
+      } else {
+        toast('No se encontraron duplicados', { icon: 'ℹ️' })
+      }
+      await load()
+    } catch {
+      toast.error('Error al limpiar duplicados')
+    } finally {
+      setDeduping(false)
+    }
+  }
 
   const toggleMergeSelect = (author) => {
     setMergeSelected(prev => {
@@ -311,20 +329,38 @@ export default function AuthorsPage() {
               <div style={{flex:1}}>
                 <h2>{selected.name}</h2>
               </div>
-              <button
-                className="reidentify-author-btn"
-                onClick={() => handleReidentifyAuthor(selected.name)}
-                disabled={reidentifying}
-                title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
-              >
-                {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="reidentify-author-btn"
+                  onClick={() => handleDedupBooks(selected.name)}
+                  disabled={deduping}
+                  title="Eliminar libros duplicados de este autor"
+                  style={{ background: 'transparent', border: '1.5px solid #e74c3c', color: '#e74c3c' }}
+                >
+                  {deduping ? '⏳' : '🗑 Limpiar duplicados'}
+                </button>
+                <button
+                  className="reidentify-author-btn"
+                  onClick={() => handleReidentifyAuthor(selected.name)}
+                  disabled={reidentifying}
+                  title="Actualizar bio, bibliografía y crear fichas completas con portada y sinopsis"
+                >
+                  {reidentifying ? '⏳ Actualizando…' : '↻ Repetir'}
+                </button>
+              </div>
             </div>
 
-            {selected.bio && (
+            {selected.bio ? (
               <div className="author-section">
                 <h3>Biografía</h3>
                 <p>{selected.bio}</p>
+              </div>
+            ) : (
+              <div className="author-section">
+                <h3>Biografía</h3>
+                <p style={{ color: 'var(--mist)', fontSize: '0.875rem' }}>
+                  No hay biografía disponible. Pulsa <strong>↻ Repetir</strong> para buscarla en internet.
+                </p>
               </div>
             )}
 

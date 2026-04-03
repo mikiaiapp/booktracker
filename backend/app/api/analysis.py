@@ -275,19 +275,74 @@ async def merge_authors(
     return {"merged": len(books), "target": target}
 
 
+# ── Eliminar duplicados de libros de un autor ─────────────────
+@router.post("/authors/dedup-books")
+async def dedup_author_books(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Elimina libros duplicados de un autor (mismo ISBN o título similar).
+    Conserva siempre el libro con estado más avanzado (analizado > procesando > shell).
+    """
+    body = await request.json()
+    author_name = body.get("author", "").strip()
+    if not author_name:
+        raise HTTPException(400, "author requerido")
+
+    from app.models.book import Book
+    result = await db.execute(
+        select(Book).where(Book.author == author_name).order_by(Book.phase3_done.desc(), Book.status)
+    )
+    books = result.scalars().all()
+
+    STATUS_RANK = {"complete": 0, "analyzed": 1, "structured": 2, "identified": 3, "shell": 4, "shell_error": 5, "error": 6}
+
+    seen_isbns: dict = {}   # isbn → book_id a conservar
+    seen_titles: dict = {}  # title_norm → book_id a conservar
+    to_delete = []
+
+    for book in books:
+        isbn_key = book.isbn.strip() if book.isbn else None
+        title_key = (book.title or "").lower().strip()
+        rank = STATUS_RANK.get(book.status, 9)
+
+        if isbn_key:
+            if isbn_key in seen_isbns:
+                to_delete.append(book)
+                continue
+            seen_isbns[isbn_key] = book.id
+        
+        if title_key in seen_titles:
+            to_delete.append(book)
+            continue
+        seen_titles[title_key] = book.id
+
+    deleted = 0
+    for book in to_delete:
+        # Solo borrar si no está analizado
+        if not book.phase3_done and book.status not in ("complete", "analyzed"):
+            await db.delete(book)
+            deleted += 1
+
+    await db.commit()
+    return {"deleted": deleted, "author": author_name}
+
+
 # ── Autores ───────────────────────────────────────────────────
 @router.get("/authors/list")
 async def list_authors(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Devuelve todos los autores únicos con sus libros."""
+    """Devuelve todos los autores únicos con sus libros (deduplicados)."""
     result = await db.execute(
         select(Book.author, Book.author_bio, Book.author_bibliography,
-               Book.id, Book.title, Book.cover_local, Book.year, Book.status,
+               Book.id, Book.title, Book.cover_local, Book.cover_url, Book.year, Book.status,
                Book.phase3_done, Book.isbn, Book.synopsis)
         .where(Book.author.isnot(None))
-        .order_by(Book.author)
+        .order_by(Book.author, Book.phase3_done.desc(), Book.status)
     )
     rows = result.all()
 
@@ -303,9 +358,11 @@ async def list_authors(
                 "bio": None,
                 "bibliography": [],
                 "books": [],
+                "_seen_isbns": set(),
+                "_seen_titles": set(),
             }
 
-        # Actualizar bio si aún no tenemos una (puede venir en cualquier fila del autor)
+        # Actualizar bio si aún no tenemos una
         if not authors[author]["bio"] and row.author_bio:
             authors[author]["bio"] = row.author_bio
 
@@ -315,13 +372,7 @@ async def list_authors(
             biblio = []
             for item in raw_biblio:
                 if isinstance(item, str):
-                    biblio.append({
-                        "title": item,
-                        "isbn": None,
-                        "year": None,
-                        "cover_url": None,
-                        "synopsis": None
-                    })
+                    biblio.append({"title": item, "isbn": None, "year": None, "cover_url": None, "synopsis": None})
                 elif isinstance(item, dict):
                     biblio.append({
                         "title": item.get("title", ""),
@@ -332,10 +383,27 @@ async def list_authors(
                     })
             biblio.sort(key=lambda x: x.get("year") or 0, reverse=True)
             authors[author]["bibliography"] = biblio
+
+        # Deduplicar: preferir el libro con estado más avanzado (ya ordenado por phase3_done desc)
+        isbn_key = row.isbn.strip() if row.isbn else None
+        title_key = (row.title or "").lower().strip()
+        seen_isbns = authors[author]["_seen_isbns"]
+        seen_titles = authors[author]["_seen_titles"]
+
+        if isbn_key and isbn_key in seen_isbns:
+            continue  # Duplicado por ISBN
+        if not isbn_key and title_key in seen_titles:
+            continue  # Duplicado por título
+
+        if isbn_key:
+            seen_isbns.add(isbn_key)
+        seen_titles.add(title_key)
+
         authors[author]["books"].append({
             "id": row.id,
             "title": row.title,
             "cover_local": row.cover_local,
+            "cover_url": row.cover_url,
             "year": row.year,
             "status": row.status,
             "phase3_done": row.phase3_done,
@@ -343,12 +411,11 @@ async def list_authors(
             "synopsis": row.synopsis,
         })
 
-    # Ordenar libros de cada autor por año descendente (más reciente primero)
+    # Limpiar claves internas y ordenar por año
     for author_data in authors.values():
-        author_data["books"].sort(
-            key=lambda b: (b.get("year") or 0),
-            reverse=True
-        )
+        author_data.pop("_seen_isbns", None)
+        author_data.pop("_seen_titles", None)
+        author_data["books"].sort(key=lambda b: (b.get("year") or 0), reverse=True)
 
     return list(authors.values())
 
