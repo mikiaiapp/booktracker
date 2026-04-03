@@ -175,7 +175,13 @@ export default function LibraryPage() {
         book={coverPickerBook}
         onSelect={async (url) => {
           try {
-            await booksAPI.updateCover(coverPickerBook.id, url)
+            const res = await booksAPI.updateCover(coverPickerBook.id, url)
+            // Actualizar inmediatamente el libro en el array con los valores confirmados
+            setBooks(prev => prev.map(b =>
+              b.id === coverPickerBook.id
+                ? { ...b, cover_url: res.data.cover_url, cover_local: res.data.cover_local }
+                : b
+            ))
             toast.success('Portada actualizada')
             load()
           } catch {
@@ -185,7 +191,12 @@ export default function LibraryPage() {
         }}
         onUpload={async (file) => {
           try {
-            await booksAPI.uploadCover(coverPickerBook.id, file)
+            const res = await booksAPI.uploadCover(coverPickerBook.id, file)
+            setBooks(prev => prev.map(b =>
+              b.id === coverPickerBook.id
+                ? { ...b, cover_local: res.data.cover_local, cover_url: null }
+                : b
+            ))
             toast.success('Portada actualizada')
             load()
           } catch {

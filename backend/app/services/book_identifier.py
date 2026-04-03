@@ -716,23 +716,44 @@ def _bytes_to_jpeg(data: bytes) -> bytes:
 
 
 async def download_cover(cover_url: str, covers_dir: str, book_id: str) -> Optional[str]:
-    """Descarga una imagen de cualquier formato y la guarda como JPEG."""
-    try:
-        os.makedirs(covers_dir, exist_ok=True)
-        filename = f"{book_id}_cover.jpg"
-        local_path = os.path.join(covers_dir, filename)
+    """Descarga una imagen de cualquier formato y la guarda como JPEG.
+    Intenta con distintos User-Agent y sin Referer para maximizar compatibilidad."""
+    os.makedirs(covers_dir, exist_ok=True)
+    filename = f"{book_id}_cover.jpg"
+    local_path = os.path.join(covers_dir, filename)
 
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; BookTracker/2.0)",
+    # Distintas configuraciones de headers para sortear restricciones de servidor
+    header_variants = [
+        {   # Navegador estándar
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
             "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        }
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
-            r = await client.get(cover_url)
+        },
+        {   # Bot neutro
+            "User-Agent": "BookTracker/2.0 (+https://booktracker.app)",
+            "Accept": "image/*,*/*;q=0.8",
+        },
+        {   # Sin headers especiales
+        },
+    ]
+
+    for headers in header_variants:
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
+                r = await client.get(cover_url)
             if r.status_code == 200 and len(r.content) > 500:
                 jpeg_data = _bytes_to_jpeg(r.content)
-                with open(local_path, "wb") as f:
-                    f.write(jpeg_data)
-                return local_path
-    except Exception as e:
-        print(f"Cover download error: {e}")
+                if len(jpeg_data) > 500:
+                    with open(local_path, "wb") as f:
+                        f.write(jpeg_data)
+                    print(f"Cover descargada: {cover_url[:60]}… → {local_path}")
+                    return local_path
+            elif r.status_code in (403, 401, 429):
+                print(f"Cover HTTP {r.status_code} con headers={list(headers.keys())}, reintentando…")
+                continue
+        except Exception as e:
+            print(f"Cover download error ({cover_url[:60]}…): {e}")
+            continue
+
+    print(f"Cover no descargable tras {len(header_variants)} intentos: {cover_url[:80]}")
     return None

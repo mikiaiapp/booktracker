@@ -899,7 +899,12 @@ export default function BookPage() {
           book={book}
           onSelect={async (url) => {
             try {
-              await booksAPI.updateCover(id, url)
+              const res = await booksAPI.updateCover(id, url)
+              // Actualizar inmediatamente en el estado local con los valores confirmados por el servidor
+              setData(prev => prev ? {
+                ...prev,
+                book: { ...prev.book, cover_url: res.data.cover_url, cover_local: res.data.cover_local }
+              } : prev)
               toast.success('Portada actualizada')
               await load()
             } catch {
@@ -909,7 +914,11 @@ export default function BookPage() {
           }}
           onUpload={async (file) => {
             try {
-              await booksAPI.uploadCover(id, file)
+              const res = await booksAPI.uploadCover(id, file)
+              setData(prev => prev ? {
+                ...prev,
+                book: { ...prev.book, cover_local: res.data.cover_local, cover_url: null }
+              } : prev)
               toast.success('Portada actualizada')
               await load()
             } catch {
@@ -972,22 +981,29 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
 }
 
 function HeroCover({ book }) {
-  const initial = coverSrc(book)
-  const [src, setSrc] = React.useState(initial)
-  const [fetching, setFetching] = React.useState(false)
+  // src canónica del libro (cover_local o cover_url)
+  const src = coverSrc(book)
+  // fallback: portada obtenida externamente si src no existe o falla
+  const [fallback, setFallback] = React.useState(null)
+  const [fetchedKey, setFetchedKey] = React.useState(null)
+  const [srcError, setSrcError] = React.useState(false)
 
-  // Reaccionar si el libro se recarga con nuevos datos
+  // Cuando src cambia (el padre recargó datos con nueva portada), resetear error
   React.useEffect(() => {
-    const s = coverSrc(book)
-    setSrc(s)
-    setFetching(false)
-  }, [book.cover_local, book.cover_url])
+    setSrcError(false)
+  }, [src])
 
-  // Fallback a Google Books si no hay src local
+  // Buscar portada externa SOLO si no hay src válida
+  const fetchKey = `${book.isbn || ''}|${book.title || ''}`
   React.useEffect(() => {
-    if (src || fetching) return
+    if (src && !srcError) return          // tenemos portada local — no buscar
     if (!book.isbn && !book.title) return
-    setFetching(true)
+    if (fetchedKey === fetchKey && fallback) return  // ya buscamos esto
+
+    let cancelled = false
+    setFallback(null)
+    setFetchedKey(fetchKey)
+
     const go = async () => {
       if (book.isbn) {
         try {
@@ -997,7 +1013,7 @@ function HeroCover({ book }) {
           if (links) {
             const url = (links.extraLarge || links.large || links.thumbnail || '')
               .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
-            if (url) { setSrc(url); return }
+            if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}
       }
@@ -1010,18 +1026,24 @@ function HeroCover({ book }) {
           if (links) {
             const url = (links.extraLarge || links.large || links.thumbnail || '')
               .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
-            if (url) { setSrc(url); return }
+            if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}
       }
-      if (book.isbn) setSrc(`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`)
+      if (book.isbn && !cancelled) setFallback(`https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`)
     }
     go()
-  }, [src, fetching, book.isbn, book.title, book.author])
+    return () => { cancelled = true }
+  }, [src, srcError, fetchKey])
 
-  if (src) return (
-    <img src={src} alt={book.title}
-      onError={() => setSrc(null)}
+  const imgSrc = (src && !srcError) ? src : (fallback || null)
+
+  if (imgSrc) return (
+    <img src={imgSrc} alt={book.title}
+      onError={() => {
+        if (src && !srcError) setSrcError(true)
+        else setFallback(null)
+      }}
       style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   )
   return (
