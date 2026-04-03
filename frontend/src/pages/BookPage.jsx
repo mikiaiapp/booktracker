@@ -58,8 +58,9 @@ export default function BookPage() {
   // TTS state for InfoTab (Ficha) y Resumen Global
   const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
   const [ttsInfoPaused,  setTtsInfoPaused]  = useState(false)
-  const ttsInfoTextRef   = React.useRef('')   // texto guardado para reanudar
-  const ttsInfoActiveRef = React.useRef(false) // controla si onend/onerror actúan
+  const ttsInfoSentencesRef = React.useRef([])   // array de frases
+  const ttsInfoIndexRef     = React.useRef(0)    // índice de frase actual
+  const ttsInfoActiveRef    = React.useRef(false) // controla si onend/onerror actúan
   const infoStorageKey = `tts_info_pos_${id}`
 
   const pauseTTS = () => {
@@ -288,25 +289,40 @@ export default function BookPage() {
     _startCharTTS(queue)
   }
 
-  const _speakInfoText = (text) => {
-    ttsInfoTextRef.current = text
-    ttsInfoActiveRef.current = true
-    const u = new SpeechSynthesisUtterance(text)
+  // Divide texto en frases y habla desde el índice dado
+  const _speakInfoFromIndex = (sentences, idx) => {
+    if (!ttsInfoActiveRef.current || idx >= sentences.length) {
+      if (ttsInfoActiveRef.current) {
+        ttsInfoActiveRef.current = false
+        setTtsInfoPlaying(false); setTtsInfoPaused(false)
+        ttsInfoSentencesRef.current = []; ttsInfoIndexRef.current = 0
+        localStorage.removeItem(infoStorageKey)
+      }
+      return
+    }
+    ttsInfoIndexRef.current = idx
+    localStorage.setItem(infoStorageKey, JSON.stringify({ idx }))
+    const u = new SpeechSynthesisUtterance(sentences[idx])
     u.lang = 'es-ES'; u.rate = 0.95
     u.onend = () => {
-      if (!ttsInfoActiveRef.current) return  // fue pausado/stopado — no limpiar
-      ttsInfoActiveRef.current = false
-      setTtsInfoPlaying(false); setTtsInfoPaused(false)
-      ttsInfoTextRef.current = ''
-      localStorage.removeItem(infoStorageKey)
+      if (!ttsInfoActiveRef.current) return
+      _speakInfoFromIndex(sentences, idx + 1)
     }
     u.onerror = (e) => {
-      if (e.error === 'interrupted') return  // pausa o stop voluntario — no limpiar
-      ttsInfoActiveRef.current = false
-      setTtsInfoPlaying(false); setTtsInfoPaused(false)
+      if (e.error === 'interrupted') return
+      if (ttsInfoActiveRef.current) _speakInfoFromIndex(sentences, idx + 1)
     }
     window.speechSynthesis.speak(u)
-    localStorage.setItem(infoStorageKey, 'playing')
+  }
+
+  const _startInfoTTS = (text, fromIdx = 0) => {
+    // Partir en frases por '. ', '! ', '? ' manteniendo el delimitador
+    const raw = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text]
+    const sentences = raw.map(s => s.trim()).filter(Boolean)
+    ttsInfoSentencesRef.current = sentences
+    ttsInfoIndexRef.current = fromIdx
+    ttsInfoActiveRef.current = true
+    _speakInfoFromIndex(sentences, fromIdx)
   }
 
   const playInfo = (book) => {
@@ -314,31 +330,31 @@ export default function BookPage() {
     const text = book.synopsis || ''
     if (!text) { toast('No hay sinopsis disponible', { icon: 'ℹ️' }); return }
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
-    _speakInfoText(text)
+    _startInfoTTS(text, 0)
   }
 
   const playSummary = (book) => {
     stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel()
     if (!book.global_summary) { toast('No hay resumen disponible', { icon: 'ℹ️' }); return }
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
-    _speakInfoText(book.global_summary)
+    _startInfoTTS(book.global_summary, 0)
   }
 
   const pauseInfoTTS = () => {
-    ttsInfoActiveRef.current = false  // primero ref, luego cancel
+    ttsInfoActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsInfoPlaying(false)
     setTtsInfoPaused(true)
-    // ttsInfoTextRef se conserva para poder reanudar
+    // ttsInfoSentencesRef e ttsInfoIndexRef se conservan para reanudar en el mismo punto
   }
 
   const resumeInfoTTS = () => {
-    const text = ttsInfoTextRef.current
-    if (!text) return
-    // _speakInfoText activa ref y vuelve a hablar desde el principio del texto
-    // (la Web Speech API no permite reanudar desde posición exacta)
+    const sentences = ttsInfoSentencesRef.current
+    const idx = ttsInfoIndexRef.current
+    if (!sentences.length) return
     setTtsInfoPlaying(true); setTtsInfoPaused(false)
-    _speakInfoText(text)
+    ttsInfoActiveRef.current = true
+    _speakInfoFromIndex(sentences, idx)
   }
 
   const stopInfoTTS = (skipConfirm = false) => {
@@ -348,7 +364,7 @@ export default function BookPage() {
     ttsInfoActiveRef.current = false
     window.speechSynthesis.cancel()
     setTtsInfoPlaying(false); setTtsInfoPaused(false)
-    ttsInfoTextRef.current = ''
+    ttsInfoSentencesRef.current = []; ttsInfoIndexRef.current = 0
     localStorage.removeItem(infoStorageKey)
   }
 
@@ -898,18 +914,10 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
               <Play size={16} /> Reproducir ficha
             </button>
           )}
-          {ttsPlaying && (
-            <div className="info-tts-active">
-              <button className="tts-control-btn pause" onClick={onPause} title="Pausar"><Pause size={16} /></button>
-              <button className="tts-control-btn stop"  onClick={onStop}  title="Detener"><Square size={16} /></button>
-              <span className="tts-indicator"><Volume2 size={14} className="pulse" /> Reproduciendo</span>
-            </div>
-          )}
           {ttsPaused && (
-            <div className="info-tts-active">
-              <button className="info-tts-play-btn" onClick={onResume}><Play size={16} /> Continuar</button>
-              <button className="tts-control-btn stop" onClick={onStop} title="Detener"><Square size={16} /></button>
-            </div>
+            <span className="tts-indicator" style={{color:'var(--mist)', fontSize:'0.85rem'}}>
+              ⏸ Pausado — usa los controles de arriba para continuar
+            </span>
           )}
         </div>
       )}
@@ -935,18 +943,10 @@ function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, on
                 <Play size={15}/> Escuchar
               </button>
             )}
-            {ttsPlaying && (
-              <div className="info-tts-active">
-                <button className="tts-control-btn pause" onClick={onPause} title="Pausar"><Pause size={15}/></button>
-                <button className="tts-control-btn stop"  onClick={onStop}  title="Detener"><Square size={15}/></button>
-                <span className="tts-indicator"><Volume2 size={13} className="pulse"/> Reproduciendo</span>
-              </div>
-            )}
             {ttsPaused && (
-              <div className="info-tts-active">
-                <button className="info-tts-play-btn" onClick={onResume}><Play size={15}/> Continuar</button>
-                <button className="tts-control-btn stop" onClick={onStop} title="Detener"><Square size={15}/></button>
-              </div>
+              <span className="tts-indicator" style={{color:'var(--mist)', fontSize:'0.85rem'}}>
+                ⏸ Pausado — usa los controles de arriba para continuar
+              </span>
             )}
           </div>
         )}
@@ -1107,26 +1107,6 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, t
           )}
         </div>
         <div className="characters-actions">
-          {ttsPlaying && (
-            <>
-              <button className="tts-control-btn pause" onClick={onPause} title="Pausar">
-                <Pause size={16} />
-              </button>
-              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
-                <Square size={16} />
-              </button>
-            </>
-          )}
-          {ttsCharPaused && (
-            <>
-              <button className="tts-control-btn resume" onClick={onResume} title="Continuar">
-                <Play size={16} />
-              </button>
-              <button className="tts-control-btn stop" onClick={onStop} title="Detener">
-                <Square size={16} />
-              </button>
-            </>
-          )}
           {status?.phase3_done && (
             <button
               className="reanalyze-chars-btn"
