@@ -109,49 +109,80 @@ async def _phase1(user_id: str, book_id: str):
 
 async def _unify_author_name(db, author_name: str, book_id: str) -> str | None:
     """
-    Busca si ya existe el autor con nombre invertido (ej: 'Mola Carmen' vs 'Carmen Mola').
-    Si existe, devuelve el nombre canónico (el que tiene más libros).
+    Busca autores existentes cuyo nombre comparte suficientes palabras con author_name.
+    Cubre casos como:
+      - Inversión: 'Mola Carmen' vs 'Carmen Mola'
+      - Nombre compuesto: 'Josef Ajram' vs 'Josef Ajram i Tarés'
+      - Partícula: 'García Márquez' vs 'Gabriel García Márquez'
+    Si encuentra un candidato, unifica todos los libros bajo el nombre canónico
+    (el que tiene más libros en la BD).
     """
     from app.models.book import Book
     from sqlalchemy import select, func
-    import re
 
-    parts = author_name.strip().split()
-    if len(parts) < 2:
-        return None  # Nombre de una sola palabra, no hay inversión posible
+    def normalize(name: str) -> set:
+        """Palabras significativas del nombre (sin partículas cortas)."""
+        stop = {'i', 'y', 'de', 'del', 'la', 'el', 'von', 'van', 'di', 'da', 'du', 'le'}
+        return {w.lower() for w in name.strip().split() if w.lower() not in stop and len(w) > 1}
 
-    # Generar variante invertida: "Carmen Mola" → "Mola Carmen"
-    mid = len(parts) // 2
-    inverted = " ".join(parts[mid:] + parts[:mid])
+    my_words = normalize(author_name)
+    if len(my_words) < 1:
+        return None
 
-    # Buscar libros con el nombre invertido (excluyendo el libro actual)
+    # Obtener todos los autores distintos en la BD (excepto el libro actual)
     result = await db.execute(
         select(Book.author, func.count(Book.id).label("cnt"))
-        .where(Book.author == inverted, Book.id != book_id)
+        .where(Book.author.isnot(None), Book.author != author_name, Book.id != book_id)
         .group_by(Book.author)
     )
-    row = result.first()
-    if not row:
-        return None  # No existe variante invertida
+    rows = result.all()
 
-    # Elegir el nombre canónico: el que tiene más libros en la BD
+    best_match = None
+    best_overlap = 0
+
+    for row in rows:
+        other_name = row.author
+        other_words = normalize(other_name)
+        if not other_words:
+            continue
+        # Palabras en común
+        common = my_words & other_words
+        # Necesitamos al menos 2 palabras en común, O 1 si ambos nombres son de 1 palabra
+        min_common = 1 if (len(my_words) == 1 and len(other_words) == 1) else 2
+        # Similitud: intersección / unión (Jaccard)
+        jaccard = len(common) / len(my_words | other_words)
+        if len(common) >= min_common and jaccard >= 0.4 and len(common) > best_overlap:
+            best_overlap = len(common)
+            best_match = (other_name, row.cnt)
+
+    if not best_match:
+        return None
+
+    other_name, other_count = best_match
+
+    # Elegir nombre canónico: el más largo (más completo) como desempate, o el que tiene más libros
     result2 = await db.execute(
         select(func.count(Book.id)).where(Book.author == author_name, Book.id != book_id)
     )
     current_count = result2.scalar() or 0
-    inverted_count = row.cnt
 
-    canonical = author_name if current_count >= inverted_count else inverted
-    other = inverted if canonical == author_name else author_name
+    if current_count > other_count:
+        canonical, redundant = author_name, other_name
+    elif other_count > current_count:
+        canonical, redundant = other_name, author_name
+    else:
+        # Empate: usar el nombre más largo (más completo)
+        canonical = author_name if len(author_name) >= len(other_name) else other_name
+        redundant = other_name if canonical == author_name else author_name
 
-    print(f"Unificando autor: '{other}' → '{canonical}'")
+    print(f"Unificando autor: '{redundant}' → '{canonical}'")
 
-    # Actualizar todos los libros con el nombre no canónico
-    other_books = await db.execute(select(Book).where(Book.author == other))
-    for b in other_books.scalars().all():
+    # Actualizar todos los libros con el nombre redundante al canónico
+    redundant_books = await db.execute(select(Book).where(Book.author == redundant))
+    for b in redundant_books.scalars().all():
         b.author = canonical
     await db.commit()
-    return canonical
+    return canonical if canonical != author_name else None
 
 
 # ── Phase 2: Structure detection ──────────────────────────────────────────────

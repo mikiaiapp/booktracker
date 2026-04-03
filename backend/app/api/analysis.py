@@ -242,7 +242,19 @@ async def list_authors(
         if not author:
             continue
         if author not in authors:
-            # Normalizar bibliografía: acepta tanto strings como {title, isbn, year, cover_url, synopsis}
+            authors[author] = {
+                "name": author,
+                "bio": None,
+                "bibliography": [],
+                "books": [],
+            }
+
+        # Actualizar bio si aún no tenemos una (puede venir en cualquier fila del autor)
+        if not authors[author]["bio"] and row.author_bio:
+            authors[author]["bio"] = row.author_bio
+
+        # Actualizar bibliografía si aún no tenemos una
+        if not authors[author]["bibliography"] and row.author_bibliography:
             raw_biblio = row.author_bibliography or []
             biblio = []
             for item in raw_biblio:
@@ -262,15 +274,8 @@ async def list_authors(
                         "cover_url": item.get("cover_url"),
                         "synopsis": item.get("synopsis")
                     })
-            # Ordenar bibliografía por año descendente (más reciente primero)
             biblio.sort(key=lambda x: x.get("year") or 0, reverse=True)
-            
-            authors[author] = {
-                "name": author,
-                "bio": row.author_bio,
-                "bibliography": biblio,
-                "books": [],
-            }
+            authors[author]["bibliography"] = biblio
         authors[author]["books"].append({
             "id": row.id,
             "title": row.title,
