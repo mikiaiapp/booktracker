@@ -62,6 +62,7 @@ export default function LibraryPage() {
       b.author?.toLowerCase().includes(search.toLowerCase()))
 
   return (
+    <>
     <div className="library-page">
       <div className="library-header">
         <div>
@@ -185,5 +186,6 @@ export default function LibraryPage() {
         onClose={() => setCoverPickerBook(null)}
       />
     )}
+    </>
   )
 }
