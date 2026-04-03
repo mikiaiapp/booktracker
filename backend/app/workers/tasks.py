@@ -55,7 +55,11 @@ async def _phase1(user_id: str, book_id: str):
             db.add(job)
             await db.commit()
 
-            metadata = await identify_book(book.file_path, book.file_type, book.title)
+            from app.core.config import settings
+            covers_dir = os.path.join(settings.COVERS_DIR, user_id)
+            os.makedirs(covers_dir, exist_ok=True)
+
+            metadata = await identify_book(book.file_path, book.file_type, book.title, covers_dir=covers_dir)
 
             # Aplicar metadatos — lista explícita de campos válidos
             valid_fields = {
@@ -83,6 +87,10 @@ async def _phase1(user_id: str, book_id: str):
             job.status = "done"
             job.progress = 100
             await db.commit()
+
+            # ── Lanzar reidentificación del autor para bio + bibliografía completa ──
+            if book.author:
+                reidentify_author_task.delay(user_id, book.author)
 
             # ── Encadenar automáticamente con Fase 2 ──
             process_book_phase2.delay(user_id, book_id)

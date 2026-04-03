@@ -15,13 +15,13 @@ import fitz  # PyMuPDF
 from app.core.config import settings
 
 
-async def identify_book(file_path: str, file_type: str, fallback_title: str) -> dict:
+async def identify_book(file_path: str, file_type: str, fallback_title: str, covers_dir: Optional[str] = None) -> dict:
     hints = await extract_file_hints(file_path, file_type)
     title = hints.get("title") or fallback_title
     author = hints.get("author")
     metadata = await search_book_metadata(title, author)
     if metadata.get("cover_url"):
-        local_cover = await download_cover(metadata["cover_url"], file_path)
+        local_cover = await download_cover(metadata["cover_url"], file_path, covers_dir=covers_dir)
         if local_cover:
             metadata["cover_local"] = local_cover
     return metadata
@@ -372,10 +372,12 @@ async def get_author_bibliography(author_name: str) -> list:
         return []
 
 
-async def download_cover(cover_url: str, book_file_path: str) -> Optional[str]:
+async def download_cover(cover_url: str, book_file_path: str, covers_dir: Optional[str] = None) -> Optional[str]:
     """Download cover image and save locally."""
     try:
-        covers_dir = os.path.join(os.path.dirname(book_file_path), "..", "covers")
+        if covers_dir is None:
+            # Fallback: derivar desde la ruta del archivo (puede quedar sin user_id)
+            covers_dir = os.path.join(os.path.dirname(book_file_path), "..", "covers")
         os.makedirs(covers_dir, exist_ok=True)
         filename = os.path.basename(book_file_path).rsplit(".", 1)[0] + "_cover.jpg"
         local_path = os.path.join(covers_dir, filename)

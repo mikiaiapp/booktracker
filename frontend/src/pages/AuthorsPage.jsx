@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { authorsAPI, shellAPI } from '../utils/api'
 import { BookOpen, User, ExternalLink, Plus } from 'lucide-react'
+import BookCover from '../components/BookCover'
 import './AuthorsPage.css'
 
 export default function AuthorsPage() {
@@ -253,17 +254,15 @@ export default function AuthorsPage() {
                         className="ref-item"
                         style={{ textDecoration: 'none', position: 'relative' }}
                       >
-                        {book.cover_local ? (
-                          <div className="ref-cover">
-                            <img src={`/data/covers/${book.cover_local.split('/covers/')[1]}`} alt={book.title} />
-                          </div>
-                        ) : (
-                          <div className="ref-cover">
-                            <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <BookOpen size={24} strokeWidth={1} color="#999" />
-                            </div>
-                          </div>
-                        )}
+                        <div className="ref-cover">
+                          <BookCover
+                            src={book.cover_local ? `/data/covers/${book.cover_local.split('/covers/')[1]}` : (book.cover_url || null)}
+                            isbn={book.isbn}
+                            title={book.title}
+                            alt={book.title}
+                            size={60}
+                          />
+                        </div>
                         <div className="ref-info">
                           <h4 className="ref-title">{book.title}</h4>
                           {book.year && <span className="ref-year">{book.year}</span>}
@@ -319,17 +318,15 @@ export default function AuthorsPage() {
                     const isCreating = creating[key]
                     return (
                       <div key={i} className="ref-item" style={{ position: 'relative', opacity: 0.8 }}>
-                        {cover_url ? (
-                          <div className="ref-cover">
-                            <img src={cover_url} alt={title} />
-                          </div>
-                        ) : (
-                          <div className="ref-cover">
-                            <div style={{ width: '60px', height: '85px', background: '#f0f0f0', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <BookOpen size={24} strokeWidth={1} color="#999" />
-                            </div>
-                          </div>
-                        )}
+                        <div className="ref-cover">
+                          <BookCover
+                            src={cover_url || null}
+                            isbn={isbn}
+                            title={title}
+                            alt={title}
+                            size={60}
+                          />
+                        </div>
                         <div className="ref-info">
                           <h4 className="ref-title">{title}</h4>
                           {year && <span className="ref-year">{year}</span>}
