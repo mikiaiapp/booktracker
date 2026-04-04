@@ -43,25 +43,26 @@ async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
     except: return {"summary": "Error", "key_events": []}
 
 async def get_character_list(all_summaries: str) -> list:
-    system = "Experto literario de España. Identifica TODOS los personajes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
+    system = "Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
     user = f"Resúmenes: {all_summaries[:15000]}"
     try:
         raw = await _call_ai(system, user, 1000)
-        return _parse_json(raw) or []
+        data = _parse_json(raw)
+        return [c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else []
     except: return []
 
 async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
     tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
-    system = f"Eres un crítico literario de la RAE. Realiza un estudio psicológico MONUMENTAL de este personaje {tipo}. Usa castellano culto de España. Responde SOLO en JSON."
-    user = f"""Libro: {book_title}. Personaje: {name}. Analiza con ambición máxima usando resúmenes: {all_summaries[:18000]}"""
+    system = f"Eres un crítico literario de la RAE de España. Realiza un estudio psicológico MONUMENTAL de este personaje {tipo}. Usa castellano culto de España. Responde SOLO en JSON."
+    user = f"Libro: {book_title}. Personaje: {name}. Analiza a fondo usando resúmenes: {all_summaries[:18000]}"
     try:
         raw = await _call_ai(system, user, 3500)
         return _parse_json(raw)
     except: return None
 
 async def generate_global_summary(all_summaries: str, book_title: str, author: str) -> str:
-    system = "Académico de la lengua española. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
-    user = f"Libro: {book_title} de {author}. Análisis basado en: {all_summaries[:30000]}"
+    system = "Académico de la lengua de España. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
+    user = f"Libro: {book_title}. Análisis basado en: {all_summaries[:30000]}"
     return await _call_ai(system, user, 5000)
 
 async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
