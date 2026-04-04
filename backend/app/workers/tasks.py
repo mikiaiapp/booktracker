@@ -626,48 +626,62 @@ async def _phase4(user_id: str, book_id: str):
 
         for attempt in range(PHASE_MAX_RETRIES + 1):
             try:
-                # Limpiar personajes anteriores en cada intento
+                # ── Paso 1: Personajes ─────────────────────────────────────────────────
+                update_progress(user_id, book_id, "phase4", 83, "Analizando personajes...")
                 await db.execute(delete(Character).where(Character.book_id == book_id))
                 await db.commit()
 
-                # ── Las tres operaciones en PARALELO ──────────────────────────────────
-                update_progress(user_id, book_id, "phase4", 83,
-                                "Analizando personajes, resumen global y mapa mental en paralelo...")
-                print(f"[Phase4] Lanzando analyze_characters + global_summary + mindmap en paralelo")
-
-                results = await asyncio.gather(
-                    analyze_characters(all_summaries, book.title),
-                    generate_global_summary(all_summaries, book.title, book.author),
-                    generate_mindmap(all_summaries, book.title),
-                    return_exceptions=True
-                )
-
-                characters_data, global_summary_result, mindmap_result = results
-
-                # Personajes
-                if isinstance(characters_data, Exception):
-                    print(f"[Phase4] ERROR en analyze_characters: {characters_data}")
+                try:
+                    characters_data = await asyncio.wait_for(
+                        analyze_characters(all_summaries, book.title), timeout=360
+                    )
+                except asyncio.TimeoutError:
+                    print("[Phase4] TIMEOUT en analyze_characters (>360s), continuando sin personajes")
                     characters_data = []
-                for char_data in characters_data:
+                except Exception as char_err:
+                    print(f"[Phase4] ERROR en analyze_characters: {char_err}")
+                    characters_data = []
+
+                for char_data in (characters_data or []):
                     char = Character(book_id=book_id, name=char_data["name"])
                     db.add(char)
                     for k, v in char_data.items():
                         if hasattr(char, k) and k != "name":
                             setattr(char, k, v)
+                await db.commit()
+                print(f"[Phase4] Personajes guardados: {len(characters_data or [])}")
 
-                # Resumen global
-                if isinstance(global_summary_result, Exception):
-                    print(f"[Phase4] ERROR en generate_global_summary: {global_summary_result}")
-                    global_summary_result = ""
-                book.global_summary = global_summary_result
+                # ── Paso 2: Resumen global ─────────────────────────────────────────────
+                update_progress(user_id, book_id, "phase4", 90, "Generando resumen global...")
+                try:
+                    book.global_summary = await asyncio.wait_for(
+                        generate_global_summary(all_summaries, book.title, book.author), timeout=240
+                    )
+                except asyncio.TimeoutError:
+                    print("[Phase4] TIMEOUT en generate_global_summary (>240s)")
+                    book.global_summary = ""
+                except Exception as gs_err:
+                    print(f"[Phase4] ERROR en generate_global_summary: {gs_err}")
+                    book.global_summary = ""
+                await db.commit()
+                print(f"[Phase4] Resumen global guardado: {len(book.global_summary or '')} chars")
 
-                # Mapa mental
-                if isinstance(mindmap_result, Exception):
-                    print(f"[Phase4] ERROR en generate_mindmap: {mindmap_result}")
-                    mindmap_result = {"center": book.title, "branches": []}
-                book.mindmap_data = mindmap_result
+                # ── Paso 3: Mapa mental ────────────────────────────────────────────────
+                update_progress(user_id, book_id, "phase4", 95, "Generando mapa mental...")
+                try:
+                    book.mindmap_data = await asyncio.wait_for(
+                        generate_mindmap(all_summaries, book.title), timeout=240
+                    )
+                except asyncio.TimeoutError:
+                    print("[Phase4] TIMEOUT en generate_mindmap (>240s)")
+                    book.mindmap_data = {"center": book.title, "branches": []}
+                except Exception as mm_err:
+                    print(f"[Phase4] ERROR en generate_mindmap: {mm_err}")
+                    book.mindmap_data = {"center": book.title, "branches": []}
+                await db.commit()
+                print(f"[Phase4] Mapa mental guardado")
 
-                update_progress(user_id, book_id, "phase4", 98, "Guardando resultados...")
+                update_progress(user_id, book_id, "phase4", 99, "Finalizando fase 4...")
 
                 book.phase3_done = True
                 book.status      = "analyzed"
