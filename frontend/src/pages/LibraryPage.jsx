@@ -155,18 +155,15 @@ function QueuePanel({ onClose, books }) {
         <div className="queue-header-actions">
           {!isEmpty && (
             <>
-              {/* Pausar/reanudar solo aplica a la cola Redis */}
-              {(activeId || queueList.length > 0) && (
-                <button
-                  className={`queue-action-btn ${state?.paused ? 'resume' : 'pause'}`}
-                  onClick={handlePause}
-                  disabled={loading}
-                  title={state?.paused ? 'Reanudar cola' : 'Pausar cola'}
-                >
-                  {state?.paused ? <Play size={14} /> : <Pause size={14} />}
-                  {state?.paused ? 'Reanudar' : 'Pausar'}
-                </button>
-              )}
+              <button
+                className={`queue-action-btn ${state?.paused ? 'resume' : 'pause'}`}
+                onClick={handlePause}
+                disabled={loading}
+                title={state?.paused ? 'Reanudar cola' : 'Pausar nuevos procesos'}
+              >
+                {state?.paused ? <Play size={14} /> : <Pause size={14} />}
+                {state?.paused ? 'Reanudar' : 'Pausar'}
+              </button>
               <button
                 className="queue-action-btn danger"
                 onClick={handleClearAll}
