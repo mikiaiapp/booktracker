@@ -85,8 +85,11 @@ async def _phase1(user_id: str, book_id: str):
     from app.core.database import get_user_engine, get_user_db
     from app.models.book import Book, AnalysisJob
     from app.services.book_identifier import identify_book
+    from app.workers.queue_manager import update_progress, on_done
     from sqlalchemy import select
     import traceback
+
+    update_progress(user_id, book_id, "phase1", 10, "Identificando libro…")
 
     async for db in get_user_db(user_id):
         try:
@@ -174,6 +177,7 @@ async def _phase1(user_id: str, book_id: str):
                 reidentify_author_task.delay(user_id, book.author)
 
             # ── Encadenar automáticamente con Fase 2 ──
+            update_progress(user_id, book_id, "phase2", 25, "Analizando estructura…")
             process_book_phase2.delay(user_id, book_id)
 
         except Exception as e:
@@ -185,6 +189,7 @@ async def _phase1(user_id: str, book_id: str):
             else:
                 book.error_msg = traceback.format_exc()
             await db.commit()
+            on_done(user_id, book_id)
             raise
 
 
@@ -381,6 +386,7 @@ async def _phase2(user_id: str, book_id: str):
     from app.core.database import get_user_db
     from app.models.book import Book, BookPart, Chapter, AnalysisJob
     from app.services.book_parser import parse_book_structure
+    from app.workers.queue_manager import update_progress
     from sqlalchemy import select, delete
     import traceback
 
@@ -425,6 +431,7 @@ async def _phase2(user_id: str, book_id: str):
             await db.commit()
 
             # ── Encadenar automáticamente con Fase 3 (resúmenes) ──
+            update_progress(user_id, book_id, "phase3", 40, "Resumiendo capítulos…")
             process_book_phase3.delay(user_id, book_id)
 
         except Exception as e:
@@ -444,6 +451,7 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
     from app.core.database import get_user_db
     from app.models.book import Book, Chapter, AnalysisJob
     from app.services.ai_analyzer import summarize_chapter
+    from app.workers.queue_manager import update_progress, on_done
     from app.core.config import settings
     from sqlalchemy import select
     import asyncio as _asyncio
@@ -501,6 +509,9 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
                 job.progress = int(global_num / total * 100)
                 job.detail = f"Resumiendo capítulo {global_num}/{total}: {ch_title}"
             await db.commit()
+        # Actualizar progreso visible en la cola (40–80%)
+        pct = 40 + int((global_num / max(total, 1)) * 40)
+        update_progress(user_id, book_id, "phase3", pct, f"Cap. {global_num}/{total}: {ch_title}")
 
         summary_data = None
         error_msg = None
@@ -573,7 +584,10 @@ async def _phase3(user_id: str, book_id: str, chain_next: bool = True):
 
     print(f"Phase3 completada: {total} capítulos")
     if chain_next:
+        update_progress(user_id, book_id, "phase3b", 82, "Análisis de personajes…")
         process_phase3b_task.delay(user_id, book_id)
+    else:
+        on_done(user_id, book_id)
 
 
 # ── Podcast generation ────────────────────────────────────────────────────────
@@ -587,8 +601,11 @@ async def _podcast(user_id: str, book_id: str):
     from app.models.book import Book, Character
     from app.services.ai_analyzer import generate_podcast_script
     from app.services.tts_service import synthesize_podcast
+    from app.workers.queue_manager import update_progress, on_done
     from sqlalchemy import select
     import traceback
+
+    update_progress(user_id, book_id, "podcast", 92, "Generando podcast…")
 
     async for db in get_user_db(user_id):
         try:
@@ -618,11 +635,13 @@ async def _podcast(user_id: str, book_id: str):
 
             book.status = "complete"
             await db.commit()
+            on_done(user_id, book_id)
 
         except Exception as e:
             book.status = "error"
             book.error_msg = traceback.format_exc()
             await db.commit()
+            on_done(user_id, book_id)
             raise
 
 
@@ -988,8 +1007,11 @@ async def _phase3b(user_id: str, book_id: str):
     from app.core.database import get_user_db
     from app.models.book import Book, Chapter, Character
     from app.services.ai_analyzer import analyze_characters, generate_global_summary, generate_mindmap
+    from app.workers.queue_manager import update_progress, on_done
     from sqlalchemy import select, delete
     import traceback
+
+    update_progress(user_id, book_id, "phase3b", 82, "Analizando personajes y resumen global…")
 
     async for db in get_user_db(user_id):
         try:
@@ -1034,6 +1056,7 @@ async def _phase3b(user_id: str, book_id: str):
             print(f"Phase 3b complete for {book.title}: {len(characters_data)} characters")
 
             # ── Encadenar automáticamente con Fase 5 (Podcast) ──
+            update_progress(user_id, book_id, "podcast", 92, "Generando podcast…")
             generate_podcast.delay(user_id, book_id)
 
         except Exception as e:

@@ -1,35 +1,279 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { booksAPI } from '../utils/api'
-import { BookOpen, Star, Clock, CheckCircle, Search, Filter } from 'lucide-react'
+import { booksAPI, queueAPI } from '../utils/api'
+import { BookOpen, Star, Search, Layers, X, Pause, Play, Trash2, ChevronDown } from 'lucide-react'
 import BookCover, { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
 import './LibraryPage.css'
 
 const STATUS_LABELS = {
-  uploaded: { label: 'Subido', cls: 'badge-slate' },
-  identifying: { label: 'Identificando…', cls: 'badge-gold' },
-  identified: { label: 'Identificado', cls: 'badge-green' },
+  queued:              { label: 'En cola',      cls: 'badge-slate' },
+  uploaded:            { label: 'Subido',       cls: 'badge-slate' },
+  identifying:         { label: 'Identificando…', cls: 'badge-gold' },
+  identified:          { label: 'Identificado', cls: 'badge-green' },
   analyzing_structure: { label: 'Analizando…', cls: 'badge-gold' },
-  structured: { label: 'Estructurado', cls: 'badge-green' },
-  summarizing: { label: 'Resumiendo…', cls: 'badge-gold' },
-  analyzed: { label: 'Analizado', cls: 'badge-green' },
-  generating_podcast: { label: 'Podcast…', cls: 'badge-gold' },
-  complete: { label: 'Completo', cls: 'badge-green' },
-  error: { label: 'Error', cls: 'badge-rust' },
+  structured:          { label: 'Estructurado', cls: 'badge-green' },
+  summarizing:         { label: 'Resumiendo…', cls: 'badge-gold' },
+  analyzed:            { label: 'Analizado',   cls: 'badge-green' },
+  generating_podcast:  { label: 'Podcast…',    cls: 'badge-gold' },
+  complete:            { label: 'Completo',    cls: 'badge-green' },
+  error:               { label: 'Error',       cls: 'badge-rust' },
+}
+
+const PHASE_LABELS = {
+  queued:   'En cola',
+  starting: 'Iniciando…',
+  phase1:   'Identificando',
+  phase2:   'Estructura',
+  phase3:   'Resumiendo',
+  phase3b:  'Análisis final',
+  podcast:  'Podcast',
 }
 
 const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
-const READ_LABELS = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
+const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
 
+// ── Componente barra de progreso compacta ─────────────────────
+function MiniProgress({ pct, phase }) {
+  return (
+    <div className="mini-progress-wrap">
+      <div className="mini-progress-bar" style={{ width: `${pct}%` }} />
+      <span className="mini-progress-label">{PHASE_LABELS[phase] || phase}</span>
+    </div>
+  )
+}
+
+// ── Panel lateral de cola ─────────────────────────────────────
+function QueuePanel({ onClose, books }) {
+  const [state, setState]       = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const intervalRef             = useRef(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const { data } = await queueAPI.get()
+      setState(data)
+    } catch { /* silencioso */ }
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    intervalRef.current = setInterval(refresh, 2000)
+    return () => clearInterval(intervalRef.current)
+  }, [refresh])
+
+  const handlePause = async () => {
+    setLoading(true)
+    try {
+      if (state?.paused) {
+        await queueAPI.resume()
+        toast('Cola reanudada', { icon: '▶️' })
+      } else {
+        await queueAPI.pause()
+        toast('Cola pausada', { icon: '⏸' })
+      }
+      await refresh()
+    } finally { setLoading(false) }
+  }
+
+  const handleClearAll = async () => {
+    if (!window.confirm('¿Vaciar la cola y cancelar todos los procesos pendientes?')) return
+    setLoading(true)
+    try {
+      const { data } = await queueAPI.clear()
+      toast.success(`Cola vaciada (${data.cancelled} libro${data.cancelled !== 1 ? 's' : ''})`)
+      await refresh()
+    } catch { toast.error('Error al vaciar la cola') }
+    finally { setLoading(false) }
+  }
+
+  const handleCancel = async (bookId, title) => {
+    try {
+      await queueAPI.cancel(bookId)
+      toast(`«${title}» eliminado de la cola`, { icon: '✕' })
+      await refresh()
+    } catch { toast.error('Error al cancelar') }
+  }
+
+  // Construir lista unificada: activo primero, luego cola
+  const getTitle = (bookId) => {
+    const info = state?.infos?.[bookId]
+    if (info?.title) return info.title
+    const book = books.find(b => b.id === bookId)
+    return book?.title || bookId
+  }
+
+  const activeId  = state?.active
+  const queueList = state?.queue || []
+  const isEmpty   = !activeId && queueList.length === 0
+
+  return (
+    <motion.div
+      className="queue-panel"
+      initial={{ x: '100%', opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: '100%', opacity: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+    >
+      {/* Cabecera */}
+      <div className="queue-header">
+        <div className="queue-header-left">
+          <Layers size={16} />
+          <span>Cola de análisis</span>
+          {!isEmpty && (
+            <span className="queue-count-badge">
+              {queueList.length + (activeId ? 1 : 0)}
+            </span>
+          )}
+        </div>
+        <div className="queue-header-actions">
+          {!isEmpty && (
+            <>
+              <button
+                className={`queue-action-btn ${state?.paused ? 'resume' : 'pause'}`}
+                onClick={handlePause}
+                disabled={loading}
+                title={state?.paused ? 'Reanudar cola' : 'Pausar cola'}
+              >
+                {state?.paused ? <Play size={14} /> : <Pause size={14} />}
+                {state?.paused ? 'Reanudar' : 'Pausar'}
+              </button>
+              <button
+                className="queue-action-btn danger"
+                onClick={handleClearAll}
+                disabled={loading}
+                title="Vaciar toda la cola"
+              >
+                <Trash2 size={14} />
+                Vaciar
+              </button>
+            </>
+          )}
+          <button className="queue-close-btn" onClick={onClose} title="Cerrar">
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Estado pausa */}
+      {state?.paused && (
+        <div className="queue-paused-banner">
+          ⏸ Cola pausada — el libro activo termina; el siguiente esperará
+        </div>
+      )}
+
+      {/* Contenido */}
+      <div className="queue-body">
+        {isEmpty ? (
+          <div className="queue-empty">
+            <Layers size={32} strokeWidth={1} />
+            <p>La cola está vacía</p>
+            <p className="queue-empty-sub">Los libros que subas se analizarán de uno en uno</p>
+          </div>
+        ) : (
+          <div className="queue-list">
+            {/* Libro activo */}
+            {activeId && (() => {
+              const info  = state?.infos?.[activeId] || {}
+              const title = getTitle(activeId)
+              const pct   = parseInt(info.pct || 0)
+              const phase = info.phase || 'starting'
+              const msg   = info.msg || ''
+              return (
+                <div key={activeId} className="queue-item active">
+                  <div className="queue-item-header">
+                    <div className="queue-item-status-dot active" />
+                    <span className="queue-item-label">Procesando</span>
+                    <div className="queue-item-spinner" />
+                  </div>
+                  <div className="queue-item-title">{title}</div>
+                  <MiniProgress pct={pct} phase={phase} />
+                  <div className="queue-item-msg">{msg}</div>
+                </div>
+              )
+            })()}
+
+            {/* Cola pendiente */}
+            {queueList.map((entry, idx) => {
+              const title = getTitle(entry.book_id)
+              const info  = state?.infos?.[entry.book_id] || {}
+              return (
+                <div key={entry.book_id} className="queue-item pending">
+                  <div className="queue-item-header">
+                    <div className="queue-item-status-dot pending" />
+                    <span className="queue-item-label">#{idx + 1} en cola</span>
+                    <button
+                      className="queue-item-cancel"
+                      onClick={() => handleCancel(entry.book_id, title)}
+                      title="Quitar de la cola"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <div className="queue-item-title">{title}</div>
+                  <div className="queue-item-msg" style={{ color: 'var(--mist)', fontSize: '0.75rem' }}>
+                    Esperando turno…
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  )
+}
+
+// ── Botón flotante de cola ────────────────────────────────────
+function QueueButton({ onClick, books }) {
+  const [state, setState] = useState(null)
+  const intervalRef = useRef(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const { data } = await queueAPI.get()
+      setState(data)
+    } catch { /* silencioso */ }
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    intervalRef.current = setInterval(refresh, 3000)
+    return () => clearInterval(intervalRef.current)
+  }, [refresh])
+
+  const total = (state?.active ? 1 : 0) + (state?.queue?.length || 0)
+  const isActive = !!state?.active
+  const isPaused = state?.paused
+
+  // Solo mostrar si hay algo en cola
+  if (!total) return null
+
+  return (
+    <button
+      className={`queue-fab ${isActive && !isPaused ? 'processing' : ''} ${isPaused ? 'paused' : ''}`}
+      onClick={onClick}
+      title="Ver cola de análisis"
+    >
+      <Layers size={16} />
+      <span className="queue-fab-label">
+        {isPaused ? 'Pausado' : isActive ? 'Analizando' : 'En cola'}
+      </span>
+      <span className="queue-fab-count">{total}</span>
+    </button>
+  )
+}
+
+// ── Página principal ──────────────────────────────────────────
 export default function LibraryPage() {
-  const [books, setBooks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState('all')
+  const [books, setBooks]               = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [filter, setFilter]             = useState('all')
   const [coverPickerBook, setCoverPickerBook] = useState(null)
+  const [queueOpen, setQueueOpen]       = useState(false)
 
   const load = async () => {
     try {
@@ -43,10 +287,10 @@ export default function LibraryPage() {
   useEffect(() => {
     load()
     const interval = setInterval(() => {
-      // Refresh if any book is being processed
       setBooks(prev => {
         const processing = prev.some(b =>
-          ['uploading','identifying','analyzing_structure','summarizing','generating_podcast'].includes(b.status)
+          ['queued','uploading','identifying','analyzing_structure',
+           'summarizing','generating_podcast'].includes(b.status)
         )
         if (processing) load()
         return prev
@@ -56,10 +300,13 @@ export default function LibraryPage() {
   }, [])
 
   const filtered = books
-    .filter(b => b.status !== 'shell' && b.status !== 'shell_error') // excluir fichas sin PDF
+    .filter(b => b.status !== 'shell' && b.status !== 'shell_error')
     .filter(b => filter === 'all' || b.read_status === filter)
-    .filter(b => !search || b.title.toLowerCase().includes(search.toLowerCase()) ||
+    .filter(b => !search ||
+      b.title.toLowerCase().includes(search.toLowerCase()) ||
       b.author?.toLowerCase().includes(search.toLowerCase()))
+
+  const totalReal = books.filter(b => b.status !== 'shell' && b.status !== 'shell_error').length
 
   return (
     <>
@@ -67,11 +314,13 @@ export default function LibraryPage() {
       <div className="library-header">
         <div>
           <h1>Mi Biblioteca</h1>
-          <p className="library-sub">{books.filter(b => b.status !== 'shell' && b.status !== 'shell_error').length} {books.filter(b => b.status !== 'shell' && b.status !== 'shell_error').length === 1 ? 'libro' : 'libros'}</p>
+          <p className="library-sub">
+            {totalReal} {totalReal === 1 ? 'libro' : 'libros'}
+          </p>
         </div>
-        <Link to="/upload" className="btn-upload">
-          + Añadir libro
-        </Link>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+          <Link to="/upload" className="btn-upload">+ Añadir libro</Link>
+        </div>
       </div>
 
       <div className="library-controls">
@@ -128,16 +377,16 @@ export default function LibraryPage() {
                     alt={book.title}
                     fill
                   />
-                  {/* Botón cambiar portada */}
                   <button
                     className="cover-change-btn"
                     onClick={e => { e.preventDefault(); setCoverPickerBook(book) }}
                     title="Cambiar portada"
                   >✏</button>
-                  {/* Overlay con estado del análisis */}
                   <div className="cover-status">
                     {book.status === 'complete' || book.phase3_done ? (
                       <span className="cover-badge analyzed">✦ Analizado</span>
+                    ) : book.status === 'queued' ? (
+                      <span className="cover-badge queued">En cola</span>
                     ) : book.status === 'shell' || book.status === 'shell_error' ? (
                       <span className="cover-badge shell">Solo ficha</span>
                     ) : ['summarizing','analyzing_structure','identifying'].includes(book.status) ? (
@@ -146,7 +395,6 @@ export default function LibraryPage() {
                       <span className="cover-badge identified">Identificado</span>
                     ) : null}
                   </div>
-                  {/* Overlay semitransparente para libros shell */}
                   {(book.status === 'shell' || book.status === 'shell_error') && (
                     <div className="shell-overlay" />
                   )}
@@ -170,13 +418,33 @@ export default function LibraryPage() {
         </div>
       )}
     </div>
+
+    {/* Botón flotante de cola */}
+    <QueueButton onClick={() => setQueueOpen(true)} books={books} />
+
+    {/* Panel lateral de cola */}
+    <AnimatePresence>
+      {queueOpen && (
+        <>
+          <motion.div
+            className="queue-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setQueueOpen(false)}
+          />
+          <QueuePanel onClose={() => setQueueOpen(false)} books={books} />
+        </>
+      )}
+    </AnimatePresence>
+
+    {/* CoverPicker */}
     {coverPickerBook && (
       <CoverPicker
         book={coverPickerBook}
         onSelect={async (url) => {
           try {
             const res = await booksAPI.updateCover(coverPickerBook.id, url)
-            // Actualizar inmediatamente el libro en el array con los valores confirmados
             setBooks(prev => prev.map(b =>
               b.id === coverPickerBook.id
                 ? { ...b, cover_url: res.data.cover_url, cover_local: res.data.cover_local }
@@ -184,9 +452,7 @@ export default function LibraryPage() {
             ))
             toast.success('Portada actualizada')
             load()
-          } catch {
-            toast.error('Error al guardar la portada')
-          }
+          } catch { toast.error('Error al guardar la portada') }
           setCoverPickerBook(null)
         }}
         onUpload={async (file) => {
@@ -199,9 +465,7 @@ export default function LibraryPage() {
             ))
             toast.success('Portada actualizada')
             load()
-          } catch {
-            toast.error('Error al subir la imagen')
-          }
+          } catch { toast.error('Error al subir la imagen') }
           setCoverPickerBook(null)
         }}
         onClose={() => setCoverPickerBook(null)}

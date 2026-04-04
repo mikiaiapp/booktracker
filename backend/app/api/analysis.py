@@ -720,3 +720,105 @@ async def cancel_processing(
     book.error_msg = None
     await db.commit()
     return {"status": book.status}
+
+
+# ═══════════════════════════════════════════════════════════════
+# ── Cola de análisis (Queue Manager) ──────────────────────────
+# ═══════════════════════════════════════════════════════════════
+
+@router.get("/queue")
+async def get_queue(
+    current_user: User = Depends(get_current_user),
+):
+    """Devuelve el estado completo de la cola del usuario."""
+    from app.workers.queue_manager import get_state
+    state = get_state(current_user.id)
+    return state
+
+
+@router.post("/queue/pause")
+async def pause_queue(
+    current_user: User = Depends(get_current_user),
+):
+    """Pausa la cola. El libro activo termina su fase; el siguiente no arranca."""
+    from app.workers.queue_manager import pause
+    pause(current_user.id)
+    return {"ok": True, "paused": True}
+
+
+@router.post("/queue/resume")
+async def resume_queue(
+    current_user: User = Depends(get_current_user),
+):
+    """Reanuda la cola y arranca el siguiente libro si no hay activo."""
+    from app.workers.queue_manager import resume
+    resume(current_user.id)
+    return {"ok": True, "paused": False}
+
+
+@router.delete("/queue")
+async def clear_queue(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Vacía toda la cola y cancela el libro activo. Resetea sus estados en BD."""
+    from app.workers.queue_manager import get_state, cancel_all
+    from app.models.book import Book
+
+    state = get_state(current_user.id)
+
+    # Resetear estado en BD de todos los libros afectados
+    affected_ids = []
+    if state.get("active"):
+        affected_ids.append(state["active"])
+    for entry in state.get("queue", []):
+        affected_ids.append(entry["book_id"])
+
+    for book_id in affected_ids:
+        result = await db.execute(select(Book).where(Book.id == book_id))
+        book = result.scalar_one_or_none()
+        if book and book.status in ("queued", "identifying", "analyzing_structure",
+                                     "summarizing", "generating_podcast"):
+            # Volver al último estado estable
+            if book.phase3_done:
+                book.status = "complete"
+            elif book.phase2_done:
+                book.status = "structured"
+            elif book.phase1_done:
+                book.status = "identified"
+            else:
+                book.status = "uploaded"
+
+    await db.commit()
+    cancel_all(current_user.id)
+    return {"ok": True, "cancelled": len(affected_ids)}
+
+
+@router.delete("/queue/{book_id}")
+async def cancel_book_from_queue(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Elimina un libro concreto de la cola o cancela si está activo."""
+    from app.workers.queue_manager import cancel
+    from app.models.book import Book
+
+    result_str = cancel(current_user.id, book_id)
+
+    # Resetear estado en BD
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if book and book.status in ("queued", "identifying", "analyzing_structure",
+                                 "summarizing", "generating_podcast"):
+        if book.phase3_done:
+            book.status = "complete"
+        elif book.phase2_done:
+            book.status = "structured"
+        elif book.phase1_done:
+            book.status = "identified"
+        else:
+            book.status = "uploaded"
+        await db.commit()
+
+    return {"ok": True, "result": result_str}

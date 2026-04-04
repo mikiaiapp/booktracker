@@ -186,14 +186,14 @@ async def upload_book(
         await db.commit()
         await db.refresh(book)
 
-    # Queue phase 1 — la fase 1 hará la deduplicación completa con metadatos reales
-    from app.workers.tasks import process_book_phase1
-    task = process_book_phase1.delay(current_user.id, book_id)
-    book.task_id = task.id
-    book.status = "identifying"
+    # Encolar en la cola serializada (un solo libro IA a la vez)
+    book.status = "queued"
     await db.commit()
 
-    return {"id": book.id, "status": book.status, "task_id": book.task_id}
+    from app.workers.queue_manager import enqueue as q_enqueue
+    q_enqueue(current_user.id, book.id, book.title, ["1", "2", "3", "3b", "podcast"])
+
+    return {"id": book.id, "status": "queued", "task_id": None}
 
 
 # ── List books ────────────────────────────────────────────────────────────────
@@ -522,11 +522,11 @@ async def upload_file_to_shell(
     book.phase3_done = False
     await db.commit()
 
-    # Lanzar fase 1 para identificar/confirmar metadatos
-    from app.workers.tasks import process_book_phase1
-    task = process_book_phase1.delay(current_user.id, book_id)
-    book.task_id = task.id
-    book.status = "identifying"
+    # Encolar en la cola serializada
+    book.status = "queued"
     await db.commit()
 
-    return {"id": book_id, "status": "identifying", "task_id": task.id}
+    from app.workers.queue_manager import enqueue as q_enqueue
+    q_enqueue(current_user.id, book_id, book.title, ["1", "2", "3", "3b", "podcast"])
+
+    return {"id": book_id, "status": "queued", "task_id": None}

@@ -117,3 +117,12 @@ export const shellAPI = {
   create: (title, author, isbn = null, year = null, cover_url = null, synopsis = null) => 
     api.post('/books/shell', { title, author, isbn, year, cover_url, synopsis }),
 }
+
+// Queue (cola de análisis serializada)
+export const queueAPI = {
+  get:     ()         => api.get('/analysis/queue'),
+  pause:   ()         => api.post('/analysis/queue/pause'),
+  resume:  ()         => api.post('/analysis/queue/resume'),
+  clear:   ()         => api.delete('/analysis/queue'),
+  cancel:  (bookId)   => api.delete(`/analysis/queue/${bookId}`),
+}
