@@ -33,7 +33,7 @@ async def trigger_phase1(
         raise HTTPException(404, "Book not found")
 
     from app.workers.tasks import process_book_phase1
-    task = process_book_phase1.delay(current_user.id, book_id)
+    task = process_book_phase1.delay(current_user.id, book_id, False)
     book.task_id   = task.id
     book.status    = "identifying"
     book.phase1_done = False
@@ -58,7 +58,7 @@ async def trigger_phase2(
         raise HTTPException(400, "Phase 1 not complete")
 
     from app.workers.tasks import process_book_phase2
-    task = process_book_phase2.delay(current_user.id, book_id)
+    task = process_book_phase2.delay(current_user.id, book_id, False)
     book.task_id   = task.id
     book.status    = "analyzing_structure"
     book.error_msg = None

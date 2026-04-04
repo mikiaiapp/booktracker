@@ -23,7 +23,7 @@ async def _get_summaries_text(db, book_id):
 
 # --- FASE 1: IDENTIFICACIÓN (FICHA Y AUTOR) ---
 @celery_app.task(name="process_book_phase1")
-def process_book_phase1(user_id: str, book_id: str):
+def process_book_phase1(user_id: str, book_id: str, chain: bool = True):
     from app.services.book_identifier import identify_book
     async def _p1():
         async for db in get_user_db(user_id):
@@ -37,12 +37,15 @@ def process_book_phase1(user_id: str, book_id: str):
             book.phase1_done, book.status = True, "identified"
             await db.commit()
             if book.author: reidentify_author_task.delay(user_id, book.author)
-            process_book_phase2.delay(user_id, book_id)
+            if chain:
+                process_book_phase2.delay(user_id, book_id, chain=True)
+            else:
+                on_done(user_id, book_id)
     return run_async(_p1())
 
 # --- FASE 2: ESTRUCTURA Y RESÚMENES INDIVIDUALES ---
 @celery_app.task(name="process_book_phase2")
-def process_book_phase2(user_id: str, book_id: str):
+def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
     from app.services.book_parser import parse_book_structure
     async def _p2():
         async for db in get_user_db(user_id):
@@ -62,7 +65,10 @@ def process_book_phase2(user_id: str, book_id: str):
                 await db.commit()
             
             book.phase2_done = True
-            process_book_phase3.delay(user_id, book_id, chain=True)
+            if chain:
+                process_book_phase3.delay(user_id, book_id, chain=True)
+            else:
+                on_done(user_id, book_id)
     return run_async(_p2())
 
 # --- FASE 3: PERSONAJES (PROFUNDO) ---
