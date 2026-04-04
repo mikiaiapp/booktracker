@@ -170,6 +170,9 @@ def _clean_text(text: str) -> str:
 
 
 def _parse_json(text: str) -> dict | list:
+    """Parsea JSON de la respuesta IA, intentando reparar arrays truncados."""
+    if not text:
+        raise ValueError("Respuesta vacía")
     # Eliminar bloques markdown
     clean = re.sub(r"```json\s*|```\s*", "", text).strip()
     # Intentar parsear directamente
@@ -178,14 +181,83 @@ def _parse_json(text: str) -> dict | list:
     except json.JSONDecodeError:
         pass
     # Intentar extraer el primer objeto o array JSON del texto
-    for pattern in [r'\{[\s\S]*\}', r'\[[\s\S]*\]']:
+    for pattern in [r'\[[\s\S]*\]', r'\{[\s\S]*\}']:
         match = re.search(pattern, clean)
         if match:
             try:
                 return json.loads(match.group())
             except json.JSONDecodeError:
-                continue
-    raise ValueError(f"No se pudo parsear JSON: {clean[:200]}")
+                pass
+
+    # ── Reparar array JSON truncado (respuesta cortada por límite de tokens) ──
+    # Buscar el inicio del array
+    start = clean.find('[')
+    if start != -1:
+        fragment = clean[start:]
+        # Estrategia 1: cerrar el último objeto incompleto y el array
+        repaired = _repair_truncated_array(fragment)
+        if repaired:
+            return repaired
+
+    raise ValueError(f"No se pudo parsear JSON: {clean[:300]}")
+
+
+def _repair_truncated_array(fragment: str) -> list | None:
+    """
+    Intenta recuperar los objetos completos de un array JSON truncado.
+    Extrae elemento a elemento hasta donde el JSON es válido.
+    """
+    objects = []
+    depth = 0
+    in_string = False
+    escape_next = False
+    current_start = None
+
+    i = 0
+    while i < len(fragment):
+        ch = fragment[i]
+
+        if escape_next:
+            escape_next = False
+            i += 1
+            continue
+
+        if ch == '\\' and in_string:
+            escape_next = True
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            i += 1
+            continue
+
+        if in_string:
+            i += 1
+            continue
+
+        if ch == '{':
+            if depth == 0:
+                current_start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and current_start is not None:
+                # Tenemos un objeto completo — intentar parsearlo
+                candidate = fragment[current_start:i+1]
+                try:
+                    obj = json.loads(candidate)
+                    if isinstance(obj, dict) and obj:
+                        objects.append(obj)
+                except json.JSONDecodeError:
+                    pass
+                current_start = None
+        i += 1
+
+    if objects:
+        print(f"JSON reparado: recuperados {len(objects)} objetos de un array truncado")
+        return objects
+    return None
 
 
 # ── Resumen de capítulo ───────────────────────────────────────
@@ -220,40 +292,119 @@ JSON requerido:
 
 # ── Análisis de personajes ────────────────────────────────────
 async def analyze_characters(all_summaries: str, book_title: str) -> list:
+    """
+    Análisis de personajes en dos pasadas para evitar truncado por límite de tokens:
+    Pasada 1 → protagonistas y antagonistas (análisis exhaustivo, ~6 personajes)
+    Pasada 2 → personajes secundarios y menores (análisis conciso, hasta 20)
+    Se combinan y deduplicanen en la lista final.
+    """
     system = """Eres un experto en análisis literario. Analiza los personajes de una novela.
-Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni bloques de código."""
+Responde ÚNICAMENTE con un array JSON válido, sin texto adicional ni bloques de código markdown."""
 
-    user = f"""Libro: "{book_title}"
+    summaries_short = all_summaries[:20000]  # contexto razonable para no saturar
 
-Resúmenes de todos los capítulos:
-{all_summaries[:30000]}
+    # ── Pasada 1: protagonistas y antagonistas ─────────────────
+    user_main = f"""Libro: "{book_title}"
 
-Identifica y analiza TODOS los personajes con profundidad (mínimo 20 si aparecen). Incluye protagonistas, antagonistas, secundarios, personajes menores, personajes episódicos y cualquier figura con nombre o función reconocible en la trama (familiares, amigos, colegas, vecinos, antagonistas secundarios, figuras de autoridad, etc.).
-No omitas personajes por parecer poco importantes: incluso los que aparecen en pocos capítulos pero tienen nombre o influyen en la trama merecen una entrada.
-Para los personajes principales (protagonist/antagonist), el análisis debe ser EXHAUSTIVO: mínimo 5 frases en personalidad y 5 frases en evolución.
-Para los secundarios y menores, al menos 3 frases en cada campo.
+Resúmenes:
+{summaries_short}
 
-Devuelve un array JSON donde cada elemento tiene:
+Analiza ÚNICAMENTE los personajes con rol "protagonist" o "antagonist" (máximo 6).
+Para cada uno, análisis EXHAUSTIVO con al menos 4 frases en cada campo de texto.
+
+Devuelve un array JSON. Cada elemento:
 {{
   "name": "nombre completo",
-  "aliases": ["apodo1", "apodo2"],
-  "role": "protagonist|antagonist|secondary|minor",
-  "description": "descripción física muy detallada: rasgos, edad, vestimenta habitual, expresión, contexto social y origen",
-  "personality": "análisis profundo: rasgos dominantes, virtudes y defectos, motivaciones profundas, miedos, deseos, contradicciones internas, forma de relacionarse con los demás",
-  "arc": "evolución detallada capítulo a capítulo: estado inicial, conflictos que enfrenta, momentos de cambio, estado final. Qué aprende o pierde a lo largo del libro",
-  "key_moments": ["momento crucial 1 con contexto", "momento crucial 2 con contexto", "momento crucial 3 con contexto"],
-  "relationships": {{"nombre_personaje": "descripción detallada de la relación y su evolución"}},
-  "first_appearance": "capítulo donde aparece por primera vez",
-  "importance": "rol concreto en la trama: qué mueve, qué bloquea, qué revela",
-  "quotes": ["cita o momento memorable que define al personaje"]
+  "aliases": ["apodo1"],
+  "role": "protagonist|antagonist",
+  "description": "descripción física detallada, edad aproximada, origen social",
+  "personality": "rasgos dominantes, virtudes, defectos, motivaciones, miedos, contradicciones",
+  "arc": "evolución a lo largo del libro: punto de partida, conflictos clave, cambios, desenlace",
+  "key_moments": ["momento crucial 1", "momento crucial 2", "momento crucial 3"],
+  "relationships": {{"otro_personaje": "naturaleza y evolución de la relación"}},
+  "first_appearance": "capítulo de primera aparición",
+  "importance": "función concreta en la trama",
+  "quotes": ["frase o momento definitorio del personaje"]
 }}"""
 
-    result = await _call_ai(system, user, max_tokens=12000)
+    # ── Pasada 2: secundarios y menores ───────────────────────
+    user_secondary = f"""Libro: "{book_title}"
+
+Resúmenes:
+{summaries_short}
+
+Identifica TODOS los personajes secundarios y menores (rol "secondary" o "minor").
+No incluyas protagonistas ni antagonistas principales.
+Incluye cualquier personaje con nombre propio o función reconocible en la trama.
+
+Para cada uno, análisis conciso pero completo (2-3 frases por campo de texto).
+
+Devuelve un array JSON. Cada elemento:
+{{
+  "name": "nombre completo",
+  "aliases": [],
+  "role": "secondary|minor",
+  "description": "descripción breve",
+  "personality": "rasgos principales y motivaciones",
+  "arc": "función y evolución en la trama",
+  "key_moments": ["momento relevante"],
+  "relationships": {{"otro_personaje": "tipo de relación"}},
+  "first_appearance": "capítulo aproximado",
+  "importance": "qué aporta a la historia",
+  "quotes": []
+}}"""
+
+    import asyncio as _asyncio
+
+    # Ejecutar las dos pasadas — primero protagonistas, luego secundarios
+    print(f"analyze_characters: pasada 1 (protagonistas) para '{book_title}'")
+    result_main = await _call_ai(system, user_main, max_tokens=4000)
+    print(f"analyze_characters: pasada 1 → {len(result_main)} chars")
+
+    # Pausa entre llamadas para no saturar la API
+    await _asyncio.sleep(3)
+
+    print(f"analyze_characters: pasada 2 (secundarios) para '{book_title}'")
+    result_secondary = await _call_ai(system, user_secondary, max_tokens=4000)
+    print(f"analyze_characters: pasada 2 → {len(result_secondary)} chars")
+
+    # Parsear ambas respuestas
+    chars_main = []
+    chars_secondary = []
+
     try:
-        data = _parse_json(result)
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
+        data = _parse_json(result_main)
+        chars_main = data if isinstance(data, list) else []
+        print(f"analyze_characters: pasada 1 → {len(chars_main)} personajes")
+    except Exception as e:
+        print(f"analyze_characters: error parseando pasada 1: {e}\nRaw: {result_main[:300]}")
+
+    try:
+        data = _parse_json(result_secondary)
+        chars_secondary = data if isinstance(data, list) else []
+        print(f"analyze_characters: pasada 2 → {len(chars_secondary)} personajes")
+    except Exception as e:
+        print(f"analyze_characters: error parseando pasada 2: {e}\nRaw: {result_secondary[:300]}")
+
+    # Combinar y deduplicar por nombre (normalizado)
+    def _norm_name(n: str) -> str:
+        return re.sub(r"[^a-záéíóúüñ]", "", n.lower().strip()) if n else ""
+
+    seen_names = {_norm_name(c.get("name", "")) for c in chars_main if c.get("name")}
+    combined = list(chars_main)
+
+    for char in chars_secondary:
+        name_norm = _norm_name(char.get("name", ""))
+        if name_norm and name_norm not in seen_names:
+            seen_names.add(name_norm)
+            combined.append(char)
+
+    print(f"analyze_characters: total combinado → {len(combined)} personajes")
+
+    if not combined:
+        print(f"analyze_characters: ADVERTENCIA — ninguna pasada devolvió personajes")
+
+    return combined
 
 
 # ── Resumen global ────────────────────────────────────────────
