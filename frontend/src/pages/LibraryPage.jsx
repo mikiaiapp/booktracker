@@ -166,67 +166,97 @@ function QueuePanel({ onClose, books }) {
 
       {/* Contenido */}
       <div className="queue-body">
-        {isEmpty ? (
-          <div className="queue-empty">
-            <Layers size={32} strokeWidth={1} />
-            <p>La cola está vacía</p>
-            <p className="queue-empty-sub">Los libros que subas se analizarán de uno en uno</p>
-          </div>
-        ) : (
-          <div className="queue-list">
-            {/* Libro activo */}
-            {activeId && (() => {
-              const info  = state?.infos?.[activeId] || {}
-              const title = getTitle(activeId)
-              const pct   = parseInt(info.pct || 0)
-              const phase = info.phase || 'starting'
-              const msg   = info.msg || ''
-              return (
-                <div key={activeId} className="queue-item active">
+        {(() => {
+          // Libros procesando en BD pero no en cola Redis (sistema antiguo o recién arrancados)
+          const legacyBooks = books.filter(b =>
+            PROCESSING_STATUSES.includes(b.status) &&
+            b.id !== activeId &&
+            !queueList.some(e => e.book_id === b.id)
+          )
+          const totalVisible = (activeId ? 1 : 0) + queueList.length + legacyBooks.length
+
+          if (totalVisible === 0) return (
+            <div className="queue-empty">
+              <Layers size={32} strokeWidth={1} />
+              <p>La cola está vacía</p>
+              <p className="queue-empty-sub">Los libros que subas se analizarán de uno en uno</p>
+            </div>
+          )
+
+          return (
+            <div className="queue-list">
+              {/* Libro activo (nuevo sistema) */}
+              {activeId && (() => {
+                const info  = state?.infos?.[activeId] || {}
+                const title = getTitle(activeId)
+                const pct   = parseInt(info.pct || 0)
+                const phase = info.phase || 'starting'
+                const msg   = info.msg || ''
+                return (
+                  <div key={activeId} className="queue-item active">
+                    <div className="queue-item-header">
+                      <div className="queue-item-status-dot active" />
+                      <span className="queue-item-label">Procesando</span>
+                      <div className="queue-item-spinner" />
+                    </div>
+                    <div className="queue-item-title">{title}</div>
+                    <MiniProgress pct={pct} phase={phase} />
+                    <div className="queue-item-msg">{msg}</div>
+                  </div>
+                )
+              })()}
+
+              {/* Libros legacy procesando (sistema anterior al queue manager) */}
+              {legacyBooks.map(book => (
+                <div key={book.id} className="queue-item active legacy">
                   <div className="queue-item-header">
                     <div className="queue-item-status-dot active" />
-                    <span className="queue-item-label">Procesando</span>
+                    <span className="queue-item-label">En proceso</span>
                     <div className="queue-item-spinner" />
                   </div>
-                  <div className="queue-item-title">{title}</div>
-                  <MiniProgress pct={pct} phase={phase} />
-                  <div className="queue-item-msg">{msg}</div>
+                  <div className="queue-item-title">{book.title}</div>
+                  <div className="queue-item-msg">
+                    {STATUS_LABELS[book.status]?.label || book.status}
+                    {' · '}
+                    <span style={{opacity:0.6}}>Para parar: reinicia el worker</span>
+                  </div>
                 </div>
-              )
-            })()}
+              ))}
 
-            {/* Cola pendiente */}
-            {queueList.map((entry, idx) => {
-              const title = getTitle(entry.book_id)
-              const info  = state?.infos?.[entry.book_id] || {}
-              return (
-                <div key={entry.book_id} className="queue-item pending">
-                  <div className="queue-item-header">
-                    <div className="queue-item-status-dot pending" />
-                    <span className="queue-item-label">#{idx + 1} en cola</span>
-                    <button
-                      className="queue-item-cancel"
-                      onClick={() => handleCancel(entry.book_id, title)}
-                      title="Quitar de la cola"
-                    >
-                      <X size={12} />
-                    </button>
+              {/* Cola pendiente (nuevo sistema) */}
+              {queueList.map((entry, idx) => {
+                const title = getTitle(entry.book_id)
+                return (
+                  <div key={entry.book_id} className="queue-item pending">
+                    <div className="queue-item-header">
+                      <div className="queue-item-status-dot pending" />
+                      <span className="queue-item-label">#{idx + 1} en cola</span>
+                      <button
+                        className="queue-item-cancel"
+                        onClick={() => handleCancel(entry.book_id, title)}
+                        title="Quitar de la cola"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                    <div className="queue-item-title">{title}</div>
+                    <div className="queue-item-msg" style={{ color: 'var(--mist)', fontSize: '0.75rem' }}>
+                      Esperando turno…
+                    </div>
                   </div>
-                  <div className="queue-item-title">{title}</div>
-                  <div className="queue-item-msg" style={{ color: 'var(--mist)', fontSize: '0.75rem' }}>
-                    Esperando turno…
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+                )
+              })}
+            </div>
+          )
+        })()}
       </div>
     </motion.div>
   )
 }
 
 // ── Botón flotante de cola ────────────────────────────────────
+const PROCESSING_STATUSES = ['queued','identifying','analyzing_structure','summarizing','generating_podcast','uploaded']
+
 function QueueButton({ onClick, books }) {
   const [state, setState] = useState(null)
   const intervalRef = useRef(null)
@@ -244,11 +274,15 @@ function QueueButton({ onClick, books }) {
     return () => clearInterval(intervalRef.current)
   }, [refresh])
 
-  const total = (state?.active ? 1 : 0) + (state?.queue?.length || 0)
-  const isActive = !!state?.active
+  // Libros en cola Redis (nuevo sistema)
+  const queueTotal = (state?.active ? 1 : 0) + (state?.queue?.length || 0)
+  // Libros procesando en BD (sistema antiguo o en curso)
+  const legacyProcessing = books.filter(b => PROCESSING_STATUSES.includes(b.status))
+  const total = Math.max(queueTotal, legacyProcessing.length)
+  const isActive = !!state?.active || legacyProcessing.length > 0
   const isPaused = state?.paused
 
-  // Solo mostrar si hay algo en cola
+  // Mostrar si hay algo en cola Redis O libros procesando en BD
   if (!total) return null
 
   return (
