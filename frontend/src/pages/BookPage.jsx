@@ -1094,7 +1094,7 @@ function HeroCover({ book }) {
         if (src && !srcError) setSrcError(true)
         else setFallback(null)
       }}
-      style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
   )
   return (
     <div className="cover-ph-lg">
