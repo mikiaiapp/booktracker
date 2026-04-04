@@ -204,15 +204,15 @@ def _launch(uid: str, book_id: str, phases: list):
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
         process_book_phase3, process_book_phase4,
-        generate_podcast,
+        process_book_phase6,
     )
     first = phases[0] if phases else "1"
     dispatch = {
         "1":       lambda: process_book_phase1.delay(uid, book_id),
         "2":       lambda: process_book_phase2.delay(uid, book_id),
         "3":       lambda: process_book_phase3.delay(uid, book_id),
-        "4":      lambda: process_book_phase4.delay(uid, book_id),
-        "podcast": lambda: generate_podcast.delay(uid, book_id),
+        "4":       lambda: process_book_phase4.delay(uid, book_id),
+        "podcast": lambda: process_book_phase6.delay(uid, book_id),
     }
     fn = dispatch.get(first)
     if fn:

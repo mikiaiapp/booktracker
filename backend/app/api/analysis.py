@@ -213,8 +213,8 @@ async def trigger_podcast(
     if not book.phase3_done:
         raise HTTPException(400, "Phase 3/4 not complete")
 
-    from app.workers.tasks import generate_podcast
-    task = generate_podcast.delay(current_user.id, book_id)
+    from app.workers.tasks import process_book_phase6
+    task = process_book_phase6.delay(current_user.id, book_id)
     book.task_id = task.id
     book.status  = "generating_podcast"
     await db.commit()
