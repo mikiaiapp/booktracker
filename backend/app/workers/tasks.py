@@ -1,6 +1,5 @@
 import asyncio
 import os
-import traceback
 from sqlalchemy import select, delete, func
 from app.workers.celery_app import celery_app
 from app.core.database import get_user_db
@@ -24,28 +23,11 @@ async def _get_summaries_text(db, book_id):
     res = await db.execute(select(Chapter).where(Chapter.book_id == book_id, Chapter.summary_status == "done").order_by(Chapter.order))
     return "\n\n".join([f"[{c.title}]\n{c.summary}" for c in res.scalars().all() if c.summary])
 
-# --- TAREAS DE PROCESAMIENTO ---
-
-@celery_app.task(name="process_book_phase3")
-def process_book_phase3(user_id: str, book_id: str):
-    async def _p3():
-        async for db in get_user_db(user_id):
-            print(f">>> [FASE 3] Iniciando resúmenes de alta fidelidad...")
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
-            for ch in chaps:
-                if ch.summary_status == "done": continue
-                update_progress(user_id, book_id, "phase3", 50, f"Analizando: {ch.title}")
-                s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
-                ch.summary, ch.summary_status = s.get("summary"), "done"
-                ch.key_events = s.get("key_events", [])
-                await db.commit()
-            process_book_phase4.delay(user_id, book_id)
-    return run_async(_p3())
+# --- FASES ---
 
 @celery_app.task(name="process_book_phase4")
 def process_book_phase4(user_id: str, book_id: str):
-    """Fase 4: Análisis ambicioso de personajes, global y mapa mental."""
+    """Fase 4: El análisis definitivo y más ambicioso."""
     async def _p4():
         async for db in get_user_db(user_id):
             res = await db.execute(select(Book).where(Book.id == book_id))
@@ -56,13 +38,17 @@ def process_book_phase4(user_id: str, book_id: str):
             db.add(job)
             all_summaries = await _get_summaries_text(db, book_id)
             
-            # 1. PERSONAJES (Análisis Exhaustivo de TODOS)
-            update_progress(user_id, book_id, "phase4", 85, "Realizando estudio ambicioso de personajes...")
+            # 1. PERSONAJES (Análisis Ultra-Ampliando)
+            update_progress(user_id, book_id, "phase4", 85, "Realizando estudio enciclopédico de personajes...")
             await db.execute(delete(Character).where(Character.book_id == book_id))
             chars_data = await analyze_characters(all_summaries, book.title)
             
             for c in chars_data:
-                # Mapeo de campos asegurando que 'relationships' se guarde como texto rico
+                # CORRECCIÓN DE RELACIONES: Nos aseguramos de que sea una lista de strings
+                rel = c.get("relationships")
+                if isinstance(rel, str): rel = [rel] # Si la IA mandó string, lo metemos en lista
+                elif isinstance(rel, dict): rel = [f"{k}: {v}" for k, v in rel.items()] # Si mandó dict, lo formateamos
+                
                 db.add(Character(
                     book_id=book_id,
                     name=c.get("name"),
@@ -70,20 +56,19 @@ def process_book_phase4(user_id: str, book_id: str):
                     description=c.get("description"),
                     personality=c.get("personality"),
                     arc=c.get("arc"),
-                    relationships=str(c.get("relationships", "")) if isinstance(c.get("relationships"), (dict, list)) else c.get("relationships"),
+                    relationships=rel, # Ahora es una lista real de frases
                     key_moments=c.get("key_moments"),
                     quotes=c.get("quotes")
                 ))
             await db.commit()
-            print(f">>> [FASE 4] {len(chars_data)} personajes analizados y guardados.")
 
-            # 2. RESUMEN GLOBAL (Máximo detalle académico)
-            update_progress(user_id, book_id, "phase4", 90, "Redactando reseña académica global...")
+            # 2. RESUMEN GLOBAL (Ensayo magistral)
+            update_progress(user_id, book_id, "phase4", 90, "Redactando ensayo académico global...")
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
             await db.commit()
 
-            # 3. MAPA MENTAL (Muy detallado)
-            update_progress(user_id, book_id, "phase4", 95, "Estructurando mapa mental...")
+            # 3. MAPA MENTAL (Extenso)
+            update_progress(user_id, book_id, "phase4", 95, "Creando mapa mental...")
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
             
             book.phase3_done, book.status, job.status = True, "analyzed", "done"
@@ -93,7 +78,6 @@ def process_book_phase4(user_id: str, book_id: str):
 
 @celery_app.task(name="reanalyze_characters_task")
 def reanalyze_characters_task(user_id: str, book_id: str):
-    """Fuerza un reanálisis exhaustivo eliminando lo anterior."""
     async def _re():
         async for db in get_user_db(user_id):
             res = await db.execute(select(Book).where(Book.id == book_id))
@@ -115,22 +99,10 @@ def generate_podcast(user_id: str, book_id: str):
             if not book or not book.global_summary: return
             job = AnalysisJob(book_id=book_id, phase=5, status="running")
             db.add(job)
-            
             char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
             chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
-            
             script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
-            book.podcast_script = script
-            
-            from app.core.config import settings
-            audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
-            os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-            try:
-                await synthesize_podcast(script, audio_path)
-                book.podcast_audio_path = audio_path
-            except: pass
-            
-            book.status, job.status = "complete", "done"
+            book.podcast_script, book.status, job.status = script, "complete", "done"
             await db.commit()
             on_done(user_id, book_id)
     return run_async(_p5())
