@@ -79,13 +79,25 @@ function QueuePanel({ onClose, books }) {
   }
 
   const handleClearAll = async () => {
-    if (!window.confirm('¿Vaciar la cola y cancelar todos los procesos pendientes?')) return
+    if (!window.confirm('¿Parar todos los procesos en curso? Los libros quedarán en su último estado guardado.')) return
     setLoading(true)
     try {
-      const { data } = await queueAPI.clear()
-      toast.success(`Cola vaciada (${data.cancelled} libro${data.cancelled !== 1 ? 's' : ''})`)
+      // 1. Limpiar cola Redis (nuevo sistema)
+      await queueAPI.clear().catch(() => {})
+      // 2. Resetear estado de libros legacy en BD
+      const legacyBooks = books.filter(b =>
+        PROCESSING_STATUSES.includes(b.status) &&
+        b.id !== state?.active &&
+        !(state?.queue || []).some(e => e.book_id === b.id)
+      )
+      await Promise.all(legacyBooks.map(b =>
+        import('../utils/api').then(({ analysisAPI }) =>
+          analysisAPI.cancel(b.id).catch(() => {})
+        )
+      ))
+      toast.success('Procesos detenidos. Recarga la página en unos segundos.')
       await refresh()
-    } catch { toast.error('Error al vaciar la cola') }
+    } catch { toast.error('Error al parar los procesos') }
     finally { setLoading(false) }
   }
 
@@ -107,7 +119,16 @@ function QueuePanel({ onClose, books }) {
 
   const activeId  = state?.active
   const queueList = state?.queue || []
-  const isEmpty   = !activeId && queueList.length === 0
+
+  // Libros procesando en BD fuera de la cola Redis (sistema legacy)
+  const legacyCount = books.filter(b =>
+    PROCESSING_STATUSES.includes(b.status) &&
+    b.id !== activeId &&
+    !queueList.some(e => e.book_id === b.id)
+  ).length
+
+  const totalCount = (activeId ? 1 : 0) + queueList.length + legacyCount
+  const isEmpty = totalCount === 0
 
   return (
     <motion.div
@@ -123,31 +144,32 @@ function QueuePanel({ onClose, books }) {
           <Layers size={16} />
           <span>Cola de análisis</span>
           {!isEmpty && (
-            <span className="queue-count-badge">
-              {queueList.length + (activeId ? 1 : 0)}
-            </span>
+            <span className="queue-count-badge">{totalCount}</span>
           )}
         </div>
         <div className="queue-header-actions">
           {!isEmpty && (
             <>
-              <button
-                className={`queue-action-btn ${state?.paused ? 'resume' : 'pause'}`}
-                onClick={handlePause}
-                disabled={loading}
-                title={state?.paused ? 'Reanudar cola' : 'Pausar cola'}
-              >
-                {state?.paused ? <Play size={14} /> : <Pause size={14} />}
-                {state?.paused ? 'Reanudar' : 'Pausar'}
-              </button>
+              {/* Pausar/reanudar solo aplica a la cola Redis */}
+              {(activeId || queueList.length > 0) && (
+                <button
+                  className={`queue-action-btn ${state?.paused ? 'resume' : 'pause'}`}
+                  onClick={handlePause}
+                  disabled={loading}
+                  title={state?.paused ? 'Reanudar cola' : 'Pausar cola'}
+                >
+                  {state?.paused ? <Play size={14} /> : <Pause size={14} />}
+                  {state?.paused ? 'Reanudar' : 'Pausar'}
+                </button>
+              )}
               <button
                 className="queue-action-btn danger"
                 onClick={handleClearAll}
                 disabled={loading}
-                title="Vaciar toda la cola"
+                title="Parar y vaciar todos los procesos"
               >
                 <Trash2 size={14} />
-                Vaciar
+                Parar todo
               </button>
             </>
           )}
