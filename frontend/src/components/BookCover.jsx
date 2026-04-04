@@ -67,7 +67,7 @@ export default function BookCover({ src, alt, size = 60, title, isbn, author, fi
           const links = data.items?.[0]?.volumeInfo?.imageLinks
           if (links) {
             const url = (links.thumbnail || links.smallThumbnail || '')
-              .replace('zoom=1', 'zoom=2').replace('http://', 'https://')
+              .replace('zoom=2', 'zoom=1').replace('zoom=3', 'zoom=1').replace('http://', 'https://')
             if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}
@@ -81,7 +81,7 @@ export default function BookCover({ src, alt, size = 60, title, isbn, author, fi
           const links = data.items?.[0]?.volumeInfo?.imageLinks
           if (links) {
             const url = (links.thumbnail || links.smallThumbnail || '')
-              .replace('zoom=1', 'zoom=2').replace('http://', 'https://')
+              .replace('zoom=2', 'zoom=1').replace('zoom=3', 'zoom=1').replace('http://', 'https://')
             if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}

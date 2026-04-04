@@ -447,6 +447,7 @@ export default function BookPage() {
   const [tab, setTab] = useState('info')
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [coverPickerOpen, setCoverPickerOpen] = useState(false)
+  const [coverKey, setCoverKey] = useState(0) // fuerza re-render de BookCover tras cambio
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [audioPaused, setAudioPaused] = useState(false)
   const [audioEl, setAudioEl] = useState(null)
@@ -683,7 +684,7 @@ export default function BookPage() {
 
         <div className="hero-content">
           <div className="hero-cover" style={{ cursor: 'pointer', position: 'relative' }} onClick={() => setCoverPickerOpen(true)} title="Haz clic para cambiar la portada">
-            <HeroCover book={book} />
+            <HeroCover key={coverKey} book={book} />
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: '0.7rem', textAlign: 'center', padding: '4px 0', opacity: 0, transition: 'opacity 0.2s' }}
               className="cover-change-hint">
               ✏ Cambiar
@@ -923,11 +924,11 @@ export default function BookPage() {
           onSelect={async (url) => {
             try {
               const res = await booksAPI.updateCover(id, url)
-              // Actualizar inmediatamente en el estado local con los valores confirmados por el servidor
               setData(prev => prev ? {
                 ...prev,
                 book: { ...prev.book, cover_url: res.data.cover_url, cover_local: res.data.cover_local }
               } : prev)
+              setCoverKey(k => k + 1)
               toast.success('Portada actualizada')
               await load()
             } catch {
@@ -942,6 +943,7 @@ export default function BookPage() {
                 ...prev,
                 book: { ...prev.book, cover_local: res.data.cover_local, cover_url: null }
               } : prev)
+              setCoverKey(k => k + 1)
               toast.success('Portada actualizada')
               await load()
             } catch {
@@ -1060,7 +1062,7 @@ function HeroCover({ book }) {
           const links = d.items?.[0]?.volumeInfo?.imageLinks
           if (links) {
             const url = (links.extraLarge || links.large || links.thumbnail || '')
-              .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
+              .replace('zoom=2', 'zoom=1').replace('zoom=3', 'zoom=1').replace('http://', 'https://')
             if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}
@@ -1073,7 +1075,7 @@ function HeroCover({ book }) {
           const links = d.items?.[0]?.volumeInfo?.imageLinks
           if (links) {
             const url = (links.extraLarge || links.large || links.thumbnail || '')
-              .replace('zoom=1', 'zoom=3').replace('http://', 'https://')
+              .replace('zoom=2', 'zoom=1').replace('zoom=3', 'zoom=1').replace('http://', 'https://')
             if (url && !cancelled) { setFallback(url); return }
           }
         } catch {}

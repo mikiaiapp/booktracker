@@ -290,6 +290,7 @@ export default function LibraryPage() {
   const [search, setSearch]             = useState('')
   const [filter, setFilter]             = useState('all')
   const [coverPickerBook, setCoverPickerBook] = useState(null)
+  const [coverKeys, setCoverKeys]       = useState({}) // { [bookId]: timestamp } para forzar re-render de portada
   const [queueOpen, setQueueOpen]       = useState(false)
   const [analysisFilter, setAnalysisFilter] = useState('all')
   const [queueState, setQueueState]     = useState(null)
@@ -458,6 +459,7 @@ export default function LibraryPage() {
               <Link to={`/book/${book.id}`} className="book-card">
                 <div className={`book-cover ${book.status === 'shell' || book.status === 'shell_error' ? 'is-shell' : ''}`}>
                   <BookCover
+                    key={coverKeys[book.id] || book.id}
                     src={coverSrc(book)}
                     isbn={book.isbn}
                     title={book.title}
@@ -528,28 +530,32 @@ export default function LibraryPage() {
       <CoverPicker
         book={coverPickerBook}
         onSelect={async (url) => {
+          const bookId = coverPickerBook.id
           try {
-            const res = await booksAPI.updateCover(coverPickerBook.id, url)
+            const res = await booksAPI.updateCover(bookId, url)
             setBooks(prev => prev.map(b =>
-              b.id === coverPickerBook.id
+              b.id === bookId
                 ? { ...b, cover_url: res.data.cover_url, cover_local: res.data.cover_local }
                 : b
             ))
+            setCoverKeys(prev => ({ ...prev, [bookId]: Date.now() }))
             toast.success('Portada actualizada')
-            load()
+            await load()
           } catch { toast.error('Error al guardar la portada') }
           setCoverPickerBook(null)
         }}
         onUpload={async (file) => {
+          const bookId = coverPickerBook.id
           try {
-            const res = await booksAPI.uploadCover(coverPickerBook.id, file)
+            const res = await booksAPI.uploadCover(bookId, file)
             setBooks(prev => prev.map(b =>
-              b.id === coverPickerBook.id
+              b.id === bookId
                 ? { ...b, cover_local: res.data.cover_local, cover_url: null }
                 : b
             ))
+            setCoverKeys(prev => ({ ...prev, [bookId]: Date.now() }))
             toast.success('Portada actualizada')
-            load()
+            await load()
           } catch { toast.error('Error al subir la imagen') }
           setCoverPickerBook(null)
         }}

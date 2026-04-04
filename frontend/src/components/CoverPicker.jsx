@@ -9,33 +9,35 @@ import './CoverPicker.css'
 /** Extrae la mejor URL de imageLinks de Google Books */
 function gbBestCover(links) {
   for (const key of ['extraLarge', 'large', 'medium', 'small', 'thumbnail', 'smallThumbnail']) {
-    if (links[key]) return links[key].replace(/zoom=\d/, 'zoom=3').replace('http://', 'https://')
+    if (links[key]) return links[key].replace(/zoom=\d/, 'zoom=1').replace('http://', 'https://')
   }
   return null
 }
 
 async function searchCovers(title, author, isbn) {
   const seen = new Set()
-  const buckets = [] // array de arrays, para intercalar resultados de fuentes distintas
+  const buckets = []
 
   const collect = async (fn) => {
     try { return await fn() } catch { return [] }
   }
 
-  // ── Todas las búsquedas en paralelo ──────────────────────────────────────
   const [
     gbIsbn,
-    gbTitleAuthor,
-    gbTitleOnly,
-    gbAuthorOnly,
-    gbTitleEs,
+    gbTitleAuthorEs,
+    gbTitleAuthorEn,
+    gbTitleOnlyEs,
+    gbTitleOnlyEn,
+    gbAuthorEs,
+    gbAuthorEn,
+    gbIsbnEs,
     olIsbnL, olIsbnM,
     olTitleAuthor,
     olTitleOnly,
     olAuthorOnly,
   ] = await Promise.all([
 
-    // 1. Google Books — ISBN (máxima precisión)
+    // 1. Google Books — ISBN exacto
     collect(async () => {
       if (!isbn) return []
       const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&maxResults=10`)
@@ -43,66 +45,89 @@ async function searchCovers(title, author, isbn) {
       return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
     }),
 
-    // 2. Google Books — título + autor
+    // 2. Google Books — título + autor en español (máxima prioridad)
     collect(async () => {
       if (!title) return []
       const q = encodeURIComponent(author ? `intitle:${title} inauthor:${author}` : `intitle:${title}`)
-      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=20`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&langRestrict=es&country=ES&maxResults=40`)
       const d = await r.json()
       return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
     }),
 
-    // 3. Google Books — solo título (captura ediciones sin autor bien catalogado)
+    // 3. Google Books — título + autor sin restricción de idioma
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(author ? `intitle:${title} inauthor:${author}` : `intitle:${title}`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=40`)
+      const d = await r.json()
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
+
+    // 4. Google Books — solo título en español
     collect(async () => {
       if (!title) return []
       const q = encodeURIComponent(`intitle:${title}`)
-      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=20`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&langRestrict=es&country=ES&maxResults=40`)
       const d = await r.json()
       return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
     }),
 
-    // 4. Google Books — solo autor (trae toda su bibliografía con portadas)
+    // 5. Google Books — solo título sin restricción
+    collect(async () => {
+      if (!title) return []
+      const q = encodeURIComponent(`intitle:${title}`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=40`)
+      const d = await r.json()
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
+
+    // 6. Google Books — autor en español
     collect(async () => {
       if (!author) return []
       const q = encodeURIComponent(`inauthor:${author} intitle:${title || ''}`)
-      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=20`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&langRestrict=es&country=ES&maxResults=40`)
       const d = await r.json()
       return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
     }),
 
-    // 5. Google Books — búsqueda libre en español (langRestrict)
+    // 7. Google Books — autor sin restricción
     collect(async () => {
-      if (!title) return []
-      const q = encodeURIComponent(`${title} ${author || ''}`.trim())
-      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&langRestrict=es&maxResults=20`)
+      if (!author) return []
+      const q = encodeURIComponent(`inauthor:${author} intitle:${title || ''}`)
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=40`)
       const d = await r.json()
       return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
     }),
 
-    // 6. Open Library — ISBN tamaño L
+    // 8. Google Books — ISBN con langRestrict=es
+    collect(async () => {
+      if (!isbn) return []
+      const r = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}&langRestrict=es&country=ES&maxResults=10`)
+      const d = await r.json()
+      return (d.items || []).map(i => gbBestCover(i.volumeInfo?.imageLinks || {})).filter(Boolean)
+    }),
+
+    // 9. Open Library — ISBN tamaño L
     collect(async () => {
       if (!isbn) return []
       return [`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg`]
     }),
 
-    // 7. Open Library — ISBN tamaño M (distinta URL, puede funcionar cuando L falla)
+    // 10. Open Library — ISBN tamaño M
     collect(async () => {
       if (!isbn) return []
       return [`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`]
     }),
 
-    // 8. Open Library — búsqueda título + autor, extrae cover_i y work_id
+    // 11. Open Library — búsqueda título + autor con cover_i y work_id
     collect(async () => {
       if (!title) return []
       const q = encodeURIComponent(`${title} ${author || ''}`.trim())
-      const r = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=15&fields=cover_i,key`)
+      const r = await fetch(`https://openlibrary.org/search.json?q=${q}&limit=20&fields=cover_i,key`)
       const d = await r.json()
       const urls = []
       for (const doc of d.docs || []) {
-        if (doc.cover_i) {
-          urls.push(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
-        }
-        // Work covers (distintos de edition covers)
+        if (doc.cover_i) urls.push(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
         if (doc.key) {
           const workId = doc.key.replace('/works/', '')
           urls.push(`https://covers.openlibrary.org/b/works/${workId}-L.jpg`)
@@ -111,30 +136,33 @@ async function searchCovers(title, author, isbn) {
       return urls
     }),
 
-    // 9. Open Library — solo título
+    // 12. Open Library — solo título
     collect(async () => {
       if (!title) return []
       const q = encodeURIComponent(title)
-      const r = await fetch(`https://openlibrary.org/search.json?title=${q}&limit=10&fields=cover_i`)
+      const r = await fetch(`https://openlibrary.org/search.json?title=${q}&limit=20&fields=cover_i`)
       const d = await r.json()
       return (d.docs || []).filter(doc => doc.cover_i)
         .map(doc => `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
     }),
 
-    // 10. Open Library — solo autor
+    // 13. Open Library — solo autor
     collect(async () => {
       if (!author) return []
       const q = encodeURIComponent(author)
-      const r = await fetch(`https://openlibrary.org/search.json?author=${q}&q=${encodeURIComponent(title || '')}&limit=10&fields=cover_i`)
+      const r = await fetch(`https://openlibrary.org/search.json?author=${q}&q=${encodeURIComponent(title || '')}&limit=20&fields=cover_i`)
       const d = await r.json()
       return (d.docs || []).filter(doc => doc.cover_i)
         .map(doc => `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
     }),
   ])
 
-  // Intercalar resultados de todas las fuentes para mostrar variedad desde el inicio
-  buckets.push(gbIsbn, gbTitleAuthor, gbTitleEs, gbTitleOnly, gbAuthorOnly,
-               olIsbnL, olIsbnM, olTitleAuthor, olTitleOnly, olAuthorOnly)
+  // Intercalar priorizando fuentes en español
+  buckets.push(
+    gbIsbn, gbTitleAuthorEs, gbTitleOnlyEs, gbAuthorEs, gbIsbnEs,
+    gbTitleAuthorEn, gbTitleOnlyEn, gbAuthorEn,
+    olIsbnL, olIsbnM, olTitleAuthor, olTitleOnly, olAuthorOnly
+  )
 
   const results = []
   const maxLen = Math.max(...buckets.map(b => b.length))

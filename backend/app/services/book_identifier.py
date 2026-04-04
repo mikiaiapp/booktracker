@@ -135,24 +135,34 @@ Escribe en tercera persona, sin spoilers del final. No empieces con "En este lib
 
 
 async def _get_google_books_cover(client, title, author, isbn=None):
-    """Obtener portada de Google Books en buena resolución."""
+    """Obtener portada de Google Books en buena resolución, priorizando edición española."""
     try:
+        queries = []
         if isbn:
-            url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}&maxResults=1"
+            queries.append(f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}&maxResults=5&langRestrict=es&country=ES")
+            queries.append(f"https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}&maxResults=5")
         else:
             q = quote(f"{title} {author}".strip())
-            url = f"https://www.googleapis.com/books/v1/volumes?q={q}&maxResults=1"
-        r = await client.get(url)
-        items = r.json().get("items", [])
-        if not items:
-            return None
-        links = items[0].get("volumeInfo", {}).get("imageLinks", {})
-        for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
-            if links.get(key):
-                cover = links[key].replace("http://", "https://")
-                if "zoom=1" in cover:
-                    cover = cover.replace("zoom=1", "zoom=2")
-                return cover
+            queries.append(f"https://www.googleapis.com/books/v1/volumes?q={q}&maxResults=5&langRestrict=es&country=ES")
+            queries.append(f"https://www.googleapis.com/books/v1/volumes?q={q}&maxResults=5")
+
+        for url in queries:
+            r = await client.get(url)
+            items = r.json().get("items", [])
+            if not items:
+                continue
+            # Preferir resultado con idioma español
+            def score(item):
+                info = item.get("volumeInfo", {})
+                return (info.get("language") == "es") * 2 + bool(info.get("imageLinks"))
+            best = max(items, key=score)
+            links = best.get("volumeInfo", {}).get("imageLinks", {})
+            for key in ("extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail"):
+                if links.get(key):
+                    cover = links[key].replace("http://", "https://")
+                    # zoom=1 siempre disponible; zoom>1 suele dar 404
+                    cover = cover.replace("zoom=2", "zoom=1").replace("zoom=3", "zoom=1")
+                    return cover
     except Exception:
         pass
     return None
@@ -244,8 +254,7 @@ async def search_google_books(client: httpx.AsyncClient, query: str) -> dict:
             for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
                 if links.get(key):
                     cover = links[key].replace("http://", "https://")
-                    if "zoom=1" in cover:
-                        cover = cover.replace("zoom=1", "zoom=2")
+                    cover = cover.replace("zoom=2", "zoom=1").replace("zoom=3", "zoom=1")
                     result["cover_url"] = cover
                     break
         return result
@@ -576,8 +585,7 @@ async def get_author_bibliography(author_name: str) -> list:
             for key in ("large", "medium", "small", "thumbnail", "smallThumbnail"):
                 if links.get(key):
                     cover_url = links[key].replace("http://", "https://")
-                    if "zoom=1" in cover_url:
-                        cover_url = cover_url.replace("zoom=1", "zoom=2")
+                    cover_url = cover_url.replace("zoom=2", "zoom=1").replace("zoom=3", "zoom=1")
                     break
         if not cover_url and isbn:
             cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"
