@@ -174,6 +174,32 @@ async def summarize_single_chapter(
 
 # ── Fase 5: Podcast ────────────────────────────────────────────
 
+# ── Fase 5: Mapa Mental ───────────────────────────────────────
+
+@router.post("/{book_id}/phase5")
+async def trigger_phase5(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    if not book.phase2_done:
+        raise HTTPException(400, "Phase 2 not complete")
+
+    from app.workers.tasks import process_book_phase5
+    task = process_book_phase5.delay(current_user.id, book_id)
+    book.task_id   = task.id
+    book.status    = "summarizing"
+    book.error_msg = None
+    await db.commit()
+    return {"task_id": task.id}
+
+
+# ── Fase 6: Podcast ───────────────────────────────────────────
+
 @router.post("/{book_id}/podcast")
 async def trigger_podcast(
     book_id: str,
@@ -227,6 +253,7 @@ async def get_status(
         "phase3_done":          book.phase3_done,
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary),
+        "has_mindmap":          bool(book.mindmap_data),
         "podcast_done":         book.status == "complete" and bool(book.podcast_script),
         "error_msg":            book.error_msg,
         "chapters_total":       total_ch,

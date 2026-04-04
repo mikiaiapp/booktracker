@@ -25,10 +25,13 @@ const STATUS_LABELS = {
 const PHASE_LABELS = {
   queued:   'En cola',
   starting: 'Iniciando…',
-  phase1:   'Identificando',
-  phase2:   'Estructura',
-  phase3:   'Resumiendo',
-  phase3b:  'Análisis final',
+  phase1:   'Ficha y autor',
+  phase2:   'Capítulos',
+  phase3:   'Personajes',
+  phase4:   'Resumen global',
+  phase5:   'Mapa mental',
+  phase6:   'Podcast',
+  phase3b:  'Análisis final', // legacy
   podcast:  'Podcast',
 }
 

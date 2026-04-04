@@ -496,8 +496,9 @@ export default function BookPage() {
       if (phase === 1) await analysisAPI.triggerPhase1(id)
       else if (phase === 2) await analysisAPI.triggerPhase2(id)
       else if (phase === 3) await analysisAPI.triggerPhase3(id)
-      else if (phase === '3b') await analysisAPI.triggerPhase3b(id)
-      else if (phase === 'podcast') await analysisAPI.triggerPodcast(id)
+      else if (phase === 4) await analysisAPI.triggerPhase4(id)
+      else if (phase === 5) await analysisAPI.triggerPhase5(id)
+      else if (phase === 6) await analysisAPI.triggerPodcast(id)
       toast.success('Proceso iniciado')
       setTimeout(load, 600)
     } catch (err) {
@@ -772,7 +773,7 @@ export default function BookPage() {
               ))}
             </div>
 
-            {status?.phase3_done && (
+            {status?.has_global_summary && (
               <button className="export-pdf-btn" onClick={exportToPDF} title="Exportar análisis completo">
                 <FileText size={16} />
                 Genera PDF del análisis
@@ -822,8 +823,8 @@ export default function BookPage() {
                 (isShell && t.id !== 'info') ||
                 (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary' && !status?.phase3_done) ||
-                (t.id === 'mindmap' && !status?.phase3_done) ||
+                (t.id === 'summary' && !status?.has_global_summary) ||
+                (t.id === 'mindmap' && !status?.has_mindmap) ||
                 (t.id === 'podcast' && !book.podcast_audio_path)
                 // 'analysis' siempre habilitado
               }
@@ -840,8 +841,8 @@ export default function BookPage() {
               const disabled = (isShell && t.id !== 'info' && t.id !== 'analysis') ||
                 (t.id === 'chapters' && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary' && !status?.phase3_done) ||
-                (t.id === 'mindmap' && !status?.phase3_done) ||
+                (t.id === 'summary' && !status?.has_global_summary) ||
+                (t.id === 'mindmap' && !status?.has_mindmap) ||
                 (t.id === 'podcast' && !book.podcast_audio_path)
               const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗',analysis:'⚙️'}[t.id]||'•'
               return <option key={t.id} value={t.id} disabled={disabled}>{icon} {t.label}</option>
@@ -938,11 +939,12 @@ export default function BookPage() {
 function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = {} }) {
   if (!status) return null
   const steps = [
-    { label: 'Fase 1: Identificación', sublabel: 'Ficha, sinopsis, autor', done: status.phase1_done, trigger: () => onTrigger(1), canTrigger: true },
-    { label: 'Fase 2: Estructura', sublabel: 'Capítulos', done: status.phase2_done, trigger: () => onTrigger(2), canTrigger: status.phase1_done },
-    { label: 'Fase 3: Resúmenes', sublabel: 'Resumen de cada capítulo', done: status.chapters_summarized || status.phase3_done, trigger: () => onTrigger(3), canTrigger: status.phase2_done, resumable: status.phase2_done && !status.phase3_done && status.chapters_done > 0 },
-    { label: 'Fase 4: Análisis IA', sublabel: 'Personajes, resumen global, mapa mental', done: status.phase3_done, trigger: () => onTrigger('3b'), canTrigger: status.chapters_summarized || status.phase3_done },
-    { label: 'Fase 5: Podcast', sublabel: 'Guión y audio', done: status.podcast_done, trigger: () => onTrigger('podcast'), canTrigger: status.phase3_done },
+    { label: 'Fase 1: Ficha y Autor',        sublabel: 'Identificación, sinopsis, autor',     done: status.phase1_done,        trigger: () => onTrigger(1), canTrigger: true },
+    { label: 'Fase 2: Capítulos',             sublabel: 'Estructura y resúmenes individuales', done: status.phase2_done,        trigger: () => onTrigger(2), canTrigger: status.phase1_done },
+    { label: 'Fase 3: Personajes',            sublabel: 'Análisis profundo uno a uno',         done: status.phase3_done,        trigger: () => onTrigger(3), canTrigger: status.phase2_done },
+    { label: 'Fase 4: Resumen Global',        sublabel: 'Ensayo global del libro',             done: status.has_global_summary, trigger: () => onTrigger(4), canTrigger: status.phase3_done },
+    { label: 'Fase 5: Mapa Mental',           sublabel: 'Estructura visual de ideas',          done: status.has_mindmap,        trigger: () => onTrigger(5), canTrigger: status.has_global_summary },
+    { label: 'Fase 6: Podcast',               sublabel: 'Guión y audio sincronizado',          done: status.podcast_done,       trigger: () => onTrigger(6), canTrigger: status.has_mindmap },
   ]
 
   return (
