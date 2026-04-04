@@ -630,8 +630,14 @@ async def _phase4(user_id: str, book_id: str):
                 await db.execute(delete(Character).where(Character.book_id == book_id))
                 await db.commit()
 
-                update_progress(user_id, book_id, "phase4", 83, "Analizando personajes...")
-                characters_data = await analyze_characters(all_summaries, book.title)
+                # Callback de progreso para las dos pasadas de personajes
+                def _char_progress(msg: str):
+                    update_progress(user_id, book_id, "phase4", 84, msg)
+
+                update_progress(user_id, book_id, "phase4", 83, "Personajes: protagonistas (1/2)...")
+                characters_data = await analyze_characters(
+                    all_summaries, book.title, on_progress=_char_progress
+                )
                 for char_data in characters_data:
                     char = Character(book_id=book_id, name=char_data["name"])
                     db.add(char)
@@ -1075,7 +1081,10 @@ async def _reanalyze_characters(user_id: str, book_id: str):
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
 
-            characters_data = await analyze_characters(all_summaries, book.title)
+            from app.workers.queue_manager import update_progress
+            def _char_progress(msg: str):
+                update_progress(user_id, book_id, "phase4", 84, msg)
+            characters_data = await analyze_characters(all_summaries, book.title, on_progress=_char_progress)
             for char_data in characters_data:
                 char = Character(book_id=book_id, name=char_data["name"])
                 db.add(char)

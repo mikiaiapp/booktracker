@@ -282,12 +282,13 @@ JSON requerido:
 
 # ── Analisis de personajes ────────────────────────────────────────────────────
 
-async def analyze_characters(all_summaries: str, book_title: str) -> list:
+async def analyze_characters(all_summaries: str, book_title: str, on_progress=None) -> list:
     """
     Analisis en dos pasadas para cubrir todos los personajes sin truncar:
       Pasada 1: protagonistas y antagonistas — analisis detallado
       Pasada 2: personajes secundarios y menores — analisis conciso
     Cada pasada usa 6000 tokens para acomodar listas amplias.
+    on_progress: callable(msg: str) opcional para actualizar progreso entre pasadas.
     """
     import asyncio as _asyncio
 
@@ -367,6 +368,8 @@ IMPORTANTE: Empieza directamente con [ sin ningun texto previo."""
     await _asyncio.sleep(4)
 
     # Pasada 2 — secundarios/menores
+    if on_progress:
+        on_progress("Personajes: secundarios y menores (2/2)...")
     chars_secondary = []
     raw2 = ""
     print(f"[characters] Pasada 2 — secundarios/menores de '{book_title}'")
