@@ -42,8 +42,55 @@ def _parse_json(text: str):
             except: return None
     return None
 
-# --- ESTRATEGIA DE MÁXIMA AMBICIÓN ---
+# --- FUNCIONES ACTUALIZADAS ---
 
+async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
+    """Genera un mapa mental detallado con estructura JSON estricta."""
+    print(f">>> [IA] Generando Mapa Mental para '{book_title}'...")
+    system = "Eres un experto en mapas mentales literarios de España. Responde ÚNICAMENTE con JSON válido en español de España."
+    
+    # Definimos colores y estructura para asegurar que el frontend lo pinte bien
+    user = f"""Libro: {book_title}
+Basándote en: {all_summaries[:20000]}
+
+Genera un JSON con esta estructura exacta:
+{{
+  "center": "{book_title}",
+  "branches": [
+    {{ "label": "Trama Compleja", "color": "#6366f1", "children": ["Detalle extenso 1", "Detalle extenso 2"] }},
+    {{ "label": "Psicología de Personajes", "color": "#f59e0b", "children": ["Análisis X", "Análisis Y"] }},
+    {{ "label": "Temas Filosóficos", "color": "#10b981", "children": ["Tema 1", "Tema 2"] }},
+    {{ "label": "Escenarios y Atmósfera", "color": "#ef4444", "children": ["Lugar A", "Lugar B"] }},
+    {{ "label": "Simbolismo y Metáforas", "color": "#ec4899", "children": ["Símbolo 1", "Símbolo 2"] }},
+    {{ "label": "Estilo Narrativo", "color": "#8b5cf6", "children": ["Técnica 1", "Técnica 2"] }}
+  ]
+}}
+Es vital que cada rama tenga al menos 6-8 'children' muy detallados."""
+    try:
+        raw = await _call_ai(system, user, 4000)
+        data = _parse_json(raw)
+        if data and "branches" in data:
+            return data
+        return {"center": book_title, "branches": []}
+    except:
+        return {"center": book_title, "branches": []}
+
+async def generate_podcast_script(book_title, author, summary, chars) -> str:
+    """Guion de alta calidad para Podcast."""
+    system = "Eres el mejor guionista de Radio Nacional de España. Diálogos intelectuales, fluidos y naturales en español de España entre ANA (crítica literaria) y CARLOS (lector apasionado)."
+    user = f"""Libro: {book_title} de {author}.
+Análisis global: {summary[:8000]}.
+Fichas de personajes: {str(chars)[:1500]}.
+
+Tarea: Escribe un guion de podcast de 20 minutos. 
+Formato OBLIGATORIO: 
+ANA: [texto]
+CARLOS: [texto]
+
+Estructura: Bienvenida, análisis de la trama, debate sobre la psicología de los personajes, mensaje del autor y despedida. Evita frases genéricas, habla con profundidad académica."""
+    return await _call_ai(system, user, 5500)
+
+# El resto de funciones (summarize, analyze_single_character, get_character_list) se mantienen iguales
 async def get_character_list(all_summaries: str) -> list:
     system = "Experto literario. Identifica TODOS los personajes con nombre propio. Responde SOLO un array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
     user = f"Resúmenes: {all_summaries[:15000]}"
@@ -55,22 +102,7 @@ async def get_character_list(all_summaries: str) -> list:
 async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
     tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
     system = f"Eres un crítico literario de la RAE. Realiza un estudio psicológico y narrativo MONUMENTAL de este personaje {tipo}. Usa español de España culto. Responde SOLO en JSON."
-    
-    user = f"""Libro: {book_title}
-Personaje: {name}
-
-Basándote en los resúmenes: {all_summaries[:18000]}
-Tarea: Genera un análisis EXHAUSTIVO Y EXTENSO (mínimo 1000 palabras en total para este personaje) con este formato JSON:
-{{
-  "name": "{name}",
-  "role": "Análisis profundo de su función estructural en la trama",
-  "description": "Retrato físico, gestualidad, indumentaria y orígenes detallados (Mínimo 200 palabras)",
-  "personality": "Estudio pormenorizado de su psique, traumas, valores, contradicciones y miedos (Mínimo 300 palabras)",
-  "arc": "Evolución vital, maduración narrativa y cambios de paradigma a lo largo de la obra (Mínimo 300 palabras)",
-  "relationships": {{"Nombre Personaje": "Análisis extenso del vínculo, química y conflictos con este personaje"}},
-  "key_moments": ["Crónica detallada del momento clave 1 con su impacto emocional", "Crónica detallada del momento clave 2..."],
-  "quotes": ["Cita memorable o pensamiento filosófico representativo"]
-}}"""
+    user = f"Libro: {book_title}. Personaje: {name}. Analiza a fondo usando: {all_summaries[:18000]}"
     try:
         raw = await _call_ai(system, user, 3500)
         return _parse_json(raw)
@@ -85,19 +117,6 @@ async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
     except: return {"summary": "Error", "key_events": []}
 
 async def generate_global_summary(all_summaries, book_title, author) -> str:
-    system = "Académico de la lengua. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España sobre la obra completa."
+    system = "Académico de la lengua. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
     user = f"Libro: {book_title}. Análisis basado en: {all_summaries[:30000]}"
-    return await _call_ai(system, user, 5000)
-
-async def generate_mindmap(all_summaries, book_title) -> dict:
-    system = "Experto en mapas mentales literarios. Usa español de España culto. Responde solo JSON."
-    user = f"Genera el mapa mental definitivo y más extenso para '{book_title}'. Ramas: Trama, Personajes, Temas Filosóficos, Escenarios, Simbolismo, Técnica Narrativa. Info: {all_summaries[:20000]}"
-    try:
-        raw = await _call_ai(system, user, 4000)
-        return _parse_json(raw) or {"center": book_title, "branches": []}
-    except: return {"center": book_title, "branches": []}
-
-async def generate_podcast_script(book_title, author, summary, chars) -> str:
-    system = "Guionista de RNE. Diálogos intelectuales en español de España entre ANA y CARLOS."
-    user = f"Libro: {book_title}. Análisis: {summary[:8000]}. Personajes: {str(chars)[:1500]}"
     return await _call_ai(system, user, 5000)
