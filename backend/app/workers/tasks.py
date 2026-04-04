@@ -27,9 +27,10 @@ async def _get_summaries_text(db, book_id):
 
 @celery_app.task(name="process_book_phase4")
 def process_book_phase4(user_id: str, book_id: str):
-    """Fase 4: El análisis definitivo y más ambicioso."""
+    """Fase 4: FORZAR análisis. Limpia datos anteriores siempre."""
     async def _p4():
         async for db in get_user_db(user_id):
+            print(f">>> [FASE 4] Forzando ejecución completa para {book_id}")
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
             if not book: return
@@ -38,17 +39,18 @@ def process_book_phase4(user_id: str, book_id: str):
             db.add(job)
             all_summaries = await _get_summaries_text(db, book_id)
             
-            # 1. PERSONAJES (Análisis Ultra-Ampliando)
-            update_progress(user_id, book_id, "phase4", 85, "Realizando estudio enciclopédico de personajes...")
+            # 1. PERSONAJES (LIMPIAR SIEMPRE)
+            update_progress(user_id, book_id, "phase4", 85, "Analizando personajes...")
             await db.execute(delete(Character).where(Character.book_id == book_id))
             chars_data = await analyze_characters(all_summaries, book.title)
             
             for c in chars_data:
-                # CORRECCIÓN DE RELACIONES: Nos aseguramos de que sea una lista de strings
-                rel = c.get("relationships")
-                if isinstance(rel, str): rel = [rel] # Si la IA mandó string, lo metemos en lista
-                elif isinstance(rel, dict): rel = [f"{k}: {v}" for k, v in rel.items()] # Si mandó dict, lo formateamos
-                
+                # NORMALIZACIÓN CRÍTICA PARA EVITAR PANTALLA EN BLANCO
+                # Nos aseguramos de que relaciones sea un dict y el resto listas
+                rel = c.get("relationships") if isinstance(c.get("relationships"), dict) else {}
+                moments = c.get("key_moments") if isinstance(c.get("key_moments"), list) else []
+                quotes = c.get("quotes") if isinstance(c.get("quotes"), list) else []
+
                 db.add(Character(
                     book_id=book_id,
                     name=c.get("name"),
@@ -56,30 +58,31 @@ def process_book_phase4(user_id: str, book_id: str):
                     description=c.get("description"),
                     personality=c.get("personality"),
                     arc=c.get("arc"),
-                    relationships=rel, # Ahora es una lista real de frases
-                    key_moments=c.get("key_moments"),
-                    quotes=c.get("quotes")
+                    relationships=rel,
+                    key_moments=moments,
+                    quotes=quotes
                 ))
             await db.commit()
 
-            # 2. RESUMEN GLOBAL (Ensayo magistral)
-            update_progress(user_id, book_id, "phase4", 90, "Redactando ensayo académico global...")
+            # 2. RESUMEN GLOBAL
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
             await db.commit()
 
-            # 3. MAPA MENTAL (Extenso)
-            update_progress(user_id, book_id, "phase4", 95, "Creando mapa mental...")
+            # 3. MAPA MENTAL
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
             
             book.phase3_done, book.status, job.status = True, "analyzed", "done"
             await db.commit()
+            print(">>> [FASE 4] Éxito. Lanzando Podcast.")
             generate_podcast.delay(user_id, book_id)
     return run_async(_p4())
 
 @celery_app.task(name="reanalyze_characters_task")
 def reanalyze_characters_task(user_id: str, book_id: str):
+    """Botón específico de reanalizar personajes."""
     async def _re():
         async for db in get_user_db(user_id):
+            print(f">>> [REANALIZAR] Personajes de {book_id}")
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
             if not book: return
@@ -87,10 +90,23 @@ def reanalyze_characters_task(user_id: str, book_id: str):
             await db.execute(delete(Character).where(Character.book_id == book_id))
             chars = await analyze_characters(all_summaries, book.title)
             for c in chars:
-                db.add(Character(book_id=book_id, **{k:v for k,v in c.items() if hasattr(Character, k)}))
+                # Normalización de seguridad
+                rel = c.get("relationships") if isinstance(c.get("relationships"), dict) else {}
+                db.add(Character(
+                    book_id=book_id,
+                    name=c.get("name"),
+                    role=c.get("role"),
+                    description=c.get("description"),
+                    personality=c.get("personality"),
+                    arc=c.get("arc"),
+                    relationships=rel,
+                    key_moments=c.get("key_moments", []),
+                    quotes=c.get("quotes", [])
+                ))
             await db.commit()
     return run_async(_re())
 
+# Mantener generate_podcast y fetch_shell_metadata igual que en la anterior
 @celery_app.task(name="generate_podcast")
 def generate_podcast(user_id: str, book_id: str):
     async def _p5():

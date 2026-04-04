@@ -42,31 +42,27 @@ def _parse_json(text: str):
             except: return None
     return None
 
-# --- ANALISIS AMBICIOSO ---
-
 async def analyze_characters(all_summaries: str, book_title: str) -> list:
-    """Análisis masivo y ultra-detallado de TODOS los personajes."""
-    print(f">>> [IA] Iniciando análisis enciclopédico de personajes para '{book_title}'...")
-    system = "Eres un académico de la RAE y el crítico literario más prestigioso de España. Tu análisis debe ser extenso, erudito y de una ambición literaria máxima. Usa español de España culto (castellano)."
+    """Análisis enciclopédico de personajes. Forzamos estructura de listas para no romper el frontend."""
+    print(f">>> [IA] Análisis AMBICIOSO de personajes para '{book_title}'...")
+    system = "Eres un académico de la RAE. Análisis literario profundo y extenso. Responde SOLO con un array JSON. Usa español de España culto."
     ctx = all_summaries[:20000]
 
-    # Esquema para personajes principales (Máximo detalle)
-    schema_full = """{
-      "name": "Nombre completo y títulos",
-      "role": "Análisis detallado del rol narrativo",
-      "description": "Retrato físico, vestimenta y presencia (mínimo 100 palabras)",
-      "personality": "Estudio psicológico profundo, miedos, virtudes y contradicciones (mínimo 150 palabras)",
-      "arc": "Evolución pormenorizada y transformación vital en la obra (mínimo 150 palabras)",
-      "relationships": ["Relación detallada con X: (mínimo 3 frases)", "Relación detallada con Y: ..."],
-      "key_moments": ["Crónica extensa del momento clave 1", "Crónica extensa del momento clave 2"],
-      "quotes": ["Cita memorable 1 con contexto", "Cita memorable 2"]
+    # Esquema estricto: relationships, key_moments y quotes DEBEN ser listas de strings.
+    schema = """{
+      "name": "Nombre completo",
+      "role": "Rol detallado",
+      "description": "Retrato físico y orígenes (mínimo 100 palabras)",
+      "personality": "Psicología y miedos (mínimo 150 palabras)",
+      "arc": "Evolución vital (mínimo 150 palabras)",
+      "relationships": {"Nombre Personaje": "Descripción detallada del vínculo y tensiones (mínimo 3 frases)"},
+      "key_moments": ["Momento 1 detallado...", "Momento 2 detallado..."],
+      "quotes": ["Cita 1...", "Cita 2..."]
     }"""
 
-    # PASADA 1: Protagonistas y Antagonistas
-    p1 = f"Libro: {book_title}. Realiza un estudio psicológico magistral de TODOS los PROTAGONISTAS y ANTAGONISTAS. Es obligatorio que no omitas a ninguno. Usa este esquema: {schema_full}\nInfo: {ctx}"
-    
-    # PASADA 2: Secundarios y Menores
-    p2 = f"Libro: {book_title}. Analiza de forma EXTENSA a TODOS los personajes SECUNDARIOS y menores que aparezcan. No te dejes a ninguno fuera. Usa este esquema (pero adaptado a secundarios): {schema_full}\nInfo: {ctx}"
+    # Hacemos 2 pasadas para no saturar y asegurar que salgan TODOS
+    p1 = f"Libro: {book_title}. Analiza PROTAGONISTAS y ANTAGONISTAS con máximo detalle: {schema}\nInfo: {ctx}"
+    p2 = f"Libro: {book_title}. Analiza TODOS los personajes SECUNDARIOS con detalle académico: {schema}\nInfo: {ctx}"
 
     async def _safe_call(prompt, tokens):
         try:
@@ -74,7 +70,6 @@ async def analyze_characters(all_summaries: str, book_title: str) -> list:
             return _parse_json(raw) or []
         except: return []
 
-    # Llamadas independientes para evitar saturación de tokens
     principales = await _safe_call(p1, 6500)
     await asyncio.sleep(5)
     secundarios = await _safe_call(p2, 6000)
@@ -89,9 +84,10 @@ async def analyze_characters(all_summaries: str, book_title: str) -> list:
                 combined.append(c)
     return combined
 
+# Mantener el resto de funciones (summarize_chapter, generate_global_summary, etc.) igual que en la versión anterior
 async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
     system = "Experto literario de España. Responde en español de España culto solo en JSON."
-    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Resume con maestría: {text[:9000]}"
+    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Resumen magistral: {text[:9000]}"
     try:
         raw = await _call_ai(system, user, 1800)
         return _parse_json(raw) or {"summary": raw, "key_events": []}
