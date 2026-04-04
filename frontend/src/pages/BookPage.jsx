@@ -937,16 +937,20 @@ export default function BookPage() {
             setCoverPickerOpen(false)
           }}
           onUpload={async (file) => {
+            // Crear preview local ANTES de subir — evita depender del timing de nginx
+            const previewUrl = URL.createObjectURL(file)
             try {
               const res = await booksAPI.uploadCover(id, file)
               setData(prev => prev ? {
                 ...prev,
-                book: { ...prev.book, cover_local: res.data.cover_local, cover_url: null }
+                book: { ...prev.book, cover_local: res.data.cover_local, cover_url: previewUrl }
               } : prev)
               setCoverKey(k => k + 1)
               toast.success('Portada actualizada')
-              await load()
+              await load()                      // tras load(), cover_url del server reemplaza el blob
+              URL.revokeObjectURL(previewUrl)   // liberar memoria
             } catch {
+              URL.revokeObjectURL(previewUrl)
               toast.error('Error al subir la imagen')
             }
             setCoverPickerOpen(false)

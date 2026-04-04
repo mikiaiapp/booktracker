@@ -21,9 +21,15 @@
 import React from 'react'
 import { BookOpen } from 'lucide-react'
 
-/** Convierte la ruta absoluta del servidor en URL servible por nginx */
+/** Convierte la ruta absoluta del servidor en URL servible por nginx.
+ *  Las blob: o data: URLs son previsualizaciones temporales — tienen prioridad máxima. */
 export function coverSrc(book) {
   if (!book) return null
+  // Blob/data URLs = previsualización local inmediata tras subida; usar con prioridad absoluta
+  if (book.cover_url &&
+      (book.cover_url.startsWith('blob:') || book.cover_url.startsWith('data:'))) {
+    return book.cover_url
+  }
   if (book.cover_local) {
     const parts = book.cover_local.split('/covers/')
     if (parts.length >= 2) return `/data/covers/${parts[parts.length - 1]}`

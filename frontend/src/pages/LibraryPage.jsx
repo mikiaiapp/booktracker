@@ -546,17 +546,22 @@ export default function LibraryPage() {
         }}
         onUpload={async (file) => {
           const bookId = coverPickerBook.id
+          const previewUrl = URL.createObjectURL(file)
           try {
             const res = await booksAPI.uploadCover(bookId, file)
             setBooks(prev => prev.map(b =>
               b.id === bookId
-                ? { ...b, cover_local: res.data.cover_local, cover_url: null }
+                ? { ...b, cover_local: res.data.cover_local, cover_url: previewUrl }
                 : b
             ))
             setCoverKeys(prev => ({ ...prev, [bookId]: Date.now() }))
             toast.success('Portada actualizada')
             await load()
-          } catch { toast.error('Error al subir la imagen') }
+            URL.revokeObjectURL(previewUrl)
+          } catch {
+            URL.revokeObjectURL(previewUrl)
+            toast.error('Error al subir la imagen')
+          }
           setCoverPickerBook(null)
         }}
         onClose={() => setCoverPickerBook(null)}
