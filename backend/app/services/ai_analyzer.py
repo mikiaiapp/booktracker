@@ -34,8 +34,16 @@ def _parse_json(text: str):
             except: return None
     return None
 
+async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
+    system = "Erudito literario de España. Responde en español de España culto (Castellano). JSON obligatorio."
+    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Resume magistralmente: {text[:9000]}"
+    try:
+        raw = await _call_ai(system, user, 2000)
+        return _parse_json(raw) or {"summary": raw, "key_events": []}
+    except: return {"summary": "Error", "key_events": []}
+
 async def get_character_list(all_summaries: str) -> list:
-    system = "Experto literario. Identifica TODOS los personajes con nombre propio. Responde SOLO un array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
+    system = "Experto literario de España. Identifica TODOS los personajes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
     user = f"Resúmenes: {all_summaries[:15000]}"
     try:
         raw = await _call_ai(system, user, 1000)
@@ -44,29 +52,21 @@ async def get_character_list(all_summaries: str) -> list:
 
 async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
     tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
-    system = f"Eres un crítico literario de la RAE de España. Realiza un estudio psicológico y narrativo MONUMENTAL de este personaje {tipo}. Usa español de España culto. Responde SOLO en JSON."
-    user = f"Libro: {book_title}. Personaje: {name}. Analiza a fondo usando resúmenes: {all_summaries[:18000]}"
+    system = f"Eres un crítico literario de la RAE. Realiza un estudio psicológico MONUMENTAL de este personaje {tipo}. Usa castellano culto de España. Responde SOLO en JSON."
+    user = f"""Libro: {book_title}. Personaje: {name}. Analiza con ambición máxima usando resúmenes: {all_summaries[:18000]}"""
     try:
         raw = await _call_ai(system, user, 3500)
         return _parse_json(raw)
     except: return None
 
-async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
-    system = "Experto literario de España. Responde en español de España culto solo en JSON."
-    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Resume: {text[:9000]}"
-    try:
-        raw = await _call_ai(system, user, 1800)
-        return _parse_json(raw) or {"summary": raw, "key_events": []}
-    except: return {"summary": "Error", "key_events": []}
-
-async def generate_global_summary(all_summaries, book_title, author) -> str:
-    system = "Académico de la lengua de España. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
-    user = f"Libro: {book_title}. Análisis basado en: {all_summaries[:30000]}"
+async def generate_global_summary(all_summaries: str, book_title: str, author: str) -> str:
+    system = "Académico de la lengua española. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
+    user = f"Libro: {book_title} de {author}. Análisis basado en: {all_summaries[:30000]}"
     return await _call_ai(system, user, 5000)
 
-async def generate_mindmap(all_summaries, book_title) -> dict:
-    system = "Experto en mapas mentales literarios. Usa español de España culto. Responde solo JSON."
-    user = f"Genera el mapa mental definitivo y más extenso para '{book_title}'. Ramas: Trama, Personajes, Temas Filosóficos, Escenarios, Simbolismo, Técnica Narrativa. Info: {all_summaries[:20000]}"
+async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
+    system = "Experto en mapas mentales literarios de España. Responde solo JSON."
+    user = f"Mapa mental extensísimo para '{book_title}'. Info: {all_summaries[:20000]}"
     try:
         raw = await _call_ai(system, user, 4000)
         return _parse_json(raw) or {"center": book_title, "branches": []}
