@@ -35,6 +35,11 @@ const PHASE_LABELS = {
 const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
 const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
 
+const ANALYSIS_FILTERS = ['all', 'analyzed', 'processing', 'pending']
+const ANALYSIS_LABELS  = { all: 'Todos', analyzed: 'Analizados', processing: 'Procesando', pending: 'Sin procesar' }
+const ANALYZED_STATUSES    = ['complete', 'analyzed']
+const PROC_STATUSES        = ['queued', 'identifying', 'analyzed_structure', 'analyzing_structure', 'summarizing', 'generating_podcast', 'uploaded', 'identified', 'structured']
+
 // ── Componente barra de progreso compacta ─────────────────────
 function MiniProgress({ pct, phase }) {
   return (
@@ -286,6 +291,7 @@ export default function LibraryPage() {
   const [filter, setFilter]             = useState('all')
   const [coverPickerBook, setCoverPickerBook] = useState(null)
   const [queueOpen, setQueueOpen]       = useState(false)
+  const [analysisFilter, setAnalysisFilter] = useState('all')
   const [queueState, setQueueState]     = useState(null)
   const queueIntervalRef                = useRef(null)
 
@@ -332,14 +338,25 @@ export default function LibraryPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const filtered = books
-    .filter(b => b.status !== 'shell' && b.status !== 'shell_error')
+  const nonShellBooks = books.filter(b => b.status !== 'shell' && b.status !== 'shell_error')
+
+  // ¿Hay algún libro que no esté completamente analizado? → mostrar filtro de análisis
+  const hasNonAnalyzed = nonShellBooks.some(b => !ANALYZED_STATUSES.includes(b.status))
+
+  const filtered = nonShellBooks
     .filter(b => filter === 'all' || b.read_status === filter)
+    .filter(b => {
+      if (analysisFilter === 'all') return true
+      if (analysisFilter === 'analyzed')  return ANALYZED_STATUSES.includes(b.status)
+      if (analysisFilter === 'processing') return PROC_STATUSES.includes(b.status)
+      if (analysisFilter === 'pending')   return !ANALYZED_STATUSES.includes(b.status) && !PROC_STATUSES.includes(b.status)
+      return true
+    })
     .filter(b => !search ||
       b.title.toLowerCase().includes(search.toLowerCase()) ||
       b.author?.toLowerCase().includes(search.toLowerCase()))
 
-  const totalReal = books.filter(b => b.status !== 'shell' && b.status !== 'shell_error').length
+  const totalReal = nonShellBooks.length
 
   return (
     <>
@@ -384,6 +401,33 @@ export default function LibraryPage() {
           ))}
         </div>
       </div>
+
+      {/* Segunda fila: filtro de estado de análisis — solo si hay libros sin analizar */}
+      {hasNonAnalyzed && (
+        <div className="analysis-filter-row">
+          <span className="analysis-filter-label">Análisis</span>
+          <div className="filter-tabs analysis-tabs">
+            {ANALYSIS_FILTERS.map(f => {
+              // Contar cuántos libros hay en cada estado para el badge
+              const count = f === 'all' ? nonShellBooks.length
+                : f === 'analyzed'   ? nonShellBooks.filter(b => ANALYZED_STATUSES.includes(b.status)).length
+                : f === 'processing' ? nonShellBooks.filter(b => PROC_STATUSES.includes(b.status)).length
+                : nonShellBooks.filter(b => !ANALYZED_STATUSES.includes(b.status) && !PROC_STATUSES.includes(b.status)).length
+              if (f !== 'all' && count === 0) return null
+              return (
+                <button
+                  key={f}
+                  className={`filter-tab ${analysisFilter === f ? 'active' : ''} analysis-tab-${f}`}
+                  onClick={() => setAnalysisFilter(f)}
+                >
+                  {ANALYSIS_LABELS[f]}
+                  <span className="analysis-tab-count">{count}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="books-grid">
