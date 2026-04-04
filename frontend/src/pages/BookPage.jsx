@@ -7,7 +7,7 @@ import {
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw
 } from 'lucide-react'
-import { booksAPI, analysisAPI, chapterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
+import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters } from '../utils/api'
 import MindMap from '../components/MindMap'
 import { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
@@ -894,10 +894,10 @@ export default function BookPage() {
 
             {tab === 'mindmap' && (
               <div>
+                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />
                 {book.mindmap_data
                   ? <MindMap data={book.mindmap_data} />
                   : <p className="empty-tab">Mapa mental no disponible</p>}
-                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />
               </div>
             )}
 
@@ -1105,6 +1105,7 @@ function HeroCover({ book }) {
 function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger }) {
   return (
     <div className="info-tab">
+      <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" canProp={null} status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       {book.synopsis && (
         <div className="info-tts-controls">
           {!ttsPlaying && !ttsPaused && (
@@ -1124,7 +1125,6 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
       {!book.synopsis && (
         <p className="empty-tab">La sinopsis aún se está cargando…</p>
       )}
-      <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" canProp={null} status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
@@ -1133,6 +1133,7 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
 function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger }) {
   return (
     <div className="prose-content">
+      <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" canProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
         <h2 style={{margin:0}}>Resumen global</h2>
         {book.global_summary && (
@@ -1151,7 +1152,6 @@ function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, on
         )}
       </div>
       <p>{book.global_summary || 'No disponible'}</p>
-      <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" canProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
@@ -1186,6 +1186,7 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   if (!chapters.length) return <p className="empty-tab">No se encontraron capítulos</p>
   return (
     <div className="chapters-list">
+      <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" canProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       {chapters.map((ch, i) => (
         <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'open' : ''}`}>
           <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
@@ -1265,13 +1266,13 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
           </AnimatePresence>
         </div>
       ))}
-      <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" canProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
 
 function CharactersTab({ characters, bookId, onReanalyzed, status, isProcessing, onTrigger, ttsPlaying, ttsCharPaused, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause, onResume }) {
   const [reanalyzing, setReanalyzing] = React.useState(false)
+  const [analyzingChar, setAnalyzingChar] = React.useState({}) // { [charId]: true }
 
   const handleReanalyze = async () => {
     setReanalyzing(true)
@@ -1288,8 +1289,38 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, isProcessing,
     }
   }
 
+  const handleAnalyzeSingle = async (char) => {
+    setAnalyzingChar(s => ({ ...s, [char.id]: true }))
+    try {
+      await characterAPI.reanalyze(bookId, char.id)
+      toast(`Analizando ${char.name}…`, { icon: '⏳' })
+      // Poll hasta que los datos cambien (máx 2 min)
+      const startDesc = char.description
+      const poll = setInterval(async () => {
+        try {
+          const { data } = await booksAPI.get(bookId)
+          const updated = data.characters?.find(c => c.id === char.id)
+          if (updated && updated.description !== startDesc) {
+            clearInterval(poll)
+            setAnalyzingChar(s => ({ ...s, [char.id]: false }))
+            onReanalyzed?.()
+            toast.success(`${char.name} actualizado`)
+          }
+        } catch { /* ignorar errores de polling */ }
+      }, 4000)
+      setTimeout(() => {
+        clearInterval(poll)
+        setAnalyzingChar(s => ({ ...s, [char.id]: false }))
+      }, 120000)
+    } catch {
+      setAnalyzingChar(s => ({ ...s, [char.id]: false }))
+      toast.error(`Error al analizar ${char.name}`)
+    }
+  }
+
   return (
     <div className="characters-tab">
+      <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" canProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       <div className="characters-header">
         <div className="characters-info">
           <span className="characters-count">
@@ -1349,6 +1380,17 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, isProcessing,
                         >
                           <PlayCircle size={14} />
                         </button>
+                        <button
+                          className="char-tts-btn"
+                          onClick={() => handleAnalyzeSingle(char)}
+                          disabled={!!analyzingChar[char.id]}
+                          title="Reanalizar este personaje individualmente"
+                          style={{ opacity: analyzingChar[char.id] ? 0.6 : 1 }}
+                        >
+                          {analyzingChar[char.id]
+                            ? <Loader size={14} className="spin-icon" />
+                            : <RefreshCw size={14} />}
+                        </button>
                       </div>
                     </div>
                     {char.role && (
@@ -1405,7 +1447,6 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, isProcessing,
             })}
           </div>
       }
-      <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" canProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
@@ -1488,6 +1529,7 @@ function PodcastTab({ book, playing, onToggle, status, isProcessing, onTrigger }
 
   return (
     <div className="podcast-tab">
+      <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
 
       {/* ── Player ── */}
       {hasAudio && (
@@ -1532,8 +1574,6 @@ function PodcastTab({ book, playing, onToggle, status, isProcessing, onTrigger }
           <p>El podcast aún no se ha generado.</p>
         </div>
       )}
-
-      <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }

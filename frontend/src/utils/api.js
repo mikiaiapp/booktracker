@@ -110,6 +110,11 @@ export const chapterAPI = {
     api.post(`/analysis/${bookId}/chapter/${chapterId}/summarize`),
 }
 
+export const characterAPI = {
+  reanalyze: (bookId, characterId) =>
+    api.post(`/analysis/${bookId}/character/${characterId}/analyze`),
+}
+
 // Reanalizar personajes
 export const reanalyzeCharacters = (bookId) =>
   api.post(`/analysis/${bookId}/reanalyze-characters`)

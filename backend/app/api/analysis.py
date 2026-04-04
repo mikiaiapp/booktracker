@@ -673,7 +673,6 @@ async def reidentify_book(
 
 
 # ── Reanalizar personajes ─────────────────────────────────────
-# Si al terminar el podcast está vacío, lo encadena.
 
 @router.post("/{book_id}/reanalyze-characters")
 async def reanalyze_characters(
@@ -690,6 +689,29 @@ async def reanalyze_characters(
 
     from app.workers.tasks import reanalyze_characters_task
     task = reanalyze_characters_task.delay(current_user.id, book_id)
+    return {"task_id": task.id, "status": "processing"}
+
+
+# ── Reanalizar un personaje individual ───────────────────────
+
+@router.post("/{book_id}/character/{character_id}/analyze")
+async def analyze_single_character_endpoint(
+    book_id: str,
+    character_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+    char = (await db.execute(
+        select(Character).where(Character.id == character_id, Character.book_id == book_id)
+    )).scalar_one_or_none()
+    if not char:
+        raise HTTPException(404, "Character not found")
+
+    from app.workers.tasks import reanalyze_single_character_task
+    task = reanalyze_single_character_task.delay(current_user.id, book_id, character_id)
     return {"task_id": task.id, "status": "processing"}
 
 

@@ -161,6 +161,26 @@ def process_book_phase6(user_id: str, book_id: str):
 def reanalyze_characters_task(user_id: str, book_id: str):
     return process_book_phase3.delay(user_id, book_id, chain=False)
 
+@celery_app.task(name="reanalyze_single_character_task")
+def reanalyze_single_character_task(user_id: str, book_id: str, character_id: str):
+    async def _task():
+        async for db in get_user_db(user_id):
+            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            char = (await db.execute(select(Character).where(Character.id == character_id))).scalar_one_or_none()
+            if not book or not char: return
+            all_summaries = await _get_summaries_text(db, book_id)
+            is_main = char.role in ("protagonist", "main", "antagonist") if char.role else False
+            detail = await analyze_single_character(char.name, is_main, all_summaries, book.title)
+            if detail:
+                char.description  = detail.get("description")  or char.description
+                char.personality  = detail.get("personality")  or char.personality
+                char.arc          = detail.get("arc")          or char.arc
+                char.relationships = detail.get("relationships") if isinstance(detail.get("relationships"), dict) else char.relationships
+                char.key_moments  = detail.get("key_moments")  if isinstance(detail.get("key_moments"),  list) else char.key_moments
+                char.quotes       = detail.get("quotes")       if isinstance(detail.get("quotes"),       list) else char.quotes
+            await db.commit()
+    return run_async(_task())
+
 @celery_app.task(name="reanalyze_summary_task")
 def reanalyze_summary_task(user_id: str, book_id: str):
     return process_book_phase4.delay(user_id, book_id, chain=False)
