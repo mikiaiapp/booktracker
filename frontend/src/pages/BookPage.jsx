@@ -14,14 +14,13 @@ import CoverPicker from '../components/CoverPicker'
 import './BookPage.css'
 
 const TABS = [
-  { id: 'info', label: 'Ficha', icon: BookOpen },
-  { id: 'chapters', label: 'Capítulos', icon: List },
-  { id: 'characters', label: 'Personajes', icon: User },
-  { id: 'summary', label: 'Resumen global', icon: Brain },
-  { id: 'mindmap', label: 'Mapa mental', icon: Map },
-  { id: 'podcast', label: 'Podcast', icon: Mic },
-  { id: 'refs',     label: 'Referencias', icon: ExternalLink },
-  { id: 'analysis', label: 'Análisis',    icon: RefreshCw     },
+  { id: 'info',       label: 'Ficha',          icon: BookOpen     },
+  { id: 'chapters',   label: 'Capítulos',       icon: List         },
+  { id: 'characters', label: 'Personajes',      icon: User         },
+  { id: 'summary',    label: 'Resumen global',  icon: Brain        },
+  { id: 'mindmap',    label: 'Mapa mental',     icon: Map          },
+  { id: 'podcast',    label: 'Podcast',         icon: Mic          },
+  { id: 'refs',       label: 'Referencias',     icon: ExternalLink },
 ]
 
 const PROCESSING_STATUSES = ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -805,6 +804,22 @@ export default function BookPage() {
               </button>
             )}
             {/* Pipeline movido al tab Análisis */}
+            {!isShell && (
+              <label className="export-pdf-btn" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }} title="Reemplazar archivo PDF/EPUB del libro">
+                <input type="file" accept=".pdf,.epub" style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files[0]; if (!file) return
+                    if (!confirm('¿Reemplazar el archivo? El análisis se conservará.')) return
+                    try {
+                      toast('Subiendo archivo…', { icon: '⏳' })
+                      await uploadToShell(id, file)
+                      toast.success('Archivo subido. Identificando…')
+                      load()
+                    } catch { toast.error('Error al subir el archivo') }
+                  }} />
+                📎 Reemplazar archivo
+              </label>
+            )}
           </div>
 
           <button className="delete-btn" onClick={handleDelete} title="Eliminar libro">
@@ -821,12 +836,11 @@ export default function BookPage() {
               onClick={() => setTab(t.id)}
               disabled={
                 (isShell && t.id !== 'info') ||
-                (t.id === 'chapters' && !status?.phase2_done) ||
+                (t.id === 'chapters'   && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary' && !status?.has_global_summary) ||
-                (t.id === 'mindmap' && !status?.has_mindmap) ||
-                (t.id === 'podcast' && !book.podcast_audio_path)
-                // 'analysis' siempre habilitado
+                (t.id === 'summary'    && !status?.has_global_summary) ||
+                (t.id === 'mindmap'    && !status?.has_mindmap) ||
+                (t.id === 'podcast'    && !book.podcast_audio_path)
               }
             >
               <t.icon size={15} strokeWidth={1.5} />
@@ -838,13 +852,13 @@ export default function BookPage() {
         <div className="tabs-select-wrapper tabs-select-mobile">
           <select className="tabs-select" value={tab} onChange={(e) => setTab(e.target.value)}>
             {TABS.map(t => {
-              const disabled = (isShell && t.id !== 'info' && t.id !== 'analysis') ||
-                (t.id === 'chapters' && !status?.phase2_done) ||
+              const disabled = (isShell && t.id !== 'info') ||
+                (t.id === 'chapters'   && !status?.phase2_done) ||
                 (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary' && !status?.has_global_summary) ||
-                (t.id === 'mindmap' && !status?.has_mindmap) ||
-                (t.id === 'podcast' && !book.podcast_audio_path)
-              const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗',analysis:'⚙️'}[t.id]||'•'
+                (t.id === 'summary'    && !status?.has_global_summary) ||
+                (t.id === 'mindmap'    && !status?.has_mindmap) ||
+                (t.id === 'podcast'    && !book.podcast_audio_path)
+              const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
               return <option key={t.id} value={t.id} disabled={disabled}>{icon} {t.label}</option>
             })}
           </select>
@@ -855,13 +869,13 @@ export default function BookPage() {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
 
-            {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={() => stopInfoTTS()} />}
+            {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playInfo(book)} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={() => stopInfoTTS()} status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />}
 
             {tab === 'chapters' && (
-              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onResume={resumeCurrentTTS} onPlayChapter={(ch) => { stopTTS(true); const q=Object.assign([{id:ch.id,title:ch.title,text:chapterToText(ch)}],{_mode:'single'}); ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsMode('single'); setTtsChapterPaused(false); ttsActiveRef.current=true; setTtsPlaying(true); setTtsChapter(ch.id); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} />
+              <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onResume={resumeCurrentTTS} onPlayChapter={(ch) => { stopTTS(true); const q=Object.assign([{id:ch.id,title:ch.title,text:chapterToText(ch)}],{_mode:'single'}); ttsQueueRef.current=q; ttsIndexRef.current=0; setTtsQueue(q); setTtsIndex(0); setTtsMode('single'); setTtsChapterPaused(false); ttsActiveRef.current=true; setTtsPlaying(true); setTtsChapter(ch.id); speakItem(q,0); }} onPlayFromChapter={(ch) => playFromChapter(ch, chapters)} onStop={stopTTS} onPause={pauseTTS} status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />
             )}
 
-            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} ttsPlaying={ttsCharPlaying} ttsCharPaused={ttsCharPaused} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} onResume={resumeCharTTS} />}
+            {tab === 'characters' && <CharactersTab characters={characters} bookId={id} onReanalyzed={load} status={status} isProcessing={isProcessing} onTrigger={triggerPhase} ttsPlaying={ttsCharPlaying} ttsCharPaused={ttsCharPaused} ttsCharacter={ttsCharacter} onPlayCharacter={playCharacter} onPlayFromCharacter={playFromCharacter} onStop={stopCharTTS} onPause={pauseCharTTS} onResume={resumeCharTTS} />}
 
             {tab === 'summary' && (
               <SummaryTab
@@ -872,23 +886,31 @@ export default function BookPage() {
                 onPause={pauseInfoTTS}
                 onResume={resumeInfoTTS}
                 onStop={() => stopInfoTTS()}
+                status={status}
+                isProcessing={isProcessing}
+                onTrigger={triggerPhase}
               />
             )}
 
             {tab === 'mindmap' && (
-              book.mindmap_data
-                ? <MindMap data={book.mindmap_data} />
-                : <p className="empty-tab">Mapa mental no disponible</p>
+              <div>
+                {book.mindmap_data
+                  ? <MindMap data={book.mindmap_data} />
+                  : <p className="empty-tab">Mapa mental no disponible</p>}
+                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={triggerPhase} />
+              </div>
             )}
 
             {tab === 'refs' && <RefsTab book={book} />}
 
-            {tab === 'analysis' && <AnalysisTab status={status} isProcessing={isProcessing} isShell={isShell} book={book} bookId={id} onTrigger={triggerPhase} onCancel={cancelProcess} onUpload={load} />}
             {tab === 'podcast' && (
               <PodcastTab
                 book={book}
                 playing={audioPlaying}
                 onToggle={toggleAudio}
+                status={status}
+                isProcessing={isProcessing}
+                onTrigger={triggerPhase}
               />
             )}
           </motion.div>
@@ -935,6 +957,30 @@ export default function BookPage() {
 }
 
 // ── Sub-components del original ────────────────────────────────────────────────
+
+// Barra de acción por fase — se muestra al pie de cada tab
+function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger }) {
+  if (!status) return null
+  const isDone     = status[doneProp]
+  const canTrigger = canProp ? !!status[canProp] : true
+  return (
+    <div className="tab-phase-bar">
+      {isProcessing ? (
+        <span className="tab-phase-processing"><Loader size={14} className="spin-icon" /> Procesando…</span>
+      ) : (
+        <button
+          className={`tab-phase-btn ${isDone ? 'done' : 'pending'}`}
+          onClick={() => onTrigger(phase)}
+          disabled={!canTrigger}
+          title={!canTrigger ? 'Completa la fase anterior primero' : undefined}
+        >
+          <RefreshCw size={13} />
+          {isDone ? `Repetir ${label}` : `Iniciar ${label}`}
+        </button>
+      )}
+    </div>
+  )
+}
 
 function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = {} }) {
   if (!status) return null
@@ -1056,7 +1102,7 @@ function HeroCover({ book }) {
 }
 
 
-function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
+function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger }) {
   return (
     <div className="info-tab">
       {book.synopsis && (
@@ -1078,12 +1124,13 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
       {!book.synopsis && (
         <p className="empty-tab">La sinopsis aún se está cargando…</p>
       )}
+      <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" canProp={null} status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
 
 // ── SummaryTab ─────────────────────────────────────────────────────────────────
-function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop }) {
+function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger }) {
   return (
     <div className="prose-content">
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
@@ -1104,12 +1151,13 @@ function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, on
         )}
       </div>
       <p>{book.global_summary || 'No disponible'}</p>
+      <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" canProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
 
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause, status, isProcessing, onTrigger }) {
   const [summarizing, setSummarizing] = React.useState({})
 
   const handleSummarize = async (e, chapter) => {
@@ -1217,11 +1265,12 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
           </AnimatePresence>
         </div>
       ))}
+      <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" canProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
 
-function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, ttsCharPaused, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause, onResume }) {
+function CharactersTab({ characters, bookId, onReanalyzed, status, isProcessing, onTrigger, ttsPlaying, ttsCharPaused, ttsCharacter, onPlayCharacter, onPlayFromCharacter, onStop, onPause, onResume }) {
   const [reanalyzing, setReanalyzing] = React.useState(false)
 
   const handleReanalyze = async () => {
@@ -1356,6 +1405,7 @@ function CharactersTab({ characters, bookId, onReanalyzed, status, ttsPlaying, t
             })}
           </div>
       }
+      <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" canProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }
@@ -1411,72 +1461,79 @@ function RefsTab({ book }) {
   )
 }
 
-function PodcastTab({ book, playing, onToggle }) {
+function PodcastTab({ book, playing, onToggle, status, isProcessing, onTrigger }) {
   const hasScript = book?.podcast_script
-  const hasAudio = book?.podcast_audio_path
+  const hasAudio  = book?.podcast_audio_path
 
-  if (!hasScript && !hasAudio) {
-    return (
-      <div className="empty-tab">
-        <Mic size={48} strokeWidth={1} />
-        <p>El podcast aún no ha sido generado</p>
-      </div>
-    )
+  // Parsea el guión en líneas ANA / CARLOS
+  const parseDialogue = (script) => {
+    if (!script) return []
+    return script
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean)
+      .reduce((acc, line) => {
+        const m = line.match(/^(ANA|CARLOS)[:\s]+(.+)/i)
+        if (m) {
+          acc.push({ speaker: m[1].toUpperCase(), text: m[2].trim() })
+        } else if (acc.length && line && !line.match(/^[A-Z]{2,}:/)) {
+          // continuación de la línea anterior
+          acc[acc.length - 1].text += ' ' + line
+        }
+        return acc
+      }, [])
   }
 
-  const processScript = (script) => {
-    const lines = script.split('\n').filter(l => l.trim())
-    const sections = []
-    let currentSection = null
-    lines.forEach(line => {
-      const trimmed = line.trim()
-      if (trimmed === trimmed.toUpperCase() && trimmed.length > 3 || /^(INTRODUCCIÓN|CAPÍTULO|PARTE|PERSONAJES|CONCLUSIÓN|ANÁLISIS)/i.test(trimmed) || /^(#|##|\*\*|__|=)/.test(trimmed)) {
-        if (currentSection) sections.push(currentSection)
-        currentSection = { type: 'section', title: trimmed.replace(/^[#*_=]+\s*/, '').replace(/[#*_=]+$/, ''), content: [] }
-      } else if (/^[-•]\s/.test(trimmed)) {
-        if (!currentSection) currentSection = { type: 'default', content: [] }
-        currentSection.content.push({ type: 'dialogue', text: trimmed.substring(2) })
-      } else if (trimmed.endsWith('?')) {
-        if (!currentSection) currentSection = { type: 'default', content: [] }
-        currentSection.content.push({ type: 'question', text: trimmed })
-      } else if (trimmed) {
-        if (!currentSection) currentSection = { type: 'default', content: [] }
-        currentSection.content.push({ type: 'paragraph', text: trimmed })
-      }
-    })
-    if (currentSection) sections.push(currentSection)
-    return sections
-  }
-
-  const sections = hasScript ? processScript(book.podcast_script) : []
+  const lines = parseDialogue(hasScript ? book.podcast_script : '')
 
   return (
     <div className="podcast-tab">
+
+      {/* ── Player ── */}
       {hasAudio && (
         <div className="podcast-player">
           <button className="podcast-play-btn" onClick={onToggle}>
-            {playing ? <Pause size={24} /> : <Play size={24} />}
-            <span>{playing ? 'Pausar podcast' : 'Reproducir podcast'}</span>
+            {playing ? <Pause size={22} /> : <Play size={22} />}
+            <span>{playing ? 'Pausar' : 'Reproducir podcast'}</span>
           </button>
+          <span className="podcast-duration-hint">~ 5 min · ANA & CARLOS</span>
         </div>
       )}
-      {hasScript && (
+
+      {/* ── Guión conversación ── */}
+      {lines.length > 0 && (
         <div className="podcast-script">
-          <h3><Volume2 size={18} />Guión del podcast</h3>
-          <div className="script-content-enhanced">
-            {sections.map((section, i) => (
-              <div key={i} className={`script-section ${section.type}`}>
-                {section.title && (<h4 className="section-title"><span className="section-marker">▸</span>{section.title}</h4>)}
-                {section.content.map((item, j) => {
-                  if (item.type === 'dialogue') return <p key={j} className="script-dialogue"><span className="dialogue-marker">•</span>{item.text}</p>
-                  if (item.type === 'question') return <p key={j} className="script-question"><span className="question-marker">?</span>{item.text}</p>
-                  return <p key={j} className="script-paragraph">{item.text}</p>
-                })}
+          <h3 className="podcast-script-title">
+            <Volume2 size={16} /> Guión de la conversación
+          </h3>
+
+          <div className="podcast-hosts">
+            <span className="podcast-host ana">🎙 ANA</span>
+            <span className="podcast-host carlos">CARLOS 🎙</span>
+          </div>
+
+          <div className="podcast-dialogue">
+            {lines.map((line, i) => (
+              <div
+                key={i}
+                className={`pd-bubble ${line.speaker === 'ANA' ? 'pd-ana' : 'pd-carlos'}`}
+              >
+                <span className="pd-speaker">{line.speaker}</span>
+                <p className="pd-text">{line.text}</p>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {!hasScript && !hasAudio && (
+        <div className="empty-tab">
+          <Mic size={48} strokeWidth={1} />
+          <p>El podcast aún no se ha generado.</p>
+        </div>
+      )}
+
+      <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
     </div>
   )
 }

@@ -80,14 +80,41 @@ async def generate_global_summary(all_summaries: str, book_title: str, author: s
     return await _call_ai(system, user, 5000)
 
 async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
-    system = "Experto en mapas mentales literarios de España. Responde solo JSON."
-    user = f"Genera el mapa mental definitivo y más extenso para '{book_title}'. Incluye ramas para: Trama, Personajes, Temas, Escenarios, Simbolismo y Técnica Narrativa. Info: {all_summaries[:20000]}"
+    system = (
+        "Experto en análisis literario. Responde SOLO con JSON válido, sin texto extra ni bloques de código.\n"
+        "Estructura exacta requerida:\n"
+        '{"center": "Título", "branches": [{"label": "Nombre rama", "color": "#hexcolor", "children": ["texto completo del nodo hijo 1", "texto completo del nodo hijo 2"]}, ...]}\n'
+        "Genera 6 ramas: Trama, Personajes, Temas, Escenarios, Simbolismo, Técnica Narrativa.\n"
+        "Cada rama debe tener entre 4 y 8 hijos. Los textos de los hijos deben ser frases completas y descriptivas (no cortes de 2 palabras).\n"
+        "Colores sugeridos: Trama=#c9a96e, Personajes=#7c9e87, Temas=#8b7fb8, Escenarios=#d4876b, Simbolismo=#5f8ea0, Técnica=#c97b8a"
+    )
+    user = f"Genera el mapa mental completo para «{book_title}».\nContenido del libro:\n{all_summaries[:20000]}"
     try:
-        raw = await _call_ai(system, user, 4000)
+        raw = await _call_ai(system, user, 5000)
         return _parse_json(raw) or {"center": book_title, "branches": []}
-    except: return {"center": book_title, "branches": []}
+    except:
+        return {"center": book_title, "branches": []}
 
 async def generate_podcast_script(book_title, author, summary, chars) -> str:
-    system = "Guionista de RNE. Diálogos intelectuales en español de España entre ANA y CARLOS. Formato ANA: [texto] / CARLOS: [texto]"
-    user = f"Libro: {book_title}. Análisis: {summary[:8000]}. Personajes: {str(chars)[:1500]}"
-    return await _call_ai(system, user, 5500)
+    system = (
+        "Eres guionista de un podcast literario de RNE. Escribe en español de España.\n"
+        "El podcast dura exactamente 5 minutos de audio (≈ 750–850 palabras de diálogo real).\n"
+        "Formato OBLIGATORIO — cada línea empieza con el nombre del locutor en mayúsculas seguido de dos puntos:\n"
+        "ANA: [texto]\n"
+        "CARLOS: [texto]\n"
+        "Solo ANA y CARLOS hablan. Sin secciones, sin títulos, sin acotaciones, sin texto narrador.\n"
+        "La conversación debe ser natural, intelectual y amena. Incluye:\n"
+        "1) Presentación del libro y autor\n"
+        "2) Trama principal sin spoilers hasta el 70%\n"
+        "3) Personajes más importantes y su evolución\n"
+        "4) Temas y simbolismo\n"
+        "5) Valoración personal de ANA y CARLOS\n"
+        "6) Recomendación final al oyente\n"
+        "Genera exactamente entre 30 y 40 intervenciones alternadas."
+    )
+    user = (
+        f"Libro: «{book_title}» de {author}.\n"
+        f"Análisis del libro:\n{summary[:10000]}\n\n"
+        f"Personajes principales:\n{str(chars)[:2000]}"
+    )
+    return await _call_ai(system, user, 8000)

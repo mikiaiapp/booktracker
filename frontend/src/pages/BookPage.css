@@ -928,3 +928,283 @@
 .hero-cover:hover .cover-change-hint {
   opacity: 1 !important;
 }
+
+/* ── TabPhaseBar ──────────────────────────────────────────── */
+.tab-phase-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--paper-dark);
+}
+.tab-phase-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1.1rem;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1.5px solid var(--paper-dark);
+  background: transparent;
+  color: var(--slate);
+}
+.tab-phase-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--ink);
+}
+.tab-phase-btn.done {
+  border-color: var(--paper-dark);
+  color: var(--mist);
+}
+.tab-phase-btn.pending {
+  border-color: var(--gold);
+  color: var(--ink);
+  background: var(--gold);
+}
+.tab-phase-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tab-phase-processing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  color: var(--mist);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-icon { animation: spin 1.2s linear infinite; }
+
+/* ── MindMap CSS tree ─────────────────────────────────────── */
+.mm-wrap { padding: 0.25rem 0; }
+
+.mm-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+.mm-title { margin: 0 0 0.2rem; font-size: 1.1rem; }
+.mm-hint  { margin: 0; font-size: 0.8rem; color: var(--mist); }
+.mm-toolbar-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.mm-btn-sec {
+  padding: 0.35rem 0.9rem;
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: var(--slate);
+  transition: border-color 0.15s;
+}
+.mm-btn-sec:hover { border-color: var(--gold); color: var(--ink); }
+
+.mm-tree {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 200px;
+}
+
+.mm-root-col {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-right: 0;
+  padding-top: 0.5rem;
+}
+.mm-root-node {
+  background: var(--ink);
+  color: var(--gold);
+  border: 2.5px solid var(--gold);
+  border-radius: 12px;
+  padding: 0.6rem 1rem;
+  max-width: 120px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+.mm-root-text { display: block; }
+.mm-root-line {
+  height: 2px;
+  width: 24px;
+  background: var(--gold);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.mm-branches-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.mm-branch-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.mm-branch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border: 1.5px solid var(--bc, #c9a96e);
+  border-radius: 20px;
+  background: white;
+  color: var(--bc, #c9a96e);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  text-align: left;
+  align-self: flex-start;
+  max-width: 340px;
+}
+.mm-branch-btn:hover,
+.mm-branch-open {
+  background: var(--bc, #c9a96e);
+  color: white;
+}
+.mm-branch-icon { display: flex; align-items: center; flex-shrink: 0; }
+.mm-branch-label { flex: 1; }
+.mm-branch-count {
+  font-size: 0.7rem;
+  color: white;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+
+.mm-leaves {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0 0.4rem 2.2rem;
+  border-left: 2px solid var(--paper-dark);
+  margin-left: 1rem;
+}
+.mm-leaf {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  background: var(--paper);
+  line-height: 1.45;
+}
+.mm-leaf-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 0.35em;
+}
+.mm-leaf-text {
+  font-size: 0.83rem;
+  color: var(--slate);
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* ── Podcast burbujas ─────────────────────────────────────── */
+.podcast-tab { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.podcast-player {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--paper);
+  border-radius: var(--radius);
+  border: 1.5px solid var(--paper-dark);
+}
+.podcast-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1.2rem;
+  background: var(--gold);
+  border: none;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: var(--ink);
+  transition: opacity 0.15s;
+}
+.podcast-play-btn:hover { opacity: 0.85; }
+.podcast-duration-hint { font-size: 0.8rem; color: var(--mist); }
+
+.podcast-script-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+  color: var(--ink);
+}
+.podcast-hosts {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.podcast-host {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--mist);
+}
+
+.podcast-dialogue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.pd-bubble {
+  max-width: 78%;
+  padding: 0.6rem 0.9rem;
+  border-radius: 12px;
+  line-height: 1.5;
+}
+.pd-ana {
+  align-self: flex-start;
+  background: var(--paper);
+  border: 1.5px solid var(--paper-dark);
+  border-bottom-left-radius: 3px;
+}
+.pd-carlos {
+  align-self: flex-end;
+  background: #1a1a1a;
+  color: #f0e6d0;
+  border-bottom-right-radius: 3px;
+}
+.pd-speaker {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.2rem;
+  opacity: 0.6;
+}
+.pd-text {
+  margin: 0;
+  font-size: 0.875rem;
+}
