@@ -8,7 +8,7 @@ from app.core.config import settings
 
 async def _call_ai(system: str, user: str, max_tokens: int = 2000) -> str:
     m = settings.AI_MODEL.lower()
-    timeout = httpx.Timeout(180.0, connect=10.0) # Aumentado a 180s para respuestas largas
+    timeout = httpx.Timeout(180.0, connect=10.0)
     
     if "gemini" in m:
         api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
@@ -46,50 +46,43 @@ def _parse_json(text: str):
 
 async def summarize_chapter(chapter_title: str, text: str, book_title: str, author: str) -> dict:
     system = "Eres un experto literario de España. Responde siempre en español de España y solo en JSON."
-    user = f"Libro: {book_title}. Capitulo: {chapter_title}. Resume el texto destacando spoilers y eventos clave: {text[:8000]}"
+    user = f"Libro: {book_title}. Capitulo: {chapter_title}. Resumen detallado con spoilers: {text[:8000]}"
     try:
         raw = await _call_ai(system, user, 1500)
         return _parse_json(raw) or {"summary": raw, "key_events": []}
     except: return {"summary": "Error", "key_events": []}
 
 async def analyze_characters(all_summaries: str, book_title: str) -> list:
-    """Análisis detallado en dos pasadas: Principales (Full) y Secundarios (Breve)"""
-    print(f">>> [IA] Analizando personajes para '{book_title}'...")
-    system = "Eres un crítico literario de España. Responde SOLO con un array JSON. Usa español de España (castellano)."
+    print(f">>> [IA] Analizando personajes detallados para '{book_title}'...")
+    system = "Eres un crítico literario de España. Responde SOLO con un array JSON. Usa español de España castizo."
     ctx = all_summaries[:15000]
 
-    # Pasada 1: Protagonistas y Antagonistas (Detalle máximo)
-    p1 = f"""Libro: {book_title}. Analiza a los PROTAGONISTAS y ANTAGONISTAS. 
-    Esquema JSON obligatorio: 
-    {{
+    p1 = f"""Libro: {book_title}. Analiza PROTAGONISTAS y ANTAGONISTAS. 
+    JSON: {{
       "name": "Nombre",
-      "role": "protagonist o antagonist",
-      "description": "Aspecto físico y origen",
-      "personality": "Psicología detallada y miedos",
-      "arc": "Evolución y cambios a lo largo de la novela",
-      "relationships": {{"Personaje": "vínculo y evolución"}},
-      "key_moments": ["momento memorable 1", "momento memorable 2"],
-      "quotes": ["cita textual o frase representativa"]
+      "role": "protagonist/antagonist",
+      "description": "Físico y origen",
+      "personality": "Psicología detallada",
+      "arc": "Evolución en la novela",
+      "relationships": {{"Nombre": "vínculo"}},
+      "key_moments": ["momento memorable"],
+      "quotes": ["cita o frase"]
     }}
     Info: {ctx}"""
 
-    # Pasada 2: Secundarios (Más breve)
-    p2 = f"""Libro: {book_title}. Analiza a los personajes SECUNDARIOS y menores.
-    Esquema JSON: {{"name":"", "role":"secondary", "description":"breve", "personality":"breve"}}
+    p2 = f"""Libro: {book_title}. Analiza personajes SECUNDARIOS. JSON: {{"name":"", "role":"secondary", "description":"breve", "personality":"breve"}}
     Info: {ctx}"""
 
     async def _safe_call(prompt, tokens):
         try:
-            raw = await asyncio.wait_for(_call_ai(system, prompt, tokens), timeout=150)
+            raw = await asyncio.wait_for(_call_ai(system, prompt, tokens), timeout=180)
             return _parse_json(raw) or []
         except: return []
 
-    # Ejecutar pasadas
     principales = await _safe_call(p1, 4000)
-    await asyncio.sleep(2) # Evitar saturar API
+    await asyncio.sleep(2)
     secundarios = await _safe_call(p2, 2500)
     
-    # Combinar y limpiar
     combined = []
     seen = set()
     for c in (principales + secundarios):
@@ -101,19 +94,19 @@ async def analyze_characters(all_summaries: str, book_title: str) -> list:
     return combined
 
 async def generate_global_summary(all_summaries: str, book_title: str, author: str) -> str:
-    system = "Eres un crítico literario de España. Escribe en español de España una reseña académica profunda (mínimo 800 palabras)."
-    user = f"Libro: {book_title} de {author}. Resúmenes: {all_summaries[:25000]}"
+    system = "Crítico literario de España. Escribe una reseña académica profunda (mínimo 800 palabras) en español de España."
+    user = f"Libro: {book_title}. Resúmenes: {all_summaries[:25000]}"
     return await _call_ai(system, user, 4000)
 
 async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
     system = "Experto en mapas mentales. Responde en español de España solo JSON."
-    user = f"Mapa mental detallado para '{book_title}'. Ramas: Trama, Personajes, Temas, Escenarios, Símbolos, Estilo. Info: {all_summaries[:15000]}"
+    user = f"Mapa mental para '{book_title}'. Ramas: Trama, Personajes, Temas, Escenarios, Símbolos, Estilo. Info: {all_summaries[:15000]}"
     try:
         raw = await _call_ai(system, user, 3000)
         return _parse_json(raw) or {"center": book_title, "branches": []}
     except: return {"center": book_title, "branches": []}
 
 async def generate_podcast_script(book_title: str, author: str, summary: str, chars: list) -> str:
-    system = "Guionista de podcast en España. Diálogos naturales en español de España entre ANA (analítica) y CARLOS (entusiasta)."
+    system = "Guionista de podcast en España. Diálogos en español de España entre ANA y CARLOS."
     user = f"Libro: {book_title}. Resumen: {summary[:8000]}. Personajes: {str(chars)[:1000]}"
     return await _call_ai(system, user, 4500)
