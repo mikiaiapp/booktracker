@@ -38,7 +38,7 @@ def enqueue(uid: str, book_id: str, title: str = "", phases: list = None) -> int
     Devuelve posición en cola (0 = siguiente).
     """
     if phases is None:
-        phases = ["1", "2", "3", "3b", "podcast"]
+        phases = ["1", "2", "3", "4", "podcast"]
 
     r = _r()
     qk = _qk(uid)
@@ -189,7 +189,7 @@ def _pump(uid: str):
         return
 
     book_id = entry["book_id"]
-    phases  = entry.get("phases", ["1", "2", "3", "3b", "podcast"])
+    phases  = entry.get("phases", ["1", "2", "3", "4", "podcast"])
     title   = entry.get("title", "")
 
     # TTL de seguridad: si el worker muere, el slot se libera en 2 horas
@@ -203,7 +203,7 @@ def _launch(uid: str, book_id: str, phases: list):
     """Lanza la primera fase solicitada. La cadena interna en tasks.py hace el resto."""
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
-        process_book_phase3, process_phase3b_task,
+        process_book_phase3, process_book_phase4,
         generate_podcast,
     )
     first = phases[0] if phases else "1"
@@ -211,7 +211,7 @@ def _launch(uid: str, book_id: str, phases: list):
         "1":       lambda: process_book_phase1.delay(uid, book_id),
         "2":       lambda: process_book_phase2.delay(uid, book_id),
         "3":       lambda: process_book_phase3.delay(uid, book_id),
-        "3b":      lambda: process_phase3b_task.delay(uid, book_id),
+        "4":      lambda: process_book_phase4.delay(uid, book_id),
         "podcast": lambda: generate_podcast.delay(uid, book_id),
     }
     fn = dispatch.get(first)
