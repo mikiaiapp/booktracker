@@ -42,52 +42,47 @@ def _parse_json(text: str):
             except: return None
     return None
 
-async def analyze_characters(all_summaries: str, book_title: str) -> list:
-    """Análisis enciclopédico de personajes. Forzamos estructura de listas para no romper el frontend."""
-    print(f">>> [IA] Análisis AMBICIOSO de personajes para '{book_title}'...")
-    system = "Eres un académico de la RAE. Análisis literario profundo y extenso. Responde SOLO con un array JSON. Usa español de España culto."
-    ctx = all_summaries[:20000]
+# --- ESTRATEGIA DE ANÁLISIS PROFUNDO ---
 
-    # Esquema estricto: relationships, key_moments y quotes DEBEN ser listas de strings.
-    schema = """{
-      "name": "Nombre completo",
-      "role": "Rol detallado",
-      "description": "Retrato físico y orígenes (mínimo 100 palabras)",
-      "personality": "Psicología y miedos (mínimo 150 palabras)",
-      "arc": "Evolución vital (mínimo 150 palabras)",
-      "relationships": {"Nombre Personaje": "Descripción detallada del vínculo y tensiones (mínimo 3 frases)"},
-      "key_moments": ["Momento 1 detallado...", "Momento 2 detallado..."],
-      "quotes": ["Cita 1...", "Cita 2..."]
-    }"""
+async def get_character_list(all_summaries: str) -> list:
+    """Obtiene solo los nombres y roles de todos los personajes detectados."""
+    system = "Eres un experto literario. Identifica TODOS los personajes (principales y secundarios). Responde SOLO un array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
+    user = f"Resúmenes del libro: {all_summaries[:15000]}"
+    try:
+        raw = await _call_ai(system, user, 1000)
+        return _parse_json(raw) or []
+    except: return []
 
-    # Hacemos 2 pasadas para no saturar y asegurar que salgan TODOS
-    p1 = f"Libro: {book_title}. Analiza PROTAGONISTAS y ANTAGONISTAS con máximo detalle: {schema}\nInfo: {ctx}"
-    p2 = f"Libro: {book_title}. Analiza TODOS los personajes SECUNDARIOS con detalle académico: {schema}\nInfo: {ctx}"
-
-    async def _safe_call(prompt, tokens):
-        try:
-            raw = await asyncio.wait_for(_call_ai(system, prompt, tokens), timeout=480)
-            return _parse_json(raw) or []
-        except: return []
-
-    principales = await _safe_call(p1, 6500)
-    await asyncio.sleep(5)
-    secundarios = await _safe_call(p2, 6000)
+async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
+    """Análisis masivo de UN solo personaje."""
+    tipo = "PROTAGONISTA" if is_main else "SECUNDARIO"
+    system = f"Eres un académico de la RAE. Realiza un estudio psicológico y narrativo magistral de este personaje {tipo}. Usa español de España culto. Responde SOLO en JSON."
     
-    combined = []
-    seen = set()
-    for c in (principales + secundarios):
-        if isinstance(c, dict) and c.get("name"):
-            norm = c["name"].lower().strip()
-            if norm not in seen:
-                seen.add(norm)
-                combined.append(c)
-    return combined
+    user = f"""Libro: {book_title}
+Personaje a analizar: {name}
 
-# Mantener el resto de funciones (summarize_chapter, generate_global_summary, etc.) igual que en la versión anterior
+Basándote en estos resúmenes: {all_summaries[:15000]}
+Genera un análisis enciclopédico con este formato JSON:
+{{
+  "name": "{name}",
+  "role": "Análisis exhaustivo de su rol y función",
+  "description": "Retrato físico y orígenes detallados (mínimo 150 palabras)",
+  "personality": "Estudio profundo de su psique, miedos y valores (mínimo 200 palabras)",
+  "arc": "Evolución vital y transformación en la novela (mínimo 200 palabras)",
+  "relationships": {{"Nombre Personaje": "Descripción ensayística del vínculo"}},
+  "key_moments": ["Crónica extensa del momento 1", "Crónica extensa del momento 2"],
+  "quotes": ["Cita o pensamiento clave"]
+}}"""
+    try:
+        raw = await _call_ai(system, user, 3000)
+        return _parse_json(raw)
+    except: return None
+
+# --- RESTO DE FUNCIONES ---
+
 async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
     system = "Experto literario de España. Responde en español de España culto solo en JSON."
-    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Resumen magistral: {text[:9000]}"
+    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Resume con maestría: {text[:9000]}"
     try:
         raw = await _call_ai(system, user, 1800)
         return _parse_json(raw) or {"summary": raw, "key_events": []}

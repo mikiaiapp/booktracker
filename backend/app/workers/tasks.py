@@ -5,7 +5,7 @@ from app.workers.celery_app import celery_app
 from app.core.database import get_user_db
 from app.models.book import Book, Chapter, Character, AnalysisJob
 from app.services.ai_analyzer import (
-    summarize_chapter, analyze_characters, 
+    summarize_chapter, get_character_list, analyze_single_character,
     generate_global_summary, generate_mindmap, generate_podcast_script
 )
 from app.services.tts_service import synthesize_podcast
@@ -27,86 +27,84 @@ async def _get_summaries_text(db, book_id):
 
 @celery_app.task(name="process_book_phase4")
 def process_book_phase4(user_id: str, book_id: str):
-    """Fase 4: FORZAR análisis. Limpia datos anteriores siempre."""
+    """Fase 4: Ejecución FORZADA. Borra todo y analiza uno a uno."""
     async def _p4():
         async for db in get_user_db(user_id):
-            print(f">>> [FASE 4] Forzando ejecución completa para {book_id}")
+            print(f">>> [FASE 4] REINICIANDO ANALISIS COMPLETO para {book_id}")
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
             if not book: return
 
             job = AnalysisJob(book_id=book_id, phase=4, status="running")
             db.add(job)
-            all_summaries = await _get_summaries_text(db, book_id)
             
-            # 1. PERSONAJES (LIMPIAR SIEMPRE)
-            update_progress(user_id, book_id, "phase4", 85, "Analizando personajes...")
+            # LIMPIEZA TOTAL PARA REHACER
+            book.global_summary = None
+            book.mindmap_data = None
             await db.execute(delete(Character).where(Character.book_id == book_id))
-            chars_data = await analyze_characters(all_summaries, book.title)
-            
-            for c in chars_data:
-                # NORMALIZACIÓN CRÍTICA PARA EVITAR PANTALLA EN BLANCO
-                # Nos aseguramos de que relaciones sea un dict y el resto listas
-                rel = c.get("relationships") if isinstance(c.get("relationships"), dict) else {}
-                moments = c.get("key_moments") if isinstance(c.get("key_moments"), list) else []
-                quotes = c.get("quotes") if isinstance(c.get("quotes"), list) else []
-
-                db.add(Character(
-                    book_id=book_id,
-                    name=c.get("name"),
-                    role=c.get("role"),
-                    description=c.get("description"),
-                    personality=c.get("personality"),
-                    arc=c.get("arc"),
-                    relationships=rel,
-                    key_moments=moments,
-                    quotes=quotes
-                ))
             await db.commit()
 
+            all_summaries = await _get_summaries_text(db, book_id)
+            
+            # 1. PERSONAJES: Detección + Loop Individual
+            update_progress(user_id, book_id, "phase4", 82, "Buscando personajes en la trama...")
+            char_list = await get_character_list(all_summaries)
+            print(f">>> Detectados {len(char_list)} personajes. Iniciando análisis individual profundo.")
+
+            for i, c_info in enumerate(char_list):
+                name = c_info.get("name")
+                update_progress(user_id, book_id, "phase4", 82, f"Analizando profundamente a: {name}")
+                detail = await analyze_single_character(name, c_info.get("is_main", False), all_summaries, book.title)
+                
+                if detail:
+                    db.add(Character(
+                        book_id=book_id,
+                        name=detail.get("name"),
+                        role=detail.get("role"),
+                        description=detail.get("description"),
+                        personality=detail.get("personality"),
+                        arc=detail.get("arc"),
+                        relationships=detail.get("relationships") if isinstance(detail.get("relationships"), dict) else {},
+                        key_moments=detail.get("key_moments", []),
+                        quotes=detail.get("quotes", [])
+                    ))
+                    await db.commit()
+                # Pausa para no quemar Rate Limit
+                await asyncio.sleep(2)
+
             # 2. RESUMEN GLOBAL
+            update_progress(user_id, book_id, "phase4", 90, "Redactando reseña académica...")
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
             await db.commit()
 
             # 3. MAPA MENTAL
+            update_progress(user_id, book_id, "phase4", 95, "Creando mapa mental...")
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
             
             book.phase3_done, book.status, job.status = True, "analyzed", "done"
             await db.commit()
-            print(">>> [FASE 4] Éxito. Lanzando Podcast.")
             generate_podcast.delay(user_id, book_id)
     return run_async(_p4())
 
 @celery_app.task(name="reanalyze_characters_task")
 def reanalyze_characters_task(user_id: str, book_id: str):
-    """Botón específico de reanalizar personajes."""
+    """Botón reanalizar: aplica la misma lógica de profundidad extrema."""
     async def _re():
         async for db in get_user_db(user_id):
-            print(f">>> [REANALIZAR] Personajes de {book_id}")
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
-            if not book: return
             all_summaries = await _get_summaries_text(db, book_id)
             await db.execute(delete(Character).where(Character.book_id == book_id))
-            chars = await analyze_characters(all_summaries, book.title)
-            for c in chars:
-                # Normalización de seguridad
-                rel = c.get("relationships") if isinstance(c.get("relationships"), dict) else {}
-                db.add(Character(
-                    book_id=book_id,
-                    name=c.get("name"),
-                    role=c.get("role"),
-                    description=c.get("description"),
-                    personality=c.get("personality"),
-                    arc=c.get("arc"),
-                    relationships=rel,
-                    key_moments=c.get("key_moments", []),
-                    quotes=c.get("quotes", [])
-                ))
-            await db.commit()
+            
+            char_list = await get_character_list(all_summaries)
+            for c_info in char_list:
+                detail = await analyze_single_character(c_info["name"], c_info.get("is_main"), all_summaries, book.title)
+                if detail:
+                    db.add(Character(book_id=book_id, **{k:v for k,v in detail.items() if hasattr(Character, k)}))
+                    await db.commit()
+                await asyncio.sleep(1)
     return run_async(_re())
 
-# Mantener generate_podcast y fetch_shell_metadata igual que en la anterior
 @celery_app.task(name="generate_podcast")
 def generate_podcast(user_id: str, book_id: str):
     async def _p5():
