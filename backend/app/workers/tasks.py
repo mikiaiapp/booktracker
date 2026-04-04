@@ -13,7 +13,6 @@ from app.services.tts_service import synthesize_podcast
 from app.workers.queue_manager import update_progress, on_done
 
 def run_async(coro):
-    """Ejecutor de corrutinas mejorado para evitar cuelgues de Celery"""
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
@@ -21,7 +20,7 @@ def run_async(coro):
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(coro)
 
-async def _get_summaries(db, book_id):
+async def _get_summaries_text(db, book_id):
     res = await db.execute(select(Chapter).where(Chapter.book_id == book_id, Chapter.summary_status == "done").order_by(Chapter.order))
     return "\n\n".join([f"[{c.title}]\n{c.summary}" for c in res.scalars().all() if c.summary])
 
@@ -31,15 +30,16 @@ async def _get_summaries(db, book_id):
 def process_book_phase3(user_id: str, book_id: str):
     async def _p3():
         async for db in get_user_db(user_id):
-            print(f">>> [FASE 3] Iniciando resumenes para {book_id}")
+            print(f">>> [FASE 3] Iniciando resúmenes para {book_id}")
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id))).scalars().all()
             for ch in chaps:
                 if ch.summary_status == "done": continue
+                update_progress(user_id, book_id, "phase3", 50, f"Resumiendo: {ch.title}")
                 s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
                 ch.summary, ch.summary_status = s.get("summary"), "done"
+                ch.key_events = s.get("key_events", [])
                 await db.commit()
-            print(">>> [FASE 3] Completada. Saltando a FASE 4.")
             process_book_phase4.delay(user_id, book_id)
     return run_async(_p3())
 
@@ -47,27 +47,38 @@ def process_book_phase3(user_id: str, book_id: str):
 def process_book_phase4(user_id: str, book_id: str):
     async def _p4():
         async for db in get_user_db(user_id):
-            print(f">>> [FASE 4] Iniciando analisis para {book_id}")
+            print(f">>> [FASE 4] Iniciando análisis detallado de personajes...")
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
             if not book: return
 
-            all_summaries = await _get_summaries(db, book_id)
+            all_summaries = await _get_summaries_text(db, book_id)
             
-            # 1. Personajes
-            update_progress(user_id, book_id, "phase4", 85, "Analizando personajes...")
-            chars = await analyze_characters(all_summaries, book.title)
+            # 1. Personajes con todos los campos nuevos
+            update_progress(user_id, book_id, "phase4", 85, "Analizando personajes con profundidad...")
+            chars_data = await analyze_characters(all_summaries, book.title)
+            
             await db.execute(delete(Character).where(Character.book_id == book_id))
-            for c in chars:
-                db.add(Character(book_id=book_id, name=c.get("name"), role=c.get("role"), description=c.get("description")))
+            for c in chars_data:
+                # Mapeamos todos los campos solicitados
+                db.add(Character(
+                    book_id=book_id,
+                    name=c.get("name"),
+                    role=c.get("role"),
+                    description=c.get("description"),
+                    personality=c.get("personality"),
+                    arc=c.get("arc"),
+                    relationships=c.get("relationships"),
+                    key_moments=c.get("key_moments"),
+                    quotes=c.get("quotes")
+                ))
             await db.commit()
-            print(f">>> [FASE 4] Personajes guardados: {len(chars)}")
+            print(f">>> [FASE 4] {len(chars_data)} personajes guardados con éxito.")
 
             # 2. Resumen Global
-            update_progress(user_id, book_id, "phase4", 90, "Generando resumen global...")
+            update_progress(user_id, book_id, "phase4", 90, "Generando análisis global...")
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
             await db.commit()
-            print(">>> [FASE 4] Resumen global guardado.")
 
             # 3. Mapa Mental
             update_progress(user_id, book_id, "phase4", 95, "Generando mapa mental...")
@@ -75,7 +86,6 @@ def process_book_phase4(user_id: str, book_id: str):
             
             book.phase3_done, book.status = True, "analyzed"
             await db.commit()
-            print(">>> [FASE 4] Fase completada. Lanzando Podcast.")
             generate_podcast.delay(user_id, book_id)
 
     return run_async(_p4())
@@ -84,11 +94,15 @@ def process_book_phase4(user_id: str, book_id: str):
 def generate_podcast(user_id: str, book_id: str):
     async def _p5():
         async for db in get_user_db(user_id):
-            print(f">>> [FASE 5] Iniciando Podcast para {book_id}")
+            print(f">>> [FASE 5] Iniciando Podcast...")
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book or not book.global_summary: return
 
-            script = await generate_podcast_script(book.title, book.author, book.global_summary, [])
+            # Obtener top personajes para el podcast
+            char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(6))
+            chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
+
+            script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
             book.podcast_script = script
             
             from app.core.config import settings
@@ -98,7 +112,8 @@ def generate_podcast(user_id: str, book_id: str):
             try:
                 await synthesize_podcast(script, audio_path)
                 book.podcast_audio_path = audio_path
-            except: pass
+            except Exception as e:
+                print(f"Error TTS: {e}")
             
             book.status = "complete"
             await db.commit()
