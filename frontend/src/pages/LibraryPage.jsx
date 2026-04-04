@@ -276,51 +276,7 @@ function QueuePanel({ onClose, books }) {
   )
 }
 
-// ── Botón flotante de cola ────────────────────────────────────
 const PROCESSING_STATUSES = ['queued','identifying','analyzing_structure','summarizing','generating_podcast','uploaded']
-
-function QueueButton({ onClick, books }) {
-  const [state, setState] = useState(null)
-  const intervalRef = useRef(null)
-
-  const refresh = useCallback(async () => {
-    try {
-      const { data } = await queueAPI.get()
-      setState(data)
-    } catch { /* silencioso */ }
-  }, [])
-
-  useEffect(() => {
-    refresh()
-    intervalRef.current = setInterval(refresh, 3000)
-    return () => clearInterval(intervalRef.current)
-  }, [refresh])
-
-  // Libros en cola Redis (nuevo sistema)
-  const queueTotal = (state?.active ? 1 : 0) + (state?.queue?.length || 0)
-  // Libros procesando en BD (sistema antiguo o en curso)
-  const legacyProcessing = books.filter(b => PROCESSING_STATUSES.includes(b.status))
-  const total = Math.max(queueTotal, legacyProcessing.length)
-  const isActive = !!state?.active || legacyProcessing.length > 0
-  const isPaused = state?.paused
-
-  // Mostrar si hay algo en cola Redis O libros procesando en BD
-  if (!total) return null
-
-  return (
-    <button
-      className={`queue-fab ${isActive && !isPaused ? 'processing' : ''} ${isPaused ? 'paused' : ''}`}
-      onClick={onClick}
-      title="Ver cola de análisis"
-    >
-      <Layers size={16} />
-      <span className="queue-fab-label">
-        {isPaused ? 'Pausado' : isActive ? 'Analizando' : 'En cola'}
-      </span>
-      <span className="queue-fab-count">{total}</span>
-    </button>
-  )
-}
 
 // ── Página principal ──────────────────────────────────────────
 export default function LibraryPage() {
@@ -330,6 +286,27 @@ export default function LibraryPage() {
   const [filter, setFilter]             = useState('all')
   const [coverPickerBook, setCoverPickerBook] = useState(null)
   const [queueOpen, setQueueOpen]       = useState(false)
+  const [queueState, setQueueState]     = useState(null)
+  const queueIntervalRef                = useRef(null)
+
+  const refreshQueue = useCallback(async () => {
+    try {
+      const { data } = await queueAPI.get()
+      setQueueState(data)
+    } catch { /* silencioso */ }
+  }, [])
+
+  useEffect(() => {
+    refreshQueue()
+    queueIntervalRef.current = setInterval(refreshQueue, 3000)
+    return () => clearInterval(queueIntervalRef.current)
+  }, [refreshQueue])
+
+  const queueTotal       = (queueState?.active ? 1 : 0) + (queueState?.queue?.length || 0)
+  const legacyProcessing = books.filter(b => PROCESSING_STATUSES.includes(b.status))
+  const queueCount       = Math.max(queueTotal, legacyProcessing.length)
+  const queueIsActive    = !!queueState?.active || legacyProcessing.length > 0
+  const queueIsPaused    = queueState?.paused
 
   const load = async () => {
     try {
@@ -374,7 +351,18 @@ export default function LibraryPage() {
             {totalReal} {totalReal === 1 ? 'libro' : 'libros'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+          {queueCount > 0 && (
+            <button
+              className={`queue-header-btn ${queueIsActive && !queueIsPaused ? 'processing' : ''} ${queueIsPaused ? 'paused' : ''}`}
+              onClick={() => setQueueOpen(true)}
+              title="Ver cola de análisis"
+            >
+              <Layers size={14} />
+              <span>{queueIsPaused ? 'Pausado' : queueIsActive ? 'Analizando…' : 'En cola'}</span>
+              <span className="queue-header-btn-count">{queueCount}</span>
+            </button>
+          )}
           <Link to="/upload" className="btn-upload">+ Añadir libro</Link>
         </div>
       </div>
@@ -474,9 +462,6 @@ export default function LibraryPage() {
         </div>
       )}
     </div>
-
-    {/* Botón flotante de cola */}
-    <QueueButton onClick={() => setQueueOpen(true)} books={books} />
 
     {/* Panel lateral de cola */}
     <AnimatePresence>
