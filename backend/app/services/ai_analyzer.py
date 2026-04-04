@@ -347,44 +347,46 @@ Formato de cada elemento del array:
 
 IMPORTANTE: Empieza directamente con [ sin ningun texto previo."""
 
-    # Pasada 1 — protagonistas/antagonistas
-    chars_main = []
-    raw1 = ""
-    print(f"[characters] Pasada 1 — protagonistas/antagonistas de '{book_title}'")
-    try:
-        raw1 = await _call_ai(system, prompt_main, max_tokens=6000)
+    # ── Ambas pasadas en PARALELO ─────────────────────────────────────────────
+    print(f"[characters] Lanzando pasadas 1+2 en paralelo para '{book_title}'")
+
+    results = await _asyncio.gather(
+        _call_ai(system, prompt_main, max_tokens=6000),
+        _call_ai(system, prompt_secondary, max_tokens=6000),
+        return_exceptions=True
+    )
+    raw1 = results[0] if not isinstance(results[0], Exception) else ""
+    raw2 = results[1] if not isinstance(results[1], Exception) else ""
+    if isinstance(results[0], Exception):
+        print(f"[characters] ERROR pasada 1: {results[0]}")
+    else:
         print(f"[characters] Pasada 1 raw: {len(raw1)} chars — primeros 150: {raw1[:150]!r}")
-        parsed1 = _parse_json(raw1)
-        chars_main = parsed1 if isinstance(parsed1, list) else []
-        # Filtrar entradas invalidas (sin nombre o vacias)
-        chars_main = [c for c in chars_main if isinstance(c, dict) and c.get("name")]
-        print(f"[characters] Pasada 1 => {len(chars_main)} personajes principales")
-    except Exception as e:
-        chars_main = []
-        print(f"[characters] ERROR pasada 1: {e}")
-        if raw1:
-            print(f"[characters] Raw1 muestra: {raw1[:300]!r}")
-
-    await _asyncio.sleep(4)
-
-    # Pasada 2 — secundarios/menores
-    if on_progress:
-        on_progress("Personajes: secundarios y menores (2/2)...")
-    chars_secondary = []
-    raw2 = ""
-    print(f"[characters] Pasada 2 — secundarios/menores de '{book_title}'")
-    try:
-        raw2 = await _call_ai(system, prompt_secondary, max_tokens=6000)
+    if isinstance(results[1], Exception):
+        print(f"[characters] ERROR pasada 2: {results[1]}")
+    else:
         print(f"[characters] Pasada 2 raw: {len(raw2)} chars — primeros 150: {raw2[:150]!r}")
-        parsed2 = _parse_json(raw2)
-        chars_secondary = parsed2 if isinstance(parsed2, list) else []
-        chars_secondary = [c for c in chars_secondary if isinstance(c, dict) and c.get("name")]
-        print(f"[characters] Pasada 2 => {len(chars_secondary)} personajes secundarios")
-    except Exception as e:
-        chars_secondary = []
-        print(f"[characters] ERROR pasada 2: {e}")
-        if raw2:
-            print(f"[characters] Raw2 muestra: {raw2[:300]!r}")
+
+    # Parsear pasada 1
+    chars_main = []
+    if raw1:
+        try:
+            parsed1    = _parse_json(raw1)
+            chars_main = [c for c in (parsed1 if isinstance(parsed1, list) else [])
+                          if isinstance(c, dict) and c.get("name")]
+            print(f"[characters] Pasada 1 => {len(chars_main)} personajes principales")
+        except Exception as e:
+            print(f"[characters] ERROR parsando pasada 1: {e}")
+
+    # Parsear pasada 2
+    chars_secondary = []
+    if raw2:
+        try:
+            parsed2         = _parse_json(raw2)
+            chars_secondary = [c for c in (parsed2 if isinstance(parsed2, list) else [])
+                               if isinstance(c, dict) and c.get("name")]
+            print(f"[characters] Pasada 2 => {len(chars_secondary)} personajes secundarios")
+        except Exception as e:
+            print(f"[characters] ERROR parsando pasada 2: {e}")
 
     # Deduplicar por nombre normalizado
     def _norm(n: str) -> str:

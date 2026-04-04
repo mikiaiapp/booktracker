@@ -630,14 +630,24 @@ async def _phase4(user_id: str, book_id: str):
                 await db.execute(delete(Character).where(Character.book_id == book_id))
                 await db.commit()
 
-                # Callback de progreso para las dos pasadas de personajes
-                def _char_progress(msg: str):
-                    update_progress(user_id, book_id, "phase4", 84, msg)
+                # ── Las tres operaciones en PARALELO ──────────────────────────────────
+                update_progress(user_id, book_id, "phase4", 83,
+                                "Analizando personajes, resumen global y mapa mental en paralelo...")
+                print(f"[Phase4] Lanzando analyze_characters + global_summary + mindmap en paralelo")
 
-                update_progress(user_id, book_id, "phase4", 83, "Personajes: protagonistas (1/2)...")
-                characters_data = await analyze_characters(
-                    all_summaries, book.title, on_progress=_char_progress
+                results = await asyncio.gather(
+                    analyze_characters(all_summaries, book.title),
+                    generate_global_summary(all_summaries, book.title, book.author),
+                    generate_mindmap(all_summaries, book.title),
+                    return_exceptions=True
                 )
+
+                characters_data, global_summary_result, mindmap_result = results
+
+                # Personajes
+                if isinstance(characters_data, Exception):
+                    print(f"[Phase4] ERROR en analyze_characters: {characters_data}")
+                    characters_data = []
                 for char_data in characters_data:
                     char = Character(book_id=book_id, name=char_data["name"])
                     db.add(char)
@@ -645,11 +655,19 @@ async def _phase4(user_id: str, book_id: str):
                         if hasattr(char, k) and k != "name":
                             setattr(char, k, v)
 
-                update_progress(user_id, book_id, "phase4", 90, "Generando resumen global...")
-                book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
+                # Resumen global
+                if isinstance(global_summary_result, Exception):
+                    print(f"[Phase4] ERROR en generate_global_summary: {global_summary_result}")
+                    global_summary_result = ""
+                book.global_summary = global_summary_result
 
-                update_progress(user_id, book_id, "phase4", 95, "Generando mapa mental...")
-                book.mindmap_data = await generate_mindmap(all_summaries, book.title)
+                # Mapa mental
+                if isinstance(mindmap_result, Exception):
+                    print(f"[Phase4] ERROR en generate_mindmap: {mindmap_result}")
+                    mindmap_result = {"center": book.title, "branches": []}
+                book.mindmap_data = mindmap_result
+
+                update_progress(user_id, book_id, "phase4", 98, "Guardando resultados...")
 
                 book.phase3_done = True
                 book.status      = "analyzed"
@@ -1081,10 +1099,7 @@ async def _reanalyze_characters(user_id: str, book_id: str):
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
 
-            from app.workers.queue_manager import update_progress
-            def _char_progress(msg: str):
-                update_progress(user_id, book_id, "phase4", 84, msg)
-            characters_data = await analyze_characters(all_summaries, book.title, on_progress=_char_progress)
+            characters_data = await analyze_characters(all_summaries, book.title)
             for char_data in characters_data:
                 char = Character(book_id=book_id, name=char_data["name"])
                 db.add(char)
