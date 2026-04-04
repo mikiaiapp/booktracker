@@ -24,13 +24,13 @@ async def _get_summaries_text(db, book_id):
     res = await db.execute(select(Chapter).where(Chapter.book_id == book_id, Chapter.summary_status == "done").order_by(Chapter.order))
     return "\n\n".join([f"[{c.title}]\n{c.summary}" for c in res.scalars().all() if c.summary])
 
-# --- FASES ---
+# --- TAREAS DE PROCESAMIENTO ---
 
 @celery_app.task(name="process_book_phase3")
 def process_book_phase3(user_id: str, book_id: str):
     async def _p3():
         async for db in get_user_db(user_id):
-            print(f">>> [FASE 3] Generando resúmenes de capítulos...")
+            print(f">>> [FASE 3] Iniciando resúmenes de alta fidelidad...")
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
             for ch in chaps:
@@ -45,7 +45,7 @@ def process_book_phase3(user_id: str, book_id: str):
 
 @celery_app.task(name="process_book_phase4")
 def process_book_phase4(user_id: str, book_id: str):
-    """Fase 4: Análisis profundo de personajes, global y mapa mental."""
+    """Fase 4: Análisis ambicioso de personajes, global y mapa mental."""
     async def _p4():
         async for db in get_user_db(user_id):
             res = await db.execute(select(Book).where(Book.id == book_id))
@@ -56,21 +56,34 @@ def process_book_phase4(user_id: str, book_id: str):
             db.add(job)
             all_summaries = await _get_summaries_text(db, book_id)
             
-            # 1. PERSONAJES (Análisis Intenso)
-            update_progress(user_id, book_id, "phase4", 85, "Realizando estudio pormenorizado de personajes...")
+            # 1. PERSONAJES (Análisis Exhaustivo de TODOS)
+            update_progress(user_id, book_id, "phase4", 85, "Realizando estudio ambicioso de personajes...")
             await db.execute(delete(Character).where(Character.book_id == book_id))
             chars_data = await analyze_characters(all_summaries, book.title)
+            
             for c in chars_data:
-                db.add(Character(book_id=book_id, **{k:v for k,v in c.items() if hasattr(Character, k)}))
+                # Mapeo de campos asegurando que 'relationships' se guarde como texto rico
+                db.add(Character(
+                    book_id=book_id,
+                    name=c.get("name"),
+                    role=c.get("role"),
+                    description=c.get("description"),
+                    personality=c.get("personality"),
+                    arc=c.get("arc"),
+                    relationships=str(c.get("relationships", "")) if isinstance(c.get("relationships"), (dict, list)) else c.get("relationships"),
+                    key_moments=c.get("key_moments"),
+                    quotes=c.get("quotes")
+                ))
             await db.commit()
+            print(f">>> [FASE 4] {len(chars_data)} personajes analizados y guardados.")
 
-            # 2. RESUMEN GLOBAL (Máximo detalle)
+            # 2. RESUMEN GLOBAL (Máximo detalle académico)
             update_progress(user_id, book_id, "phase4", 90, "Redactando reseña académica global...")
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
             await db.commit()
 
-            # 3. MAPA MENTAL (Extenso)
-            update_progress(user_id, book_id, "phase4", 95, "Estructurando mapa mental detallado...")
+            # 3. MAPA MENTAL (Muy detallado)
+            update_progress(user_id, book_id, "phase4", 95, "Estructurando mapa mental...")
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
             
             book.phase3_done, book.status, job.status = True, "analyzed", "done"
@@ -80,7 +93,7 @@ def process_book_phase4(user_id: str, book_id: str):
 
 @celery_app.task(name="reanalyze_characters_task")
 def reanalyze_characters_task(user_id: str, book_id: str):
-    """Botón Reanalizar: Fuerza un análisis de personajes de alta intensidad."""
+    """Fuerza un reanálisis exhaustivo eliminando lo anterior."""
     async def _re():
         async for db in get_user_db(user_id):
             res = await db.execute(select(Book).where(Book.id == book_id))
@@ -103,8 +116,9 @@ def generate_podcast(user_id: str, book_id: str):
             job = AnalysisJob(book_id=book_id, phase=5, status="running")
             db.add(job)
             
-            char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(8))
+            char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
             chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
+            
             script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
             book.podcast_script = script
             
