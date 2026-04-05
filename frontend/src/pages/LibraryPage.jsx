@@ -19,6 +19,8 @@ const STATUS_LABELS = {
   analyzed:            { label: 'Analizado',   cls: 'badge-green' },
   generating_podcast:  { label: 'Podcast…',    cls: 'badge-gold' },
   complete:            { label: 'Completo',    cls: 'badge-green' },
+  incomplete:          { label: 'A medias',    cls: 'badge-gold' },
+  duplicate:           { label: 'Posible duplicado', cls: 'badge-rust' },
   error:               { label: 'Error',       cls: 'badge-rust' },
 }
 
@@ -39,8 +41,8 @@ const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
 const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
 
 const ANALYSIS_FILTERS = ['all', 'analyzed', 'processing', 'pending']
-const ANALYSIS_LABELS  = { all: 'Todos', analyzed: 'Analizados', processing: 'Procesando', pending: 'Sin procesar' }
-const ANALYZED_STATUSES    = ['complete', 'analyzed']
+const ANALYSIS_LABELS  = { all: 'Todos', analyzed: 'Analizados', processing: 'Procesando', pending: 'Posibles duplicados' }
+const ANALYZED_STATUSES    = ['complete', 'analyzed', 'incomplete']
 const PROC_STATUSES        = ['queued', 'identifying', 'analyzed_structure', 'analyzing_structure', 'summarizing', 'generating_podcast', 'uploaded', 'identified', 'structured']
 
 // ── Componente barra de progreso compacta ─────────────────────
@@ -110,9 +112,11 @@ function QueuePanel({ onClose, books }) {
   }
 
   const handleCancel = async (bookId, title) => {
+    if (!confirm(`¿Detener y eliminar de la cola "${title}"?`)) return
     try {
-      await queueAPI.cancel(bookId)
-      toast(`«${title}» eliminado de la cola`, { icon: '✕' })
+      const { analysisAPI } = await import('../utils/api')
+      await analysisAPI.cancel(bookId)
+      toast(`Proceso de «${title}» detenido`, { icon: '✕' })
       await refresh()
     } catch { toast.error('Error al cancelar') }
   }
@@ -225,6 +229,9 @@ function QueuePanel({ onClose, books }) {
                       <div className="queue-item-status-dot active" />
                       <span className="queue-item-label">Procesando</span>
                       <div className="queue-item-spinner" />
+                      <button className="queue-item-cancel-btn" onClick={() => handleCancel(activeId, title)} title="Parar proceso">
+                        <X size={12} />
+                      </button>
                     </div>
                     <div className="queue-item-title">{title}</div>
                     <MiniProgress pct={pct} phase={phase} />
@@ -234,21 +241,27 @@ function QueuePanel({ onClose, books }) {
               })()}
 
               {/* Libros legacy procesando (sistema anterior al queue manager) */}
-              {legacyBooks.map(book => (
-                <div key={book.id} className="queue-item active legacy">
-                  <div className="queue-item-header">
-                    <div className="queue-item-status-dot active" />
-                    <span className="queue-item-label">En proceso</span>
-                    <div className="queue-item-spinner" />
+              {legacyBooks.map(book => {
+                const info = state?.infos?.[book.id] || {}
+                const msg = info.msg || (STATUS_LABELS[book.status]?.label || book.status) + ' · Para parar: reinicia el worker'
+                const pct = parseInt(info.pct || 0)
+                const phase = info.phase || 'starting'
+                return (
+                  <div key={book.id} className="queue-item active legacy">
+                    <div className="queue-item-header">
+                      <div className="queue-item-status-dot active" />
+                      <span className="queue-item-label">En proceso</span>
+                      <div className="queue-item-spinner" />
+                      <button className="queue-item-cancel-btn" onClick={() => handleCancel(book.id, book.title)} title="Parar proceso">
+                        <X size={12} />
+                      </button>
+                    </div>
+                    <div className="queue-item-title">{book.title}</div>
+                    {info.phase && <MiniProgress pct={pct} phase={phase} />}
+                    <div className="queue-item-msg">{msg}</div>
                   </div>
-                  <div className="queue-item-title">{book.title}</div>
-                  <div className="queue-item-msg">
-                    {STATUS_LABELS[book.status]?.label || book.status}
-                    {' · '}
-                    <span style={{opacity:0.6}}>Para parar: reinicia el worker</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {/* Cola pendiente (nuevo sistema) */}
               {queueList.map((entry, idx) => {
@@ -259,7 +272,7 @@ function QueuePanel({ onClose, books }) {
                       <div className="queue-item-status-dot pending" />
                       <span className="queue-item-label">#{idx + 1} en cola</span>
                       <button
-                        className="queue-item-cancel"
+                        className="queue-item-cancel-btn"
                         onClick={() => handleCancel(entry.book_id, title)}
                         title="Quitar de la cola"
                       >
@@ -473,12 +486,14 @@ export default function LibraryPage() {
                     title="Cambiar portada"
                   >✏</button>
                   <div className="cover-status">
-                    {book.status === 'complete' || book.phase3_done ? (
+                    {book.status === 'complete' ? (
                       <span className="cover-badge analyzed">✦ Analizado</span>
                     ) : book.status === 'queued' ? (
                       <span className="cover-badge queued">En cola</span>
                     ) : book.status === 'shell' || book.status === 'shell_error' ? (
                       <span className="cover-badge shell">Solo ficha</span>
+                    ) : book.status === 'incomplete' ? (
+                      <span className="cover-badge processing" style={{background: 'var(--rust)', color: 'white'}}>A medias</span>
                     ) : ['summarizing','analyzing_structure','identifying'].includes(book.status) ? (
                       <span className="cover-badge processing">Procesando…</span>
                     ) : book.phase1_done ? (
