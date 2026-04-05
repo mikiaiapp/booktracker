@@ -1019,47 +1019,68 @@
 .tab-phase-bar {
   display: flex;
   justify-content: flex-end;
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--paper-dark);
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1.5px solid var(--paper-dark);
 }
+
 .tab-phase-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 1.1rem;
-  border-radius: 20px;
-  font-size: 0.82rem;
-  font-weight: 500;
+  gap: 0.6rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: 30px;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  border: 1.5px solid var(--paper-dark);
-  background: transparent;
-  color: var(--slate);
+  font-family: inherit;
 }
-.tab-phase-btn:hover:not(:disabled) {
-  border-color: var(--gold);
-  color: var(--ink);
-}
-.tab-phase-btn.done {
-  border-color: var(--paper-dark);
-  color: var(--mist);
-}
-.tab-phase-btn.pending {
-  border-color: var(--gold);
-  color: var(--ink);
+
+/* Análisis Inicial (Dorado Sólido) */
+.tab-phase-btn.is-initial {
   background: var(--gold);
+  color: var(--ink);
+  border: 1.5px solid var(--gold);
+  box-shadow: 0 4px 12px rgba(201, 169, 110, 0.2);
 }
+.tab-phase-btn.is-initial:hover:not(:disabled) {
+  background: var(--gold-light);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(201, 169, 110, 0.3);
+}
+
+/* Reanálisis (Borde Dorado / Ghost) */
+.tab-phase-btn.is-reanalyze {
+  background: transparent;
+  color: var(--gold);
+  border: 1.5px solid var(--gold);
+}
+.tab-phase-btn.is-reanalyze:hover:not(:disabled) {
+  background: rgba(201, 169, 110, 0.08);
+  color: var(--gold-light);
+  border-color: var(--gold-light);
+}
+
 .tab-phase-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  filter: grayscale(1);
 }
+
+.tab-phase-processing-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .tab-phase-processing {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.82rem;
-  color: var(--mist);
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--gold);
+  font-weight: 500;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin-icon { animation: spin 1.2s linear infinite; }

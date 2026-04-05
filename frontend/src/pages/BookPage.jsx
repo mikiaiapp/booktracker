@@ -1026,15 +1026,20 @@ export default function BookPage() {
 
 // ── Sub-components del original ────────────────────────────────────────────────
 
-// Barra de acción por fase — se muestra al pie de cada tab
+// Barra de acción por fase — se muestra en la cabecera de cada tab
 function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger, onCancel, progressMsg }) {
   if (!status) return null
   const isDone     = status[doneProp]
   const canTrigger = canProp ? !!status[canProp] : true
+  
+  // Diseño homogéneo solicitado: Analizar vs Reanalizar
+  const btnClass = isDone ? 'is-reanalyze' : 'is-initial'
+  const btnLabel = isDone ? `Reanalizar ${label}` : `Analizar ${label}`
+
   return (
     <div className="tab-phase-bar">
       {isProcessing ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="tab-phase-processing-wrap">
           <span className="tab-phase-processing">
             <Loader size={14} className="spin-icon" />
             {progressMsg || 'Procesando…'}
@@ -1045,13 +1050,13 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
         </div>
       ) : (
         <button
-          className={`tab-phase-btn ${isDone ? 'done' : 'pending'}`}
+          className={`tab-phase-btn ${btnClass}`}
           onClick={() => onTrigger(phase)}
           disabled={!canTrigger}
           title={!canTrigger ? 'Completa la fase anterior primero' : undefined}
         >
           <RefreshCw size={13} />
-          {isDone ? `Repetir ${label}` : `Iniciar ${label}`}
+          {btnLabel}
         </button>
       )}
     </div>
@@ -1283,14 +1288,6 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   return (
     <div className="chapters-list">
       <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" canProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} onCancel={onCancel} progressMsg={progressMsg} />
-      {!chapters.length && !isProcessing && (
-        <div className="empty-tab-cta">
-          <p className="empty-tab">No se ha extraído la estructura de capítulos todavía</p>
-          <button className="cta-btn accent" onClick={() => onTrigger(2)}>
-            <RefreshCw size={14} /> Iniciar análisis de capítulos
-          </button>
-        </div>
-      )}
       {chapters.map((ch, i) => (
         <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'open' : ''}`}>
           <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
