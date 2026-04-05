@@ -202,4 +202,4 @@ const stopAllTTS = () => {
 
 ---
 
-**Próximo paso:** Continuar con implementación del cambio 2 (Mapa árbol)
+**Próximo paso:** Continuar con implementación del cambio 2 (Mapa-árbol)
