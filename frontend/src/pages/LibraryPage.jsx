@@ -19,6 +19,7 @@ const STATUS_LABELS = {
   analyzed:            { label: 'Analizado',   cls: 'badge-green' },
   generating_podcast:  { label: 'Podcast…',    cls: 'badge-gold' },
   complete:            { label: 'Completo',    cls: 'badge-green' },
+  incomplete:          { label: 'A medias',    cls: 'badge-gold' },
   error:               { label: 'Error',       cls: 'badge-rust' },
 }
 
@@ -479,6 +480,8 @@ export default function LibraryPage() {
                       <span className="cover-badge queued">En cola</span>
                     ) : book.status === 'shell' || book.status === 'shell_error' ? (
                       <span className="cover-badge shell">Solo ficha</span>
+                    ) : book.status === 'incomplete' ? (
+                      <span className="cover-badge processing" style={{background: 'var(--rust)', color: 'white'}}>A medias</span>
                     ) : ['summarizing','analyzing_structure','identifying'].includes(book.status) ? (
                       <span className="cover-badge processing">Procesando…</span>
                     ) : book.phase1_done ? (
