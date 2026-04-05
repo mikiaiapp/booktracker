@@ -72,7 +72,7 @@ export const taskAPI = {
 // Analysis
 export const analysisAPI = {
   status: (bookId) => api.get(`/analysis/${bookId}/status`),
-  triggerPhase1: (bookId) => api.post(`/analysis/${bookId}/phase1`),
+  triggerPhase1: (bookId, force = false) => api.post(`/analysis/${bookId}/phase1?force=${force}`),
   triggerPhase2: (bookId) => api.post(`/analysis/${bookId}/phase2`),
   triggerPhase3: (bookId) => api.post(`/analysis/${bookId}/phase3`),
   triggerPhase3b: (bookId) => api.post(`/analysis/${bookId}/phase3b`), // legacy alias
@@ -82,6 +82,7 @@ export const analysisAPI = {
   triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
   downloadUrl: (bookId) => `${BASE}/analysis/${bookId}/download`,
+  repairAllEvents: () => api.post('/analysis/repair-all-events'),
 }
 
 // Authors

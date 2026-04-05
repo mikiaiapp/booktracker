@@ -31,7 +31,7 @@ def _ik(uid, bid): return f"btq:{uid}:info:{bid}"
 
 # ── API pública ───────────────────────────────────────────────────────────────
 
-def enqueue(uid: str, book_id: str, title: str = "", phases: list = None) -> int:
+def enqueue(uid: str, book_id: str, title: str = "", phases: list = None, force: bool = False) -> int:
     """
     Añade libro a la cola si no está ya (ni en cola ni activo).
     Dispara _pump si no hay activo y no está pausada.
@@ -57,7 +57,7 @@ def enqueue(uid: str, book_id: str, title: str = "", phases: list = None) -> int
         except Exception:
             pass
 
-    entry = json.dumps({"book_id": book_id, "phases": phases,
+    entry = json.dumps({"book_id": book_id, "phases": phases, "force": force,
                         "title": title, "ts": time.time()})
     r.rpush(qk, entry)
     pos = r.llen(qk) - 1
@@ -80,10 +80,11 @@ def get_state(uid: str) -> dict:
         except Exception:
             pass
 
-    all_ids = ([active] if active else []) + [e["book_id"] for e in queue]
     infos = {}
-    for bid in all_ids:
-        d = r.hgetall(_ik(uid, bid))
+    keys = r.keys(f"btq:{uid}:info:*")
+    for k in keys:
+        bid = k.split(":")[-1]
+        d = r.hgetall(k)
         if d:
             infos[bid] = d
 
@@ -122,8 +123,18 @@ def cancel(uid: str, book_id: str) -> str:
         except Exception:
             pass
 
-    # Activo → limpiar y bombear siguiente
+    # Activo → revocar tarea Celery y limpiar
     if r.get(_ak(uid)) == book_id:
+        # Intentar detener físicamente la tarea
+        try:
+            from app.workers.celery_app import celery_app
+            tid = r.hget(_ik(uid, book_id), "task_id")
+            if tid:
+                print(f"[QUEUE] Revocando tarea Celery activa {tid} (libro {book_id})")
+                celery_app.control.revoke(tid, terminate=True, signal='SIGKILL')
+        except Exception as e:
+            print(f"[QUEUE] Error al revocar tarea: {e}")
+
         r.delete(_ak(uid))
         r.delete(_ik(uid, book_id))
         _pump(uid)
@@ -191,38 +202,47 @@ def _pump(uid: str):
     book_id = entry["book_id"]
     phases  = entry.get("phases", ["1", "2", "3", "4", "podcast"])
     title   = entry.get("title", "")
+    force   = entry.get("force", False)
 
     # TTL de seguridad: si el worker muere, el slot se libera en 2 horas
     r.set(_ak(uid), book_id, ex=7200)
     _set_info(uid, book_id, "starting", 5, "Iniciando…", title)
 
-    _launch(uid, book_id, phases)
+    _launch(uid, book_id, phases, force=force)
 
 
-def _launch(uid: str, book_id: str, phases: list):
+def _launch(uid: str, book_id: str, phases: list, force: bool = False):
     """Lanza la primera fase solicitada. La cadena interna en tasks.py hace el resto."""
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
         process_book_phase3, process_book_phase4,
-        process_book_phase6,
+        process_book_phase6, process_book_repair_events,
     )
     first = phases[0] if phases else "1"
     dispatch = {
-        "1":       lambda: process_book_phase1.delay(uid, book_id),
-        "2":       lambda: process_book_phase2.delay(uid, book_id),
-        "3":       lambda: process_book_phase3.delay(uid, book_id),
-        "4":       lambda: process_book_phase4.delay(uid, book_id),
+        "1":       lambda: process_book_phase1.delay(uid, book_id, chain=True, force=force),
+        "2":       lambda: process_book_phase2.delay(uid, book_id, chain=True),
+        "3":       lambda: process_book_phase3.delay(uid, book_id, chain=True),
+        "4":       lambda: process_book_phase4.delay(uid, book_id, chain=True),
         "podcast": lambda: process_book_phase6.delay(uid, book_id),
+        "repair":  lambda: process_book_repair_events.delay(uid, book_id),
     }
     fn = dispatch.get(first)
     if fn:
-        fn()
+        res = fn()
+        if hasattr(res, "id"):
+            # Guardar task_id para poder cancelarlo físicamente
+            _set_info(uid, book_id, "starting", 5, "Iniciando…", title, task_id=res.id)
 
 
-def _set_info(uid, book_id, phase, pct, msg, title=""):
+def _set_info(uid, book_id, phase, pct, msg, title="", task_id=None):
     r = _r()
-    r.hset(_ik(uid, book_id), mapping={
+    mapping = {
         "phase": phase, "pct": str(pct),
         "msg": msg, "title": title, "ts": str(time.time())
-    })
+    }
+    if task_id:
+        mapping["task_id"] = task_id
+    
+    r.hset(_ik(uid, book_id), mapping=mapping)
     r.expire(_ik(uid, book_id), 86400)

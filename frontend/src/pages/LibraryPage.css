@@ -696,20 +696,23 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.queue-item-cancel {
+.queue-item-cancel, .queue-item-cancel-btn {
   background: none;
   border: none;
   color: var(--mist, #aaa);
   cursor: pointer;
-  padding: 2px;
+  padding: 4px;
   border-radius: 4px;
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  transition: all 0.2s;
 }
-.queue-item-cancel:hover {
+.queue-item-cancel:hover, .queue-item-cancel-btn:hover {
   color: #e74c3c;
-  background: rgba(231,76,60,0.08);
+  background: rgba(231,76,60,0.1);
+  transform: scale(1.1);
 }
 
 /* ── Barra de progreso compacta ─────────────────────────────── */

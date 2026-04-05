@@ -726,8 +726,9 @@ def _bytes_to_jpeg(data: bytes) -> bytes:
 async def download_cover(cover_url: str, covers_dir: str, book_id: str) -> Optional[str]:
     """Descarga una imagen de cualquier formato y la guarda como JPEG.
     Intenta con distintos User-Agent y sin Referer para maximizar compatibilidad."""
+    import time
     os.makedirs(covers_dir, exist_ok=True)
-    filename = f"{book_id}_cover.jpg"
+    filename = f"{book_id}_cover_{int(time.time())}.jpg"
     local_path = os.path.join(covers_dir, filename)
 
     # Distintas configuraciones de headers para sortear restricciones de servidor
