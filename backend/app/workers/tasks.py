@@ -61,7 +61,10 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
             for i, ch in enumerate(chaps):
                 update_progress(user_id, book_id, "phase2", int(20 + (i/len(chaps)*40)), f"Resumiendo: {ch.title}")
                 s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
-                ch.summary, ch.summary_status = s.get("summary"), "done"
+                if s and s.get("summary"):
+                    ch.summary, ch.summary_status = s.get("summary"), "done"
+                else:
+                    ch.summary, ch.summary_status = "", "error"
                 await db.commit()
             
             book.phase2_done = True
@@ -91,7 +94,7 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
                 char_data = {
                     "book_id": book_id,
                     "name": char_name,
-                    "role": detail.get("role") if detail else "Personaje",
+                    "role": detail.get("role") if detail else "Sin análisis de función (Error al procesar)",
                     "description": detail.get("description") if detail else "Sin descripción disponible",
                     "personality": detail.get("personality") if detail else "Sin análisis de personalidad",
                     "arc": detail.get("arc") if detail else "Sin análisis de evolución",
@@ -178,6 +181,7 @@ def reanalyze_single_character_task(user_id: str, book_id: str, character_id: st
                 char.relationships = detail.get("relationships") if isinstance(detail.get("relationships"), dict) else char.relationships
                 char.key_moments  = detail.get("key_moments")  if isinstance(detail.get("key_moments"),  list) else char.key_moments
                 char.quotes       = detail.get("quotes")       if isinstance(detail.get("quotes"),       list) else char.quotes
+                if detail.get("role"): char.role = detail.get("role")
             await db.commit()
     return run_async(_task())
 
