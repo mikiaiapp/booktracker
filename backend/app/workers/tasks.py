@@ -61,10 +61,17 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
             for i, ch in enumerate(chaps):
                 update_progress(user_id, book_id, "phase2", int(20 + (i/len(chaps)*40)), f"Resumiendo: {ch.title}")
                 s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
-                ch.summary, ch.summary_status = s.get("summary"), "done"
+                if s and s.get("summary"):
+                    ch.summary, ch.summary_status = s.get("summary"), "done"
+                else:
+                    ch.summary, ch.summary_status = "", "error"
                 await db.commit()
+                # Pausa de cortesía para no saturar la cuota de tokens por minuto (TPM)
+                await asyncio.sleep(4)
             
             book.phase2_done = True
+            book.status = "structured"  # Libera la UI del estado "Procesando" infinito
+            await db.commit()
             if chain:
                 process_book_phase3.delay(user_id, book_id, chain=True)
             else:
@@ -91,7 +98,7 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
                 char_data = {
                     "book_id": book_id,
                     "name": char_name,
-                    "role": detail.get("role") if detail else "Personaje",
+                    "role": detail.get("role") if detail else "Sin análisis de función (Error al procesar)",
                     "description": detail.get("description") if detail else "Sin descripción disponible",
                     "personality": detail.get("personality") if detail else "Sin análisis de personalidad",
                     "arc": detail.get("arc") if detail else "Sin análisis de evolución",
@@ -150,10 +157,53 @@ def process_book_phase6(user_id: str, book_id: str):
             os.makedirs(os.path.dirname(audio_path), exist_ok=True)
             try: await synthesize_podcast(script, audio_path); book.podcast_audio_path = audio_path
             except: pass
-            book.status = "complete"
+            
+            # Verificación estructural de éxito completo
+            chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id))).scalars().all()
+            chars = (await db.execute(select(Character).where(Character.book_id == book_id))).scalars().all()
+            
+            is_perfect = True
+            if not chaps or any((not c.summary or c.summary_status == 'error') for c in chaps): is_perfect = False
+            elif not chars: is_perfect = False
+            elif not book.global_summary: is_perfect = False
+            elif not book.mindmap_data or not book.mindmap_data.get("branches"): is_perfect = False
+            
+            book.status = "complete" if is_perfect else "incomplete"
             await db.commit()
             on_done(user_id, book_id)
     return run_async(_p6())
+
+# --- RESUMEN DE UN CAPÍTULO INDIVIDUAL (botón "+ Resumir") ---
+@celery_app.task(name="summarize_chapter_task")
+def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
+    async def _task():
+        async for db in get_user_db(user_id):
+            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            ch   = (await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id))).scalar_one_or_none()
+            if not book or not ch:
+                return
+            ch.summary_status = "processing"
+            await db.commit()
+            update_progress(user_id, book_id, "phase2", 50, f"Resumiendo: {ch.title}")
+            try:
+                s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
+                if s and s.get("summary"):
+                    ch.summary        = s.get("summary")
+                    ch.key_events     = s.get("key_events", [])
+                    ch.summary_status = "done"
+                else:
+                    ch.summary_status = "error"
+            except Exception:
+                ch.summary_status = "error"
+            await db.commit()
+            # Si todos los capítulos están listos, marcar el libro como estructurado
+            all_chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id))).scalars().all()
+            all_done = all(c.summary_status in ("done", "skipped", "quota_exceeded") for c in all_chaps)
+            if all_done:
+                book.phase2_done = True
+                book.status = "structured"
+                await db.commit()
+    return run_async(_task())
 
 # --- BOTONES DE REANALIZAR (INDIVIDUALES) ---
 
@@ -178,6 +228,7 @@ def reanalyze_single_character_task(user_id: str, book_id: str, character_id: st
                 char.relationships = detail.get("relationships") if isinstance(detail.get("relationships"), dict) else char.relationships
                 char.key_moments  = detail.get("key_moments")  if isinstance(detail.get("key_moments"),  list) else char.key_moments
                 char.quotes       = detail.get("quotes")       if isinstance(detail.get("quotes"),       list) else char.quotes
+                if detail.get("role"): char.role = detail.get("role")
             await db.commit()
     return run_async(_task())
 

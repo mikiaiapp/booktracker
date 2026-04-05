@@ -19,6 +19,7 @@ const STATUS_LABELS = {
   analyzed:            { label: 'Analizado',   cls: 'badge-green' },
   generating_podcast:  { label: 'Podcast…',    cls: 'badge-gold' },
   complete:            { label: 'Completo',    cls: 'badge-green' },
+  incomplete:          { label: 'A medias',    cls: 'badge-gold' },
   error:               { label: 'Error',       cls: 'badge-rust' },
 }
 
@@ -234,21 +235,24 @@ function QueuePanel({ onClose, books }) {
               })()}
 
               {/* Libros legacy procesando (sistema anterior al queue manager) */}
-              {legacyBooks.map(book => (
-                <div key={book.id} className="queue-item active legacy">
-                  <div className="queue-item-header">
-                    <div className="queue-item-status-dot active" />
-                    <span className="queue-item-label">En proceso</span>
-                    <div className="queue-item-spinner" />
+              {legacyBooks.map(book => {
+                const info = state?.infos?.[book.id] || {}
+                const msg = info.msg || (STATUS_LABELS[book.status]?.label || book.status) + ' · Para parar: reinicia el worker'
+                const pct = parseInt(info.pct || 0)
+                const phase = info.phase || 'starting'
+                return (
+                  <div key={book.id} className="queue-item active legacy">
+                    <div className="queue-item-header">
+                      <div className="queue-item-status-dot active" />
+                      <span className="queue-item-label">En proceso</span>
+                      <div className="queue-item-spinner" />
+                    </div>
+                    <div className="queue-item-title">{book.title}</div>
+                    {info.phase && <MiniProgress pct={pct} phase={phase} />}
+                    <div className="queue-item-msg">{msg}</div>
                   </div>
-                  <div className="queue-item-title">{book.title}</div>
-                  <div className="queue-item-msg">
-                    {STATUS_LABELS[book.status]?.label || book.status}
-                    {' · '}
-                    <span style={{opacity:0.6}}>Para parar: reinicia el worker</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {/* Cola pendiente (nuevo sistema) */}
               {queueList.map((entry, idx) => {
@@ -479,6 +483,8 @@ export default function LibraryPage() {
                       <span className="cover-badge queued">En cola</span>
                     ) : book.status === 'shell' || book.status === 'shell_error' ? (
                       <span className="cover-badge shell">Solo ficha</span>
+                    ) : book.status === 'incomplete' ? (
+                      <span className="cover-badge processing" style={{background: 'var(--rust)', color: 'white'}}>A medias</span>
                     ) : ['summarizing','analyzing_structure','identifying'].includes(book.status) ? (
                       <span className="cover-badge processing">Procesando…</span>
                     ) : book.phase1_done ? (
