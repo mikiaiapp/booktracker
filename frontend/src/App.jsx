@@ -18,7 +18,25 @@ function PrivateRoute({ children }) {
 
 export default function App() {
   const init = useAuthStore(s => s.init)
+  const token = useAuthStore(s => s.token)
+  
   useEffect(() => { init() }, [])
+
+  // Disparar reparación de eventos clave una sola vez tras la actualización
+  useEffect(() => {
+    if (token && !localStorage.getItem('repair_v2')) {
+      const triggerRepair = async () => {
+        try {
+          const { analysisAPI } = await import('./utils/api')
+          await analysisAPI.repairAllEvents()
+          localStorage.setItem('repair_v2', 'true')
+        } catch (e) {
+          console.error('Error al iniciar reparación de hitos:', e)
+        }
+      }
+      triggerRepair()
+    }
+  }, [token])
 
   return (
     <BrowserRouter>

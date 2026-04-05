@@ -82,6 +82,7 @@ export const analysisAPI = {
   triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
   downloadUrl: (bookId) => `${BASE}/analysis/${bookId}/download`,
+  repairAllEvents: () => api.post('/analysis/repair-all-events'),
 }
 
 // Authors

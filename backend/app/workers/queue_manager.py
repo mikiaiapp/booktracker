@@ -80,10 +80,11 @@ def get_state(uid: str) -> dict:
         except Exception:
             pass
 
-    all_ids = ([active] if active else []) + [e["book_id"] for e in queue]
     infos = {}
-    for bid in all_ids:
-        d = r.hgetall(_ik(uid, bid))
+    keys = r.keys(f"btq:{uid}:info:*")
+    for k in keys:
+        bid = k.split(":")[-1]
+        d = r.hgetall(k)
         if d:
             infos[bid] = d
 
@@ -204,7 +205,7 @@ def _launch(uid: str, book_id: str, phases: list):
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
         process_book_phase3, process_book_phase4,
-        process_book_phase6,
+        process_book_phase6, process_book_repair_events,
     )
     first = phases[0] if phases else "1"
     dispatch = {
@@ -213,6 +214,7 @@ def _launch(uid: str, book_id: str, phases: list):
         "3":       lambda: process_book_phase3.delay(uid, book_id),
         "4":       lambda: process_book_phase4.delay(uid, book_id),
         "podcast": lambda: process_book_phase6.delay(uid, book_id),
+        "repair":  lambda: process_book_repair_events.delay(uid, book_id),
     }
     fn = dispatch.get(first)
     if fn:
