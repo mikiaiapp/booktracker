@@ -23,6 +23,23 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000) -> str:
         resp = await client.chat.completions.create(model=settings.AI_MODEL, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return resp.choices[0].message.content
 
+async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 5) -> str:
+    for attempt in range(max_retries):
+        try:
+            return await _call_ai(system, user, max_tokens)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"AI Call failed after {max_retries} attempts: {e}")
+                raise
+            err_str = str(e)
+            sleep_time = (attempt + 1) * 4
+            if "Rate limit" in err_str or "Too Many Requests" in err_str or "429" in err_str:
+                sleep_time = 15 + (attempt * 10)  # Da tiempo a que se rellene la cuota de tokens por minuto
+                print(f"Límite de API alcanzado. Defiriendo {sleep_time}s para recuperar cuota... (Intento {attempt+1}/{max_retries})")
+            else:
+                print(f"AI Call error temporal: {e}. Reintentando en {sleep_time}s... (Intento {attempt+1}/{max_retries})")
+            await asyncio.sleep(sleep_time)
+
 def _parse_json(text: str):
     if not text: return None
     clean = re.sub(r"```(?:json)?\s*|```\s*", "", text).strip()
@@ -37,23 +54,65 @@ def _parse_json(text: str):
 # --- FUNCIONES DE ALTA INTENSIDAD ---
 
 async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
-    system = "Erudito literario de España. Responde en español de España culto (Castellano). JSON obligatorio."
-    user = f"Libro: {book_title}. Capítulo: {chapter_title}. Realiza un resumen magistral y minucioso: {text[:9000]}"
+    system = (
+        "Eres un erudito literario de España. Responde siempre en español de España culto. "
+        "Responde SOLO con JSON válido, sin texto extra, usando exactamente estas claves en inglés:\n"
+        '{"summary": "resumen extenso del capítulo (mínimo 250 palabras en español de España)", '
+        '"key_events": ["Primer hito narrativo fundamental", "Segundo hito narrativo...", "Mínimo 3 hitos"]}'
+    )
+    user = (
+        f"Libro: \u00ab{book_title}\u00bb de {author}.\n"
+        f"Capítulo: \u00ab{chapter_title}\u00bb\n\n"
+        f"Realiza un resumen magistral y minucioso del siguiente texto:\n{text[:9000]}"
+    )
     try:
-        raw = await _call_ai(system, user, 2000)
-        return _parse_json(raw) or {"summary": raw, "key_events": []}
-    except: return {"summary": "Error", "key_events": []}
+        raw = await _call_ai_with_retry(system, user, 2000)
+        parsed = _parse_json(raw)
+        if not parsed:
+            return None
+        # Normalizar claves españolas por si la IA no sigue el esquema
+        if "summary" not in parsed:
+            parsed["summary"] = (
+                parsed.get("resumen") or
+                parsed.get("contenido") or
+                parsed.get("texto") or
+                parsed.get("descripcion") or
+                next((v for v in parsed.values() if isinstance(v, str) and len(v) > 100), None)
+            )
+        if "key_events" not in parsed:
+            parsed["key_events"] = (
+                parsed.get("eventos_clave") or
+                parsed.get("eventos") or
+                parsed.get("puntos_clave") or
+                parsed.get("momentos_clave") or
+                parsed.get("hitos") or
+                parsed.get("key_moments") or
+                []
+            )
+        # Limpieza básica: asegurar que sean strings y no estén vacíos
+        if isinstance(parsed["key_events"], list):
+            parsed["key_events"] = [str(x).strip() for x in parsed["key_events"] if x and len(str(x)) > 5]
+        return parsed if parsed.get("summary") else None
+    except Exception as e:
+        print(f"Error al resumir capítulo {chapter_title}: {e}")
+        return None
 
 async def get_character_list(all_summaries: str) -> list:
+    if not all_summaries or len(all_summaries.strip()) < 50:
+        return []
     system = "Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
     user = f"Resúmenes: {all_summaries[:15000]}"
     try:
-        raw = await _call_ai(system, user, 1000)
+        raw = await _call_ai_with_retry(system, user, 1000)
         data = _parse_json(raw)
         return [c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else []
-    except: return []
+    except Exception as e:
+        print(f"Error al obtener listado de personajes: {e}")
+        return []
 
 async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
+    if not all_summaries or len(all_summaries.strip()) < 50:
+        return None
     tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
     system = f"Eres un crítico literario de la RAE de España. Realiza un estudio psicológico MONUMENTAL de este personaje {tipo}. Usa castellano culto de España. Responde SOLO en JSON."
     user = f"""Libro: {book_title}. Personaje: {name}. 
@@ -70,16 +129,26 @@ async def analyze_single_character(name: str, is_main: bool, all_summaries: str,
       "quotes": ["Cita clave"]
     }}"""
     try:
-        raw = await _call_ai(system, user, 3500)
+        raw = await _call_ai_with_retry(system, user, 3500)
         return _parse_json(raw)
-    except: return None
+    except Exception as e:
+        print(f"Error al analizar personaje {name}: {e}")
+        return None
 
 async def generate_global_summary(all_summaries: str, book_title: str, author: str) -> str:
+    if not all_summaries or len(all_summaries.strip()) < 50:
+        return ""
     system = "Académico de la lengua de España. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
     user = f"Libro: {book_title} de {author}. Análisis basado en: {all_summaries[:30000]}"
-    return await _call_ai(system, user, 5000)
+    try:
+        return await _call_ai_with_retry(system, user, 5000)
+    except Exception as e:
+        print(f"Error al generar ensayo global: {e}")
+        return ""
 
 async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
+    if not all_summaries or len(all_summaries.strip()) < 50:
+        return {"center": book_title, "branches": []}
     system = (
         "Experto en análisis literario. Responde SOLO con JSON válido, sin texto extra ni bloques de código.\n"
         "Estructura exacta requerida:\n"
@@ -90,12 +159,14 @@ async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
     )
     user = f"Genera el mapa mental completo para «{book_title}».\nContenido del libro:\n{all_summaries[:20000]}"
     try:
-        raw = await _call_ai(system, user, 5000)
+        raw = await _call_ai_with_retry(system, user, 5000)
         return _parse_json(raw) or {"center": book_title, "branches": []}
     except:
         return {"center": book_title, "branches": []}
 
 async def generate_podcast_script(book_title, author, summary, chars) -> str:
+    if not summary or len(summary.strip()) < 50:
+        return ""
     system = (
         "Eres guionista de un podcast literario de RNE. Escribe en español de España.\n"
         "El podcast dura exactamente 5 minutos de audio (≈ 750–850 palabras de diálogo real).\n"
@@ -117,4 +188,8 @@ async def generate_podcast_script(book_title, author, summary, chars) -> str:
         f"Análisis del libro:\n{summary[:10000]}\n\n"
         f"Personajes principales:\n{str(chars)[:2000]}"
     )
-    return await _call_ai(system, user, 8000)
+    try:
+        return await _call_ai_with_retry(system, user, 8000)
+    except Exception as e:
+        print(f"Error al generar guion de podcast: {e}")
+        return ""

@@ -574,13 +574,61 @@
 }
 
 .key-events {
-  margin-top: 1rem; padding-top: 1rem;
+  margin-top: 2rem;
   border-top: 1px solid var(--paper-dark);
+  padding-top: 1rem;
 }
-.key-events strong { font-size: 0.8rem; color: var(--ink); display: block; margin-bottom: 0.5rem; }
-.key-events ul { list-style: none; display: flex; flex-direction: column; gap: 0.3rem; }
-.key-events li { font-size: 0.8rem; padding-left: 1rem; position: relative; }
-.key-events li::before { content: '→'; position: absolute; left: 0; color: var(--gold); }
+.key-events strong { 
+    font-size: 0.85rem; 
+    color: var(--ink); 
+    display: block; 
+    margin-bottom: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05rem;
+}
+.key-events ul { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
+.key-events li { 
+    font-size: 0.9rem; 
+    padding-left: 1.5rem; 
+    position: relative; 
+    line-height: 1.4;
+    color: var(--ink-light);
+}
+.key-events li::before { 
+    content: '→'; 
+    position: absolute; 
+    left: 0; 
+    color: var(--gold); 
+    font-weight: bold;
+}
+
+.key-events-missing {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dotted var(--paper-dark);
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: opacity 0.2s;
+}
+
+.btn-text-link:hover {
+  text-decoration: underline;
+  opacity: 0.8;
+}
+
+.btn-text-link:disabled {
+  color: var(--mist);
+  cursor: default;
+  text-decoration: none;
+}
 
 /* TTS capítulos */
 .ch-tts-btns { display: flex; gap: 4px; align-items: center; margin-left: 4px; }
@@ -602,6 +650,11 @@
 }
 .summarize-ch-btn:hover { background: var(--gold); color: var(--ink); }
 .summarize-ch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.summarize-ch-btn--error {
+  border-color: var(--rust, #c0392b); color: var(--rust, #c0392b);
+}
+.summarize-ch-btn--error:hover { background: var(--rust, #c0392b); color: white; }
+
 
 /* Characters */
 .characters-tab { padding: 0.25rem 0; }

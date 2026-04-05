@@ -80,10 +80,11 @@ def get_state(uid: str) -> dict:
         except Exception:
             pass
 
-    all_ids = ([active] if active else []) + [e["book_id"] for e in queue]
     infos = {}
-    for bid in all_ids:
-        d = r.hgetall(_ik(uid, bid))
+    keys = r.keys(f"btq:{uid}:info:*")
+    for k in keys:
+        bid = k.split(":")[-1]
+        d = r.hgetall(k)
         if d:
             infos[bid] = d
 
