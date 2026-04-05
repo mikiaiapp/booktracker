@@ -602,6 +602,11 @@
 }
 .summarize-ch-btn:hover { background: var(--gold); color: var(--ink); }
 .summarize-ch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.summarize-ch-btn--error {
+  border-color: var(--rust, #c0392b); color: var(--rust, #c0392b);
+}
+.summarize-ch-btn--error:hover { background: var(--rust, #c0392b); color: white; }
+
 
 /* Characters */
 .characters-tab { padding: 0.25rem 0; }

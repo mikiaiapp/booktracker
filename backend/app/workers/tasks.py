@@ -7,6 +7,41 @@ from app.models.book import Book, Chapter, Character, AnalysisJob
 from app.services.ai_analyzer import *
 from app.services.tts_service import synthesize_podcast
 from app.workers.queue_manager import update_progress, on_done
+
+# --- Helpers de Estado ---
+
+async def _finalize_book_status(db, book):
+    """
+    Evalúa qué partes del libro están hechas y actualiza book.status en la DB.
+    Esto permite que la UI deje de mostrar "Procesando..." al final de cada fase.
+    """
+    from app.models.book import Chapter, Character
+    from sqlalchemy import select
+    
+    # Recargar datos frescos
+    chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book.id))).scalars().all()
+    chars = (await db.execute(select(Character).where(Character.book_id == book.id))).scalars().all()
+    
+    is_perfect = True
+    if not chaps or any((not c.summary or c.summary_status == 'error') for c in chaps): 
+        is_perfect = False
+    elif not chars or len(chars) == 0: 
+        is_perfect = False
+    elif not book.global_summary or len(book.global_summary.strip()) < 10: 
+        is_perfect = False
+    elif not book.mindmap_data or not book.mindmap_data.get("branches"): 
+        is_perfect = False
+    
+    # Si todo está perfecto → complete. 
+    # Si falta algo pero ya no estamos procesando → analizado o incompleto.
+    if is_perfect:
+        book.status = "complete"
+    else:
+        # Si al menos tiene los capítulos estructurados pero faltan extras
+        book.status = "incomplete" if book.phase2_done else "structured"
+    
+    await db.commit()
+    print(f"[WORKER] Estado finalizado para {book.id}: {book.status}")
 from app.core.config import settings
 
 def run_async(coro):
@@ -61,10 +96,17 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
             for i, ch in enumerate(chaps):
                 update_progress(user_id, book_id, "phase2", int(20 + (i/len(chaps)*40)), f"Resumiendo: {ch.title}")
                 s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
-                ch.summary, ch.summary_status = s.get("summary"), "done"
+                if s and s.get("summary"):
+                    ch.summary, ch.summary_status = s.get("summary"), "done"
+                else:
+                    ch.summary, ch.summary_status = "", "error"
                 await db.commit()
+                # Pausa de cortesía para no saturar la cuota de tokens por minuto (TPM)
+                await asyncio.sleep(4)
             
             book.phase2_done = True
+            book.status = "structured"  # Libera la UI del estado "Procesando" infinito
+            await db.commit()
             if chain:
                 process_book_phase3.delay(user_id, book_id, chain=True)
             else:
@@ -91,7 +133,7 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
                 char_data = {
                     "book_id": book_id,
                     "name": char_name,
-                    "role": detail.get("role") if detail else "Personaje",
+                    "role": detail.get("role") if detail else "Sin análisis de función (Error al procesar)",
                     "description": detail.get("description") if detail else "Sin descripción disponible",
                     "personality": detail.get("personality") if detail else "Sin análisis de personalidad",
                     "arc": detail.get("arc") if detail else "Sin análisis de evolución",
@@ -103,8 +145,25 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
                 await db.commit()
                 await asyncio.sleep(1)
             
-            if chain: process_book_phase4.delay(user_id, book_id, chain=True)
-            else: on_done(user_id, book_id)
+            book.phase3_done = True
+            await db.commit()
+            print(f"[WORKER] Fase 3 terminada para {book_id}")
+            
+            if chain:
+                # Solo encadenar si el resumen global está vacío
+                if not book.global_summary or len(book.global_summary.strip()) < 10:
+                    print(f"[WORKER] Lanzando Fase 4 (estaba vacío) para {book_id}")
+                    process_book_phase4.delay(user_id, book_id, chain=True)
+                elif not book.mindmap_data:
+                    print(f"[WORKER] Saltando Fase 4 (ya tiene datos), lanzando Fase 5 para {book_id}")
+                    process_book_phase5.delay(user_id, book_id, chain=True)
+                else:
+                    print(f"[WORKER] Todo listo tras Fase 3, finalizando para {book_id}")
+                    await _finalize_book_status(db, book)
+                    on_done(user_id, book_id)
+            else:
+                await _finalize_book_status(db, book)
+                on_done(user_id, book_id)
     return run_async(_p3())
 
 # --- FASE 4: RESUMEN GLOBAL ---
@@ -113,12 +172,35 @@ def process_book_phase4(user_id: str, book_id: str, chain: bool = False):
     async def _p4():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            if not book: return
+            
+            # Si ya tiene datos y lanzamos individualmente, podemos forzar,
+            # pero en cadena respetamos la regla de "solo si está vacío".
+            if chain and book.global_summary and len(book.global_summary.strip()) > 10:
+                print(f"[WORKER] Fase 4 omitida: ya tiene datos para {book_id}")
+                if not book.mindmap_data:
+                    process_book_phase5.delay(user_id, book_id, chain=True)
+                else:
+                    on_done(user_id, book_id)
+                return
+
+            print(f"[WORKER] Iniciando Fase 4 para {book_id}")
             all_summaries = await _get_summaries_text(db, book_id)
             update_progress(user_id, book_id, "phase4", 85, "Redactando ensayo global...")
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
+            book.has_global_summary = True
             await db.commit()
-            if chain: process_book_phase5.delay(user_id, book_id, chain=True)
-            else: on_done(user_id, book_id)
+            
+            if chain:
+                if not book.mindmap_data:
+                    process_book_phase5.delay(user_id, book_id, chain=True)
+                else:
+                    print(f"[WORKER] Fase 5 ya tiene datos, finalizando tras Fase 4 para {book_id}")
+                    await _finalize_book_status(db, book)
+                    on_done(user_id, book_id)
+            else:
+                await _finalize_book_status(db, book)
+                on_done(user_id, book_id)
     return run_async(_p4())
 
 # --- FASE 5: MAPA MENTAL ---
@@ -127,12 +209,32 @@ def process_book_phase5(user_id: str, book_id: str, chain: bool = False):
     async def _p5():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            if not book: return
+            
+            if chain and book.mindmap_data and len(str(book.mindmap_data)) > 50:
+                print(f"[WORKER] Fase 5 omitida: ya tiene datos para {book_id}")
+                if not book.podcast_audio_path:
+                    process_book_phase6.delay(user_id, book_id)
+                else:
+                    on_done(user_id, book_id)
+                return
+
+            print(f"[WORKER] Iniciando Fase 5 para {book_id}")
             all_summaries = await _get_summaries_text(db, book_id)
             update_progress(user_id, book_id, "phase5", 90, "Estructurando mapa mental...")
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
+            book.has_mindmap = True
             await db.commit()
-            if chain: process_book_phase6.delay(user_id, book_id)
-            else: on_done(user_id, book_id)
+            if chain:
+                if not book.podcast_audio_path:
+                    process_book_phase6.delay(user_id, book_id)
+                else:
+                    print(f"[WORKER] Fase 6 ya tiene podcast, finalizando tras Fase 5 para {book_id}")
+                    await _finalize_book_status(db, book)
+                    on_done(user_id, book_id)
+            else:
+                await _finalize_book_status(db, book)
+                on_done(user_id, book_id)
     return run_async(_p5())
 
 # --- FASE 6: PODCAST ---
@@ -141,19 +243,69 @@ def process_book_phase6(user_id: str, book_id: str):
     async def _p6():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
-            chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
-            update_progress(user_id, book_id, "phase6", 95, "Sincronizando audio del podcast...")
-            script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
-            book.podcast_script = script
-            audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
-            os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-            try: await synthesize_podcast(script, audio_path); book.podcast_audio_path = audio_path
-            except: pass
-            book.status = "complete"
+            if not book: return
+            
+            # Si ya tiene audio y script, y entramos por cadena, podemos saltar
+            if book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script:
+                print(f"[WORKER] Fase 6 omitida: ya tiene podcast para {book_id}")
+                # Pero aún así validamos el status final
+                pass 
+            else:
+                print(f"[WORKER] Iniciando Fase 6 para {book_id}")
+                char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
+                chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
+                update_progress(user_id, book_id, "phase6", 95, "Sincronizando audio del podcast...")
+                script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
+                book.podcast_script = script
+                audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
+                os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+                try: 
+                    await synthesize_podcast(script, audio_path)
+                    book.podcast_audio_path = audio_path
+                except Exception as e:
+                    print(f"[WORKER] Error en síntesis de audio: {e}")
+            
+            book.podcast_done = True
             await db.commit()
+            
+            # Evaluación final de salud del libro
+            await _finalize_book_status(db, book)
+            
+            print(f"[WORKER] Proceso completo para {book_id}. Status: {book.status}")
             on_done(user_id, book_id)
     return run_async(_p6())
+
+# --- RESUMEN DE UN CAPÍTULO INDIVIDUAL (botón "+ Resumir") ---
+@celery_app.task(name="summarize_chapter_task")
+def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
+    async def _task():
+        async for db in get_user_db(user_id):
+            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            ch   = (await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id))).scalar_one_or_none()
+            if not book or not ch:
+                return
+            ch.summary_status = "processing"
+            await db.commit()
+            update_progress(user_id, book_id, "phase2", 50, f"Resumiendo: {ch.title}")
+            try:
+                s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
+                if s and s.get("summary"):
+                    ch.summary        = s.get("summary")
+                    ch.key_events     = s.get("key_events", [])
+                    ch.summary_status = "done"
+                else:
+                    ch.summary_status = "error"
+            except Exception:
+                ch.summary_status = "error"
+            await db.commit()
+            # Si todos los capítulos están listos, marcar el libro como estructurado
+            all_chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id))).scalars().all()
+            all_done = all(c.summary_status in ("done", "skipped", "quota_exceeded") for c in all_chaps)
+            if all_done:
+                book.phase2_done = True
+                book.status = "structured"
+                await db.commit()
+    return run_async(_task())
 
 # --- BOTONES DE REANALIZAR (INDIVIDUALES) ---
 
@@ -178,6 +330,7 @@ def reanalyze_single_character_task(user_id: str, book_id: str, character_id: st
                 char.relationships = detail.get("relationships") if isinstance(detail.get("relationships"), dict) else char.relationships
                 char.key_moments  = detail.get("key_moments")  if isinstance(detail.get("key_moments"),  list) else char.key_moments
                 char.quotes       = detail.get("quotes")       if isinstance(detail.get("quotes"),       list) else char.quotes
+                if detail.get("role"): char.role = detail.get("role")
             await db.commit()
     return run_async(_task())
 
