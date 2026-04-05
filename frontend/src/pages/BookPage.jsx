@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
-  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw
+  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI } from '../utils/api'
 import MindMap from '../components/MindMap'
