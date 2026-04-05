@@ -84,7 +84,9 @@ def process_book_phase1(user_id: str, book_id: str, chain: bool = True, force: b
             book.phase1_done, book.status = True, "identified"
             await db.commit()
             if book.author: reidentify_author_task.delay(user_id, book.author)
-            if chain:
+            
+            # Encadenamiento inteligente: F1 -> F2 si F2 está vacío
+            if not book.phase2_done:
                 process_book_phase2.delay(user_id, book_id, chain=True)
             else:
                 on_done(user_id, book_id)
@@ -119,7 +121,9 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
             book.phase2_done = True
             book.status = "structured"  # Libera la UI del estado "Procesando" infinito
             await db.commit()
-            if chain:
+            
+            # Encadenamiento inteligente: F2 -> F3 si F3 está vacío
+            if not book.phase3_done:
                 process_book_phase3.delay(user_id, book_id, chain=True)
             else:
                 on_done(user_id, book_id)
@@ -161,21 +165,17 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
             await db.commit()
             print(f"[WORKER] Fase 3 terminada para {book_id}")
             
-            if chain:
-                # Solo encadenar si el resumen global está vacío
-                if not book.global_summary or len(book.global_summary.strip()) < 10:
-                    print(f"[WORKER] Lanzando Fase 4 (estaba vacío) para {book_id}")
-                    process_book_phase4.delay(user_id, book_id, chain=True)
-                elif not book.mindmap_data:
-                    print(f"[WORKER] Saltando Fase 4 (ya tiene datos), lanzando Fase 5 para {book_id}")
+            # Encadenamiento inteligente: F3 -> F4 si F4 está vacío
+            next_is_empty = not book.global_summary or len(book.global_summary.strip()) < 10
+            if next_is_empty:
+                process_book_phase4.delay(user_id, book_id, chain=True)
+            else:
+                # Si F4 ya tiene info, paramos, pero verificamos si falta F5 por si acaso
+                if not book.mindmap_data or len(str(book.mindmap_data)) < 50:
                     process_book_phase5.delay(user_id, book_id, chain=True)
                 else:
-                    print(f"[WORKER] Todo listo tras Fase 3, finalizando para {book_id}")
                     await _finalize_book_status(db, book)
                     on_done(user_id, book_id)
-            else:
-                await _finalize_book_status(db, book)
-                on_done(user_id, book_id)
     return run_async(_p3())
 
 # --- FASE 4: RESUMEN GLOBAL ---
@@ -203,13 +203,9 @@ def process_book_phase4(user_id: str, book_id: str, chain: bool = False):
             book.has_global_summary = True
             await db.commit()
             
-            if chain:
-                if not book.mindmap_data:
-                    process_book_phase5.delay(user_id, book_id, chain=True)
-                else:
-                    print(f"[WORKER] Fase 5 ya tiene datos, finalizando tras Fase 4 para {book_id}")
-                    await _finalize_book_status(db, book)
-                    on_done(user_id, book_id)
+            # Encadenamiento inteligente: F4 -> F5 si F5 está vacío
+            if not book.mindmap_data or len(str(book.mindmap_data)) < 50:
+                process_book_phase5.delay(user_id, book_id, chain=True)
             else:
                 await _finalize_book_status(db, book)
                 on_done(user_id, book_id)
@@ -237,13 +233,10 @@ def process_book_phase5(user_id: str, book_id: str, chain: bool = False):
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
             book.has_mindmap = True
             await db.commit()
-            if chain:
-                if not book.podcast_audio_path:
-                    process_book_phase6.delay(user_id, book_id)
-                else:
-                    print(f"[WORKER] Fase 6 ya tiene podcast, finalizando tras Fase 5 para {book_id}")
-                    await _finalize_book_status(db, book)
-                    on_done(user_id, book_id)
+            
+            # Encadenamiento inteligente: F5 -> F6 si F6 está vacío
+            if not book.podcast_audio_path or not os.path.exists(book.podcast_audio_path):
+                process_book_phase6.delay(user_id, book_id)
             else:
                 await _finalize_book_status(db, book)
                 on_done(user_id, book_id)
