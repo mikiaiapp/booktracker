@@ -342,7 +342,7 @@
   flex-direction: column;
   gap: 2px;
   flex-shrink: 0;
-  width: 160px;
+  width: 200px;
   position: sticky;
   top: 1rem;
   background: white;
@@ -357,22 +357,30 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.65rem 0.85rem;
+  padding: 0.7rem 0.95rem; /* slightly increased padding */
   border: none;
   background: transparent;
   color: var(--mist);
   font-size: 0.85rem;
   text-align: left;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
   font-family: inherit;
+  white-space: nowrap;
 }
 
 .tab-btn-main {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex: 1;
+}
+
+.tab-btn-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tab-btn:hover:not(:disabled) { background: var(--paper-dark); color: var(--ink); }
@@ -383,6 +391,7 @@
 /* Status Icons */
 .tab-status-icon {
   flex-shrink: 0;
+  margin-left: 0.5rem;
   transition: all 0.2s;
 }
 

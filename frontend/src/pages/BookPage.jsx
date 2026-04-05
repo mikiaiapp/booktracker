@@ -881,13 +881,12 @@ export default function BookPage() {
                 className={`tab-btn ${tab === t.id ? 'active' : ''} ${statusClass}`}
                 onClick={() => setTab(t.id)}
                 disabled={isShell && t.id !== 'info'}
-                style={{ whiteSpace: 'nowrap' }}
               >
-                <div className="tab-btn-main" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                <div className="tab-btn-main">
                   <t.icon size={15} strokeWidth={1.5} />
-                  <span style={{ flex: 1 }}>{t.label}</span>
+                  <span className="tab-btn-text">{t.label}</span>
                 </div>
-                {StatusIcon && <StatusIcon size={14} className={`tab-status-icon ${statusClass}`} style={{ marginLeft: '4px' }} />}
+                {StatusIcon && <StatusIcon size={14} className={`tab-status-icon ${statusClass}`} />}
               </button>
             );
           })}
