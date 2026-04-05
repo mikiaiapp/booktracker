@@ -23,7 +23,11 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000) -> str:
         resp = await client.chat.completions.create(model=settings.AI_MODEL, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return resp.choices[0].message.content
 
+<<<<<<< HEAD
 async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 5) -> str:
+=======
+async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 3) -> str:
+>>>>>>> 2644493993c88f8e0e8b64882024c8e7b938b364
     for attempt in range(max_retries):
         try:
             return await _call_ai(system, user, max_tokens)
@@ -31,6 +35,7 @@ async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, ma
             if attempt == max_retries - 1:
                 print(f"AI Call failed after {max_retries} attempts: {e}")
                 raise
+<<<<<<< HEAD
             err_str = str(e)
             sleep_time = (attempt + 1) * 4
             if "Rate limit" in err_str or "Too Many Requests" in err_str or "429" in err_str:
@@ -38,6 +43,10 @@ async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, ma
                 print(f"Límite de API alcanzado. Defiriendo {sleep_time}s para recuperar cuota... (Intento {attempt+1}/{max_retries})")
             else:
                 print(f"AI Call error temporal: {e}. Reintentando en {sleep_time}s... (Intento {attempt+1}/{max_retries})")
+=======
+            sleep_time = (attempt + 1) * 3
+            print(f"AI Call error: {e}. Retrying in {sleep_time} segundos... (Attempt {attempt+1}/{max_retries})")
+>>>>>>> 2644493993c88f8e0e8b64882024c8e7b938b364
             await asyncio.sleep(sleep_time)
 
 def _parse_json(text: str):
