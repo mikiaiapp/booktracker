@@ -123,34 +123,26 @@ async def upload_book(
 
     content = await file.read()
 
-    # ── Detección temprana de duplicado por nombre de archivo ──
-    # Extraer título del nombre del archivo como pista inicial
+    # ── Detección temprana de duplicados ──
+    # Extraer título del nombre del archivo y normalizarlo
     base_title = file.filename.rsplit(".", 1)[0]
+    norm_upload_title = _normalize_title(base_title)
 
-    # Buscar si hay un libro existente con ese título que ya esté analizado
-    from sqlalchemy import func as sqlfunc
-    existing_analyzed = await db.execute(
-        select(Book).where(
-            sqlfunc.lower(Book.title) == base_title.lower(),
-            Book.phase3_done == True
-        )
-    )
-    analyzed_book = existing_analyzed.scalar_one_or_none()
-    if analyzed_book:
-        raise HTTPException(
-            400,
-            f"El libro '{analyzed_book.title}' ya está analizado en tu biblioteca. "
-            f"No se puede duplicar."
-        )
-
-    # Buscar shell existente con ese título
-    existing_shell = await db.execute(
-        select(Book).where(
-            sqlfunc.lower(Book.title) == base_title.lower(),
-            Book.status.in_(["shell", "shell_error"])
-        )
-    )
-    shell_book = existing_shell.scalar_one_or_none()
+    # Buscar duplicados usando la lógica avanzada de normalización
+    existing_book = await _find_existing_book(db, base_title, "", "")
+    
+    if existing_book:
+        # Si ya existe y no es un "shell" vacío (es decir, ya tiene o tuvo archivo o progreso)
+        if existing_book.phase3_done or existing_book.status not in ("shell", "shell_error"):
+             raise HTTPException(
+                400,
+                f"El libro '{existing_book.title}' ya existe en tu biblioteca. "
+                f"No se recomienda duplicarlo."
+            )
+        # Si es un shell, lo reutilizaremos (lógica de abajo lo manejará)
+        shell_book = existing_book if existing_book.status in ("shell", "shell_error") else None
+    else:
+        shell_book = None
 
     book_id = str(uuid.uuid4())
     filename = f"{book_id}.{ext}"
@@ -202,19 +194,57 @@ async def list_books(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy import func
     result = await db.execute(select(Book).order_by(Book.created_at.desc()))
     books = result.scalars().all()
-    return [
-        {
+
+    # Pre-cargar conteos de capítulos y personajes para "curar" estados atascados
+    # (Agrupados por book_id para eficiencia)
+    ch_counts_res = await db.execute(
+        select(Chapter.book_id, func.count(Chapter.id))
+        .where(Chapter.book_id.in_([b.id for b in books]))
+        .group_by(Chapter.book_id)
+    )
+    ch_counts = {r[0]: r[1] for r in ch_counts_res.all()}
+
+    char_counts_res = await db.execute(
+        select(Character.book_id, func.count(Character.id))
+        .where(Character.book_id.in_([b.id for b in books]))
+        .group_by(Character.book_id)
+    )
+    char_counts = {r[0]: r[1] for r in char_counts_res.all()}
+
+    response = []
+    for b in books:
+        # Lógica de "auto-reparación" de estado visual
+        status = b.status
+        is_processing = status in ("queued", "identifying", "analyzed_structure", "summarizing", "generating_podcast")
+        
+        has_chapters = ch_counts.get(b.id, 0) > 0
+        has_chars = char_counts.get(b.id, 0) > 0
+        
+        # Si tiene capítulos y personajes y el sistema dice que sigue procesando...
+        # lo "promovemos" visualmente a analizado (incomplete o complete)
+        if is_processing and has_chapters and has_chars:
+            is_complete = (
+                b.phase2_done and 
+                b.phase3_done and 
+                bool(b.global_summary) and 
+                bool(b.mindmap_data)
+            )
+            status = "complete" if is_complete else "incomplete"
+
+        response.append({
             "id": b.id, "title": b.title, "author": b.author,
             "cover_local": b.cover_local, "cover_url": b.cover_url,
-            "isbn": b.isbn, "status": b.status,
+            "isbn": b.isbn, "status": status,
             "read_status": b.read_status, "rating": b.rating,
             "phase1_done": b.phase1_done, "phase2_done": b.phase2_done,
             "phase3_done": b.phase3_done, "created_at": b.created_at,
-        }
-        for b in books
-    ]
+            "has_chapters": has_chapters, "has_characters": has_chars
+        })
+    
+    return response
 
 
 # ── Book detail ───────────────────────────────────────────────────────────────
@@ -323,9 +353,13 @@ async def update_cover(
         from app.core.config import settings
         from app.services.book_identifier import download_cover
         covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
+        old_cover = book.cover_local
         local = await download_cover(cover_url, covers_dir, book_id)
         if local:
             book.cover_local = local
+            if old_cover and old_cover != local and os.path.exists(old_cover):
+                try: os.remove(old_cover)
+                except: pass
     except Exception as e:
         print(f"Cover download error: {e}")
 
@@ -411,9 +445,10 @@ async def upload_cover(
     try:
         from app.services.book_identifier import _bytes_to_jpeg
         from app.core.config import settings
+        import time
         covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
         os.makedirs(covers_dir, exist_ok=True)
-        filename = f"{book_id}_cover.jpg"
+        filename = f"{book_id}_cover_{int(time.time())}.jpg"
         local_path = os.path.join(covers_dir, filename)
 
         try:
@@ -427,9 +462,15 @@ async def upload_cover(
         with open(local_path, "wb") as f:
             f.write(jpeg_data)
 
+        old_cover = book.cover_local
         book.cover_local = local_path
         book.cover_url = None  # ya tenemos local, limpiar URL externa
         await db.commit()
+        
+        if old_cover and old_cover != local_path and os.path.exists(old_cover):
+            try: os.remove(old_cover)
+            except: pass
+            
         return {"ok": True, "cover_local": local_path}
 
     except HTTPException:
