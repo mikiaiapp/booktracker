@@ -54,7 +54,7 @@ async def trigger_phase2(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase1_done:
+    if not book.phase1_done and not (book.title and book.author):
         raise HTTPException(400, "Phase 1 not complete")
 
     from app.workers.tasks import process_book_phase2
@@ -79,7 +79,10 @@ async def trigger_phase3(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
+    # Verificar si Fase 2 está realmente hecha (capítulos presentes)
+    ch_res = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+    has_chapters = len(ch_res.scalars().all()) > 0
+    if not book.phase2_done and not has_chapters:
         raise HTTPException(400, "Phase 2 not complete")
 
     # Resetear capitulos a pendiente para que se rerresumen
@@ -94,7 +97,7 @@ async def trigger_phase3(
             ch.summary_status = "pending"
 
     from app.workers.tasks import process_book_phase3
-    task = process_book_phase3.delay(current_user.id, book_id)
+    task = process_book_phase3.delay(current_user.id, book_id, chain=True)
     book.task_id   = task.id
     book.status    = "summarizing"
     book.error_msg = None
@@ -116,11 +119,22 @@ async def trigger_phase4(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
-        raise HTTPException(400, "Phase 2 not complete")
+    # Verificar si Fase 2 está realmente hecha (capítulos presentes)
+    ch_res = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+    has_chapters = len(ch_res.scalars().all()) > 0
+    
+    # Fase 3 se considera hecha si hay personajes
+    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_chars = len(char_res.scalars().all()) > 0
+
+    if not book.phase2_done and not has_chapters:
+        raise HTTPException(400, "Phase 2 (Capítulos) not complete")
+    # Para el resumen global necesitamos capítulos resumidos (Fase 2)
+    # No obligamos necesariamente a Personajes (Fase 3) si el usuario quiere saltar,
+    # pero aquí validamos que al menos la estructura básica esté.
 
     from app.workers.tasks import process_book_phase4
-    task = process_book_phase4.delay(current_user.id, book_id)
+    task = process_book_phase4.delay(current_user.id, book_id, chain=True)
     book.task_id   = task.id
     book.status    = "summarizing"
     book.error_msg = None
@@ -186,11 +200,14 @@ async def trigger_phase5(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
-        raise HTTPException(400, "Phase 2 not complete")
+    # Inteligencia para desbloquear si ya hay personajes (Fase 3) aunque el flag esté a False
+    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_chars = len(char_res.scalars().all()) > 0
+    if not book.phase3_done and not has_chars:
+        raise HTTPException(400, "Phase 3 (Personajes) not complete")
 
     from app.workers.tasks import process_book_phase5
-    task = process_book_phase5.delay(current_user.id, book_id)
+    task = process_book_phase5.delay(current_user.id, book_id, chain=True)
     book.task_id   = task.id
     book.status    = "summarizing"
     book.error_msg = None
@@ -210,8 +227,11 @@ async def trigger_podcast(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase3_done:
-        raise HTTPException(400, "Phase 3/4 not complete")
+    # Inteligencia para desbloquear si ya hay personajes (Fase 3) aunque el flag esté a False
+    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_chars = len(char_res.scalars().all()) > 0
+    if not book.phase3_done and not has_chars:
+        raise HTTPException(400, "Phase 3 (Personajes) not complete")
 
     from app.workers.tasks import process_book_phase6
     task = process_book_phase6.delay(current_user.id, book_id)
@@ -244,13 +264,23 @@ async def get_status(
     total_ch  = len(chapters)
     done_ch   = sum(1 for c in chapters if c.summary_status == "done")
 
+    # Inteligencia de detección de fases completadas (auto-recuperación de estados inconsistentes)
     chapters_summarized = total_ch > 0 and done_ch == total_ch
+    
+    # Fase 2 se considera hecha si hay capítulos resumidos o el flag está a True
+    phase2_really_done = book.phase2_done or chapters_summarized
+    
+    # Fase 3 (Personajes) se considera hecha si el flag está a True 
+    # O si ya hay personajes en la base de datos
+    char_count_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_characters = len(char_count_res.scalars().all()) > 0
+    phase3_really_done = book.phase3_done or has_characters
 
     return {
         "status":               book.status,
         "phase1_done":          book.phase1_done,
-        "phase2_done":          book.phase2_done,
-        "phase3_done":          book.phase3_done,
+        "phase2_done":          phase2_really_done,
+        "phase3_done":          phase3_really_done,
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary),
         "has_mindmap":          bool(book.mindmap_data),
