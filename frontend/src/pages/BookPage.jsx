@@ -835,14 +835,7 @@ export default function BookPage() {
             <button key={t.id}
               className={`tab-btn ${tab === t.id ? 'active' : ''}`}
               onClick={() => setTab(t.id)}
-              disabled={
-                (isShell && t.id !== 'info') ||
-                (t.id === 'chapters'   && !status?.phase2_done) ||
-                (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary'    && !status?.has_global_summary) ||
-                (t.id === 'mindmap'    && !status?.has_mindmap) ||
-                (t.id === 'podcast'    && !book.podcast_audio_path)
-              }
+              disabled={isShell && t.id !== 'info'}
             >
               <t.icon size={15} strokeWidth={1.5} />
               {t.label}
@@ -853,12 +846,7 @@ export default function BookPage() {
         <div className="tabs-select-wrapper tabs-select-mobile">
           <select className="tabs-select" value={tab} onChange={(e) => setTab(e.target.value)}>
             {TABS.map(t => {
-              const disabled = (isShell && t.id !== 'info') ||
-                (t.id === 'chapters'   && !status?.phase2_done) ||
-                (t.id === 'characters' && !status?.phase3_done) ||
-                (t.id === 'summary'    && !status?.has_global_summary) ||
-                (t.id === 'mindmap'    && !status?.has_mindmap) ||
-                (t.id === 'podcast'    && !book.podcast_audio_path)
+              const disabled = (isShell && t.id !== 'info')
               const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
               return <option key={t.id} value={t.id} disabled={disabled}>{icon} {t.label}</option>
             })}
