@@ -2,9 +2,8 @@ import React, { useState } from 'react'
 import { ChevronRight, ChevronDown } from 'lucide-react'
 
 const PALETTE = [
-  '#c9a96e', '#7c9e87', '#8b7fb8', '#d4876b',
-  '#5f8ea0', '#c97b8a', '#6b9e7c', '#b89450',
-  '#9b7fb8', '#7ea8a0',
+  '#4f46e5', '#06b6d4', '#f59e0b', '#d4876b',
+  '#10b981', '#ef4444', '#ec4899', '#8b5cf6',
 ]
 
 export default function MindMap({ data }) {

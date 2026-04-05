@@ -80,10 +80,11 @@ def get_state(uid: str) -> dict:
         except Exception:
             pass
 
-    all_ids = ([active] if active else []) + [e["book_id"] for e in queue]
     infos = {}
-    for bid in all_ids:
-        d = r.hgetall(_ik(uid, bid))
+    keys = r.keys(f"btq:{uid}:info:*")
+    for k in keys:
+        bid = k.split(":")[-1]
+        d = r.hgetall(k)
         if d:
             infos[bid] = d
 
@@ -122,8 +123,18 @@ def cancel(uid: str, book_id: str) -> str:
         except Exception:
             pass
 
-    # Activo → limpiar y bombear siguiente
+    # Activo → revocar tarea Celery y limpiar
     if r.get(_ak(uid)) == book_id:
+        # Intentar detener físicamente la tarea
+        try:
+            from app.workers.celery_app import celery_app
+            tid = r.hget(_ik(uid, book_id), "task_id")
+            if tid:
+                print(f"[QUEUE] Revocando tarea Celery activa {tid} (libro {book_id})")
+                celery_app.control.revoke(tid, terminate=True, signal='SIGKILL')
+        except Exception as e:
+            print(f"[QUEUE] Error al revocar tarea: {e}")
+
         r.delete(_ak(uid))
         r.delete(_ik(uid, book_id))
         _pump(uid)
@@ -204,7 +215,7 @@ def _launch(uid: str, book_id: str, phases: list):
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
         process_book_phase3, process_book_phase4,
-        process_book_phase6,
+        process_book_phase6, process_book_repair_events,
     )
     first = phases[0] if phases else "1"
     dispatch = {
@@ -213,16 +224,24 @@ def _launch(uid: str, book_id: str, phases: list):
         "3":       lambda: process_book_phase3.delay(uid, book_id),
         "4":       lambda: process_book_phase4.delay(uid, book_id),
         "podcast": lambda: process_book_phase6.delay(uid, book_id),
+        "repair":  lambda: process_book_repair_events.delay(uid, book_id),
     }
     fn = dispatch.get(first)
     if fn:
-        fn()
+        res = fn()
+        if hasattr(res, "id"):
+            # Guardar task_id para poder cancelarlo físicamente
+            _set_info(uid, book_id, "starting", 5, "Iniciando…", title, task_id=res.id)
 
 
-def _set_info(uid, book_id, phase, pct, msg, title=""):
+def _set_info(uid, book_id, phase, pct, msg, title="", task_id=None):
     r = _r()
-    r.hset(_ik(uid, book_id), mapping={
+    mapping = {
         "phase": phase, "pct": str(pct),
         "msg": msg, "title": title, "ts": str(time.time())
-    })
+    }
+    if task_id:
+        mapping["task_id"] = task_id
+    
+    r.hset(_ik(uid, book_id), mapping=mapping)
     r.expire(_ik(uid, book_id), 86400)

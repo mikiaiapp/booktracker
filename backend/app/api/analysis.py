@@ -24,6 +24,7 @@ async def get_db(current_user: User = Depends(get_current_user)):
 @router.post("/{book_id}/phase1")
 async def trigger_phase1(
     book_id: str,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -33,7 +34,7 @@ async def trigger_phase1(
         raise HTTPException(404, "Book not found")
 
     from app.workers.tasks import process_book_phase1
-    task = process_book_phase1.delay(current_user.id, book_id, False)
+    task = process_book_phase1.delay(current_user.id, book_id, False, force)
     book.task_id   = task.id
     book.status    = "identifying"
     book.phase1_done = False
@@ -54,7 +55,7 @@ async def trigger_phase2(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase1_done:
+    if not book.phase1_done and not (book.title and book.author):
         raise HTTPException(400, "Phase 1 not complete")
 
     from app.workers.tasks import process_book_phase2
@@ -79,7 +80,10 @@ async def trigger_phase3(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
+    # Verificar si Fase 2 está realmente hecha (capítulos presentes)
+    ch_res = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+    has_chapters = len(ch_res.scalars().all()) > 0
+    if not book.phase2_done and not has_chapters:
         raise HTTPException(400, "Phase 2 not complete")
 
     # Resetear capitulos a pendiente para que se rerresumen
@@ -94,7 +98,7 @@ async def trigger_phase3(
             ch.summary_status = "pending"
 
     from app.workers.tasks import process_book_phase3
-    task = process_book_phase3.delay(current_user.id, book_id)
+    task = process_book_phase3.delay(current_user.id, book_id, chain=True)
     book.task_id   = task.id
     book.status    = "summarizing"
     book.error_msg = None
@@ -116,11 +120,22 @@ async def trigger_phase4(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
-        raise HTTPException(400, "Phase 2 not complete")
+    # Verificar si Fase 2 está realmente hecha (capítulos presentes)
+    ch_res = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+    has_chapters = len(ch_res.scalars().all()) > 0
+    
+    # Fase 3 se considera hecha si hay personajes
+    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_chars = len(char_res.scalars().all()) > 0
+
+    if not book.phase2_done and not has_chapters:
+        raise HTTPException(400, "Phase 2 (Capítulos) not complete")
+    # Para el resumen global necesitamos capítulos resumidos (Fase 2)
+    # No obligamos necesariamente a Personajes (Fase 3) si el usuario quiere saltar,
+    # pero aquí validamos que al menos la estructura básica esté.
 
     from app.workers.tasks import process_book_phase4
-    task = process_book_phase4.delay(current_user.id, book_id)
+    task = process_book_phase4.delay(current_user.id, book_id, chain=True)
     book.task_id   = task.id
     book.status    = "summarizing"
     book.error_msg = None
@@ -186,11 +201,14 @@ async def trigger_phase5(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
-        raise HTTPException(400, "Phase 2 not complete")
+    # Inteligencia para desbloquear si ya hay personajes (Fase 3) aunque el flag esté a False
+    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_chars = len(char_res.scalars().all()) > 0
+    if not book.phase3_done and not has_chars:
+        raise HTTPException(400, "Phase 3 (Personajes) not complete")
 
     from app.workers.tasks import process_book_phase5
-    task = process_book_phase5.delay(current_user.id, book_id)
+    task = process_book_phase5.delay(current_user.id, book_id, chain=True)
     book.task_id   = task.id
     book.status    = "summarizing"
     book.error_msg = None
@@ -210,8 +228,11 @@ async def trigger_podcast(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase3_done:
-        raise HTTPException(400, "Phase 3/4 not complete")
+    # Inteligencia para desbloquear si ya hay personajes (Fase 3) aunque el flag esté a False
+    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_chars = len(char_res.scalars().all()) > 0
+    if not book.phase3_done and not has_chars:
+        raise HTTPException(400, "Phase 3 (Personajes) not complete")
 
     from app.workers.tasks import process_book_phase6
     task = process_book_phase6.delay(current_user.id, book_id)
@@ -219,6 +240,64 @@ async def trigger_podcast(
     book.status  = "generating_podcast"
     await db.commit()
     return {"task_id": task.id}
+
+
+# ── Reparación Global de Eventos Clave ───────────────────────
+
+@router.post("/repair-all-events")
+async def repair_all_events(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import or_
+    from app.workers.queue_manager import enqueue as q_enqueue
+
+    # 1. Buscar todos los libros del usuario
+    res = await db.execute(select(Book))
+    books = res.scalars().all()
+    
+    enqueued_count = 0
+    for book in books:
+        # 2. Para cada libro, ver si tiene capítulos con resumen pero sin key_events
+        ch_res = await db.execute(
+            select(Chapter).where(
+                Chapter.book_id == book.id,
+                Chapter.summary != None,
+                or_(Chapter.key_events == None, Chapter.key_events == "[]", Chapter.key_events == "")
+            ).limit(1) # Basta con que falte uno
+        )
+        if ch_res.scalar_one_or_none():
+            # 3. Encolar para reparación
+            q_enqueue(current_user.id, book.id, book.title, phases=["repair"])
+            enqueued_count += 1
+
+    return {"status": "ok", "enqueued": enqueued_count}
+
+
+# ── Cancelación ────────────────────────────────────────────────
+
+@router.post("/{book_id}/cancel")
+async def cancel_analysis(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.workers.queue_manager import cancel as q_cancel
+    
+    # 1. Intentar cancelar en el gestor de colas (Redis + Celery)
+    res = q_cancel(current_user.id, book_id)
+    
+    # 2. Actualizar estado en la base de datos si el libro existe
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if book:
+        # El estado final depende de si ya tenía algo hecho o no
+        if book.status in ("queued", "identifying", "analyzing_structure", "summarizing", "generating_podcast"):
+            book.status = "incomplete"
+            book.error_msg = "Proceso cancelado por el usuario"
+            await db.commit()
+            
+    return {"status": "ok", "result": res}
 
 
 # ── Status ────────────────────────────────────────────────────
@@ -244,13 +323,23 @@ async def get_status(
     total_ch  = len(chapters)
     done_ch   = sum(1 for c in chapters if c.summary_status == "done")
 
+    # Inteligencia de detección de fases completadas (auto-recuperación de estados inconsistentes)
     chapters_summarized = total_ch > 0 and done_ch == total_ch
+    
+    # Fase 2 se considera hecha si hay capítulos resumidos o el flag está a True
+    phase2_really_done = book.phase2_done or chapters_summarized
+    
+    # Fase 3 (Personajes) se considera hecha si el flag está a True 
+    # O si ya hay personajes en la base de datos
+    char_count_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    has_characters = len(char_count_res.scalars().all()) > 0
+    phase3_really_done = book.phase3_done or has_characters
 
     return {
         "status":               book.status,
         "phase1_done":          book.phase1_done,
-        "phase2_done":          book.phase2_done,
-        "phase3_done":          book.phase3_done,
+        "phase2_done":          phase2_really_done,
+        "phase3_done":          phase3_really_done,
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary),
         "has_mindmap":          bool(book.mindmap_data),
