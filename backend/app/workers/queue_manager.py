@@ -174,6 +174,8 @@ def on_done(uid: str, book_id: str):
 def update_progress(uid: str, book_id: str, phase: str, pct: int, msg: str):
     """Actualiza el progreso visible del libro activo."""
     r = _r()
+    # Asegurar que el libro se registra como activo (útil para disparos manuales)
+    r.set(_ak(uid), book_id, ex=7200)
     key = _ik(uid, book_id)
     # Conservar título si existe
     title = r.hget(key, "title") or ""

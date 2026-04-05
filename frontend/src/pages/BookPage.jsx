@@ -508,13 +508,8 @@ export default function BookPage() {
       else if (phase === 5) await analysisAPI.triggerPhase5(id)
       else if (phase === 6) await analysisAPI.triggerPodcast(id)
       
-      if (force) {
-        toast.success('Análisis completo encolado')
-        navigate('/')
-      } else {
-        toast.success('Proceso iniciado')
-        setTimeout(load, 600)
-      }
+      toast.success(force ? 'Análisis completo encolado' : 'Proceso iniciado')
+      navigate('/')
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al iniciar proceso')
     }

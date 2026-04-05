@@ -100,6 +100,7 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
+            update_progress(user_id, book_id, "phase2", 5, "Analizando estructura y capítulos...")
             struct = await parse_book_structure(book.file_path, book.file_type)
             await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
             for i, chap in enumerate(struct.get("chapters", [])):
@@ -135,6 +136,8 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
     async def _p3():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            if not book: return
+            update_progress(user_id, book_id, "phase3", 5, "Preparando análisis de personajes...")
             all_summaries = await _get_summaries_text(db, book_id)
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
@@ -185,6 +188,7 @@ def process_book_phase4(user_id: str, book_id: str, chain: bool = False):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
+            update_progress(user_id, book_id, "phase4", 5, "Generando resumen global...")
             
             # Si ya tiene datos y lanzamos individualmente, podemos forzar,
             # pero en cadena respetamos la regla de "solo si está vacío".
@@ -218,6 +222,7 @@ def process_book_phase5(user_id: str, book_id: str, chain: bool = False):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
+            update_progress(user_id, book_id, "phase5", 5, "Generando mapa mental...")
             
             if chain and book.mindmap_data and len(str(book.mindmap_data)) > 50:
                 print(f"[WORKER] Fase 5 omitida: ya tiene datos para {book_id}")
@@ -249,6 +254,7 @@ def process_book_phase6(user_id: str, book_id: str):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
+            update_progress(user_id, book_id, "phase6", 5, "Generando guión de podcast...")
             
             # Si ya tiene audio y script, y entramos por cadena, podemos saltar
             if book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script:
@@ -364,6 +370,8 @@ def reanalyze_single_character_task(user_id: str, book_id: str, character_id: st
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             char = (await db.execute(select(Character).where(Character.id == character_id))).scalar_one_or_none()
             if not book or not char: return
+            
+            update_progress(user_id, book_id, "phase3", 50, f"Reanalizando personaje: {char.name}")
             all_summaries = await _get_summaries_text(db, book_id)
             is_main = char.role in ("protagonist", "main", "antagonist") if char.role else False
             detail = await analyze_single_character(char.name, is_main, all_summaries, book.title)
