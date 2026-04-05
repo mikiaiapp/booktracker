@@ -323,9 +323,13 @@ async def update_cover(
         from app.core.config import settings
         from app.services.book_identifier import download_cover
         covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
+        old_cover = book.cover_local
         local = await download_cover(cover_url, covers_dir, book_id)
         if local:
             book.cover_local = local
+            if old_cover and old_cover != local and os.path.exists(old_cover):
+                try: os.remove(old_cover)
+                except: pass
     except Exception as e:
         print(f"Cover download error: {e}")
 
@@ -411,9 +415,10 @@ async def upload_cover(
     try:
         from app.services.book_identifier import _bytes_to_jpeg
         from app.core.config import settings
+        import time
         covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
         os.makedirs(covers_dir, exist_ok=True)
-        filename = f"{book_id}_cover.jpg"
+        filename = f"{book_id}_cover_{int(time.time())}.jpg"
         local_path = os.path.join(covers_dir, filename)
 
         try:
@@ -427,9 +432,15 @@ async def upload_cover(
         with open(local_path, "wb") as f:
             f.write(jpeg_data)
 
+        old_cover = book.cover_local
         book.cover_local = local_path
         book.cover_url = None  # ya tenemos local, limpiar URL externa
         await db.commit()
+        
+        if old_cover and old_cover != local_path and os.path.exists(old_cover):
+            try: os.remove(old_cover)
+            except: pass
+            
         return {"ok": True, "cover_local": local_path}
 
     except HTTPException:
