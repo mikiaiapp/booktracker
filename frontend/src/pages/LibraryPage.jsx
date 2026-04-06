@@ -46,7 +46,6 @@ const ANALYSIS_GROUPS = {
   processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast', 'uploaded', 'structured'] },
   queued:     { label: 'En cola',    statuses: ['queued'] },
   identified: { label: 'Identificados', statuses: ['identified'] },
-  shell:      { label: 'Solo ficha',  statuses: ['shell', 'shell_error'] },
   pending:    { label: 'Pendientes',  statuses: ['duplicate', 'error'] },
 }
 
