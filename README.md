@@ -1,4 +1,5 @@
 # 📚 BookTracker
+<!-- Test synchronización automática -->
 
 > Sistema multiusuario para el seguimiento y análisis inteligente de libros con IA.
 > Desplegable en **Synology NAS** mediante GitHub + Portainer.
