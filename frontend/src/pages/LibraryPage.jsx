@@ -356,8 +356,8 @@ export default function LibraryPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Incluimos todos los libros, quitando el filtro de shell anterior para que se vean las nuevas fichas auto-creadas
-  const allBooks = books
+  // Excluir los libros "solo ficha" de la vista principal y de los totales
+  const allBooks = books.filter(b => b.status !== 'shell' && b.status !== 'shell_error')
 
   const filtered = allBooks
     .filter(b => filter === 'all' || b.read_status === filter)
