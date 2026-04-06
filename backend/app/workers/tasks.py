@@ -112,7 +112,9 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
                 update_progress(user_id, book_id, "phase2", int(20 + (i/len(chaps)*40)), f"Resumiendo: {ch.title}")
                 s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
                 if s and s.get("summary"):
-                    ch.summary, ch.summary_status = s.get("summary"), "done"
+                    ch.summary = s.get("summary")
+                    ch.key_events = s.get("key_events", [])
+                    ch.summary_status = "done"
                 else:
                     ch.summary, ch.summary_status = "", "error"
                 await db.commit()
