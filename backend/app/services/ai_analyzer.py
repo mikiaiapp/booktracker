@@ -101,7 +101,7 @@ async def get_character_list(all_summaries: str) -> list:
     if not all_summaries or len(all_summaries.strip()) < 50:
         return []
     system = "Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
-    user = f"Resúmenes: {all_summaries[:15000]}"
+    user = f"""Resúmenes de la trama:\n{all_summaries[:25000]}\n\n---\nBasándote en los resúmenes anteriores, identifica TODOS los personajes."""
     try:
         raw = await _call_ai_with_retry(system, user, 1000)
         data = _parse_json(raw)
@@ -133,20 +133,28 @@ async def analyze_single_character(name: str, is_main: bool, all_summaries: str,
     if not all_summaries or len(all_summaries.strip()) < 50:
         return None
     tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
-    system = f"Eres un crítico literario de la RAE de España. Realiza un estudio psicológico MONUMENTAL de este personaje {tipo}. Usa castellano culto de España. Responde SOLO en JSON."
-    user = f"""Libro: {book_title}. Personaje: {name}. 
-    Analiza con ambición máxima (mínimo 1000 palabras) usando resúmenes: {all_summaries[:18000]}
-    Esquema JSON obligatorio:
-    {{
-      "name": "{name}",
-      "role": "Análisis profundo de su función en la trama",
-      "description": "Retrato físico detallado (mínimo 150 palabras)",
-      "personality": "Psicología, miedos y valores (mínimo 250 palabras)",
-      "arc": "Evolución y transformación vital (mínimo 250 palabras)",
-      "relationships": {{"Nombre": "Análisis extenso de la relación"}},
-      "key_moments": ["Momento 1 detallado", "Momento 2 detallado"],
-      "quotes": ["Cita clave"]
-    }}"""
+    # El system prompt ahora es estático (para no romper la caché entre principales y secundarios)
+    system = "Eres un crítico literario de la RAE de España. Realiza un estudio psicológico MONUMENTAL de personaje. Usa castellano culto de España. Responde SOLO en JSON."
+    
+    # El prompt de usuario pone el contexto pesado PRIMERO para que la IA aplique Prompt Caching.
+    # El prefijo de texto masivo será idéntico en todas las peticiones del bucle.
+    user = f"""Libro: {book_title}.
+Resúmenes de la trama:
+{all_summaries[:25000]}
+
+---
+Basándote EXCLUSIVAMENTE en los resúmenes anteriores, analiza con ambición máxima (mínimo 1000 palabras) el personaje {tipo}: {name}.
+Esquema JSON obligatorio:
+{{
+  "name": "{name}",
+  "role": "Análisis profundo de su función en la trama",
+  "description": "Retrato físico detallado (mínimo 150 palabras)",
+  "personality": "Psicología, miedos y valores (mínimo 250 palabras)",
+  "arc": "Evolución y transformación vital (mínimo 250 palabras)",
+  "relationships": {{"Nombre": "Análisis extenso de la relación"}},
+  "key_moments": ["Momento 1 detallado", "Momento 2 detallado"],
+  "quotes": ["Cita clave"]
+}}"""
     try:
         raw = await _call_ai_with_retry(system, user, 3500)
         return _parse_json(raw)
@@ -158,7 +166,12 @@ async def generate_global_summary(all_summaries: str, book_title: str, author: s
     if not all_summaries or len(all_summaries.strip()) < 50:
         return ""
     system = "Académico de la lengua de España. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
-    user = f"Libro: {book_title} de {author}. Análisis basado en: {all_summaries[:30000]}"
+    user = f"""Libro: {book_title} de {author}.
+Resúmenes de la trama:
+{all_summaries[:30000]}
+
+---
+Basándote en los resúmenes anteriores, escribe un ensayo literario magistral."""
     try:
         return await _call_ai_with_retry(system, user, 5000)
     except Exception as e:
@@ -183,7 +196,12 @@ async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
         "8. Estilo y técnica narrativa (#8b5cf6): Voz del autor, estructura temporal y prosa.\n"
         "Cada rama debe tener al menos 4-6 hijos con frases completas y profundas."
     )
-    user = f"Genera el mapa mental completo para «{book_title}».\nContenido del libro:\n{all_summaries[:20000]}"
+    user = f"""Libro: {book_title}.
+Resúmenes de la trama:
+{all_summaries[:25000]}
+
+---
+Basándote en los resúmenes anteriores, genera el mapa mental completo para la obra."""
     try:
         raw = await _call_ai_with_retry(system, user, 5000)
         return _parse_json(raw) or {"center": book_title, "branches": []}
