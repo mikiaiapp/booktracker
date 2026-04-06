@@ -145,7 +145,7 @@ h2 {
 
 .input-wrap svg {
   position: absolute;
-  left: 1rem;
+  left: 1.1rem;
   top: 50%;
   transform: translateY(-50%);
   color: #94a3b8;
@@ -155,7 +155,7 @@ h2 {
 
 .input-wrap input {
   width: 100%;
-  padding: 0.85rem 1rem 0.85rem 2.75rem;
+  padding: 0.85rem 1rem 0.85rem 3.2rem;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   font-family: var(--font-body);
@@ -178,7 +178,7 @@ h2 {
   box-shadow: 0 0 0 1000px #ffffff inset;
   -webkit-text-fill-color: #0d0d0d;
   /* Forzar padding-left para que el texto no tape el icono en autofill */
-  padding-left: 2.5rem !important;
+  padding-left: 3.2rem !important;
   transition: background-color 5000s ease-in-out 0s;
 }
 
