@@ -598,11 +598,13 @@ async def get_author_bibliography(author_name: str) -> list:
 
     async def _spanish_title_for(title: str, author: str) -> str:
         from app.services.ai_analyzer import _call_ai
+        # Prompt más agresivo para normalizar a la versión canónica en español
         result = await _call_ai(
             "Eres un experto en literatura y edición española. "
-            "Responde ÚNICAMENTE con el título, sin explicaciones ni puntuación adicional.",
-            f"¿Cuál es el título oficial en castellano (edición española) del libro '{title}' de {author}? "
-            f"Si no existe edición en español, devuelve el título original tal cual.",
+            "Responde ÚNICAMENTE con el título oficial en castellano (edición España), sin explicaciones ni puntuación adicional.",
+            f"¿Cuál es el título canónico en castellano del libro '{title}' de {author}? "
+            "Si es una traducción, devuelve el título de la edición española más conocida. "
+            "Si no tiene traducción, devuelve el original.",
             max_tokens=60
         )
         if result:
@@ -610,6 +612,20 @@ async def get_author_bibliography(author_name: str) -> list:
             if len(clean) > 1:
                 return clean
         return title
+
+    async def _ensure_synopsis(entry, author):
+        """Si falta sinopsis, genera una breve con IA."""
+        if entry.get("synopsis") and len(entry["synopsis"]) > 80:
+            return entry
+        from app.services.ai_analyzer import _call_ai
+        res = await _call_ai(
+            "Eres un bibliotecario experto. Escribe en español.",
+            f"Escribe una sinopsis muy breve (2 frases, max 50 palabras) del libro '{entry['title']}' de {author}.",
+            max_tokens=150
+        )
+        if res:
+            entry["synopsis"] = res.strip()
+        return entry
 
     # ── Recopilación en paralelo ──────────────────────────────────────────────
     gb_es_items, gb_all_items, ol_entries = await _asyncio.gather(
@@ -675,25 +691,30 @@ async def get_author_bibliography(author_name: str) -> list:
     print(f"Bibliografía '{author_name}': {len(seen_norm)} títulos únicos "
           f"(GB_es={len(gb_es_items)}, GB_all={len(gb_all_items)}, OL={len(ol_entries)})")
 
-    # ── Normalizar títulos al castellano via IA (solo los no-español) ─────────
+    # ── Normalizar títulos al castellano y asegurar sinopsis via IA ──────────
     entries = list(seen_norm.values())
 
-    semaphore = _asyncio.Semaphore(4)
-    async def _limited_normalize(entry):
-        if entry.get("lang") == "es":
-            return entry
+    semaphore = _asyncio.Semaphore(6)
+    async def _process_entry(entry):
         async with semaphore:
-            entry["title"] = await _spanish_title_for(entry["title"], author_name)
+            # 1. Normalizar título si no es español o si queremos asegurar versión canónica
+            if entry.get("lang") != "es":
+                entry["title"] = await _spanish_title_for(entry["title"], author_name)
+            
+            # 2. Asegurar sinopsis ficha básica
+            await _ensure_synopsis(entry, author_name)
             return entry
 
-    normalized = await _asyncio.gather(*[_limited_normalize(e) for e in entries],
+    processed = await _asyncio.gather(*[_process_entry(e) for e in entries],
                                        return_exceptions=True)
-    result = [e for e in normalized if isinstance(e, dict)]
+    result = [e for e in processed if isinstance(e, dict)]
 
-    # Limpiar campo interno y ordenar por año desc
+    # Limpiar campo interno y ordenar por año desc (más moderno primero)
     for e in result:
         e.pop("lang", None)
-    result.sort(key=lambda x: -(x.get("year") or 0))
+    
+    # Ordenar: nulos al final, el resto DESC
+    result.sort(key=lambda x: (x.get("year") is None, -(x.get("year") or 0)))
     return result
 
 

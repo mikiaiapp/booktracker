@@ -411,11 +411,105 @@ def fetch_shell_metadata(user_id: str, book_id: str):
 @celery_app.task(name="reidentify_author_task")
 def reidentify_author_task(user_id: str, author_name: str):
     from app.services.book_identifier import get_author_bio_in_spanish, get_author_bibliography
+    from app.api.books import _find_existing_book
+    import uuid
+
     async def _ra():
         async for db in get_user_db(user_id):
+            # 1. Obtener bio y bibliografía fresca (ya viene dedup/ordenado/con sinopsis)
             bio = await get_author_bio_in_spanish(author_name)
             bib = await get_author_bibliography(author_name)
-            books = (await db.execute(select(Book).where(Book.author == author_name))).scalars().all()
-            for b in books: b.author_bio, b.author_bibliography = bio, bib
+            
+            # 2. Sincronizar Bibliografía → Base de Datos (Auto-crear fichas)
+            for item in bib:
+                title = item.get("title")
+                isbn = item.get("isbn")
+                if not title: continue
+                
+                # Buscar si ya existe este libro en la DB del usuario
+                existing = await _find_existing_book(db, title, author_name, isbn)
+                
+                if not existing:
+                    # Crear automáticamente la "ficha básica" (shell book)
+                    new_shell = Book(
+                        id=str(uuid.uuid4()),
+                        title=title,
+                        author=author_name,
+                        isbn=isbn,
+                        year=item.get("year"),
+                        cover_url=item.get("cover_url"),
+                        synopsis=item.get("synopsis"),
+                        status="shell",
+                        phase1_done=True
+                    )
+                    db.add(new_shell)
+                    print(f"[WORKER] Auto-creada ficha para: {title}")
+                else:
+                    # Si ya existe pero le faltan datos (ej: sinopsis o portada), enriquecerlo
+                    needs_update = False
+                    if not existing.synopsis and item.get("synopsis"):
+                        existing.synopsis = item["synopsis"]; needs_update = True
+                    if not existing.cover_url and not existing.cover_local and item.get("cover_url"):
+                        existing.cover_url = item["cover_url"]; needs_update = True
+                    if not existing.isbn and isbn:
+                        existing.isbn = isbn; needs_update = True
+                    if not existing.year and item.get("year"):
+                        existing.year = item["year"]; needs_update = True
+                    
+                    if needs_update:
+                        await db.commit()
+
             await db.commit()
+
+            # 3. Limpieza de Duplicados (Deduplicación agresiva en DB)
+            # Buscamos todos los libros de este autor y agrupamos por título normalizado
+            from app.api.books import _normalize_title
+            
+            res_all = await db.execute(select(Book).where(Book.author == author_name))
+            all_books = res_all.scalars().all()
+            
+            groups = {} # norm_title -> [books]
+            for b in all_books:
+                nt = _normalize_title(b.title)
+                if nt not in groups: groups[nt] = []
+                groups[nt].append(b)
+            
+            for nt, cluster in groups.items():
+                if len(cluster) <= 1: continue
+                
+                # Orden de prioridad: Analizado (complete/analyzed) > Incompleto > Shell
+                def score(bk):
+                    if bk.status in ("complete", "analyzed") or bk.phase3_done: return 100
+                    if bk.status == "incomplete": return 50
+                    if bk.status == "shell": return 10
+                    return 0
+                
+                cluster.sort(key=score, reverse=True)
+                canonical = cluster[0]
+                redundants = cluster[1:]
+                
+                for red in redundants:
+                    # NUNCA borrar uno analizado si el canónico no lo está (pero cluster[0] ya es el mejor)
+                    # Si ambos están analizados, el usuario tendrá dos copias, pero aquí borraremos el "menor"
+                    # El usuario pidió: "borrar el que este como 'solo ficha' o 'no añadido' nunca como 'analizado'"
+                    if score(red) < 100: # Solo borramos si NO está analizado
+                        print(f"[WORKER] Deduplicando: eliminando {red.title} (id={red.id}) en favor de {canonical.title}")
+                        # Borrar archivos asociados
+                        if red.cover_local and os.path.exists(red.cover_local):
+                            try: os.remove(red.cover_local)
+                            except: pass
+                        await db.delete(red)
+            
+            await db.commit()
+
+            # 4. Actualizar bio y biblio en todos los libros restantes del autor
+            remaining_res = await db.execute(select(Book).where(Book.author == author_name))
+            remaining_books = remaining_res.scalars().all()
+            for b in remaining_books:
+                b.author_bio = bio
+                b.author_bibliography = bib
+            
+            await db.commit()
+            print(f"[WORKER] Reidentificación de autor '{author_name}' finalizada.")
+
     return run_async(_ra())

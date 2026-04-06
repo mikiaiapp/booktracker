@@ -40,10 +40,15 @@ const PHASE_LABELS = {
 const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
 const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
 
-const ANALYSIS_FILTERS = ['all', 'analyzed', 'processing', 'pending']
-const ANALYSIS_LABELS  = { all: 'Todos', analyzed: 'Analizados', processing: 'Procesando', pending: 'Posibles duplicados' }
-const ANALYZED_STATUSES    = ['complete', 'analyzed', 'incomplete']
-const PROC_STATUSES        = ['queued', 'identifying', 'analyzed_structure', 'analyzing_structure', 'summarizing', 'generating_podcast', 'uploaded', 'identified', 'structured']
+const ANALYSIS_GROUPS = {
+  analyzed:   { label: 'Analizados', statuses: ['complete', 'analyzed'] },
+  incomplete: { label: 'A medias',   statuses: ['incomplete'] },
+  processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast', 'uploaded', 'structured'] },
+  queued:     { label: 'En cola',    statuses: ['queued'] },
+  identified: { label: 'Identificados', statuses: ['identified'] },
+  shell:      { label: 'Solo ficha',  statuses: ['shell', 'shell_error'] },
+  pending:    { label: 'Pendientes',  statuses: ['duplicate', 'error'] },
+}
 
 // ── Componente barra de progreso compacta ─────────────────────
 function MiniProgress({ pct, phase }) {
@@ -352,18 +357,15 @@ export default function LibraryPage() {
     return () => clearInterval(interval)
   }, [])
 
-  const nonShellBooks = books.filter(b => b.status !== 'shell' && b.status !== 'shell_error')
+  // Incluimos todos los libros, quitando el filtro de shell anterior para que se vean las nuevas fichas auto-creadas
+  const allBooks = books
 
-  // ¿Hay algún libro que no esté completamente analizado? → mostrar filtro de análisis
-  const hasNonAnalyzed = nonShellBooks.some(b => !ANALYZED_STATUSES.includes(b.status))
-
-  const filtered = nonShellBooks
+  const filtered = allBooks
     .filter(b => filter === 'all' || b.read_status === filter)
     .filter(b => {
       if (analysisFilter === 'all') return true
-      if (analysisFilter === 'analyzed')  return ANALYZED_STATUSES.includes(b.status)
-      if (analysisFilter === 'processing') return PROC_STATUSES.includes(b.status)
-      if (analysisFilter === 'pending')   return !ANALYZED_STATUSES.includes(b.status) && !PROC_STATUSES.includes(b.status)
+      const group = ANALYSIS_GROUPS[analysisFilter]
+      if (group) return group.statuses.includes(b.status)
       return true
     })
     .filter(b => !search ||
@@ -416,32 +418,36 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {/* Segunda fila: filtro de estado de análisis — solo si hay libros sin analizar */}
-      {hasNonAnalyzed && (
-        <div className="analysis-filter-row">
-          <span className="analysis-filter-label">Análisis</span>
-          <div className="filter-tabs analysis-tabs">
-            {ANALYSIS_FILTERS.map(f => {
-              // Contar cuántos libros hay en cada estado para el badge
-              const count = f === 'all' ? nonShellBooks.length
-                : f === 'analyzed'   ? nonShellBooks.filter(b => ANALYZED_STATUSES.includes(b.status)).length
-                : f === 'processing' ? nonShellBooks.filter(b => PROC_STATUSES.includes(b.status)).length
-                : nonShellBooks.filter(b => !ANALYZED_STATUSES.includes(b.status) && !PROC_STATUSES.includes(b.status)).length
-              if (f !== 'all' && count === 0) return null
-              return (
-                <button
-                  key={f}
-                  className={`filter-tab ${analysisFilter === f ? 'active' : ''} analysis-tab-${f}`}
-                  onClick={() => setAnalysisFilter(f)}
-                >
-                  {ANALYSIS_LABELS[f]}
-                  <span className="analysis-tab-count">{count}</span>
-                </button>
-              )
-            })}
-          </div>
+      {/* Segunda fila: filtro de estado de análisis dinámico */}
+      <div className="analysis-filter-row">
+        <span className="analysis-filter-label">Estado</span>
+        <div className="filter-tabs analysis-tabs">
+          {/* Botón "Todos" */}
+          <button
+            className={`filter-tab ${analysisFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setAnalysisFilter('all')}
+          >
+            Todos
+            <span className="analysis-tab-count">{allBooks.length}</span>
+          </button>
+
+          {/* Filtros dinámicos basados en los libros actuales */}
+          {Object.entries(ANALYSIS_GROUPS).map(([key, group]) => {
+            const count = allBooks.filter(b => group.statuses.includes(b.status)).length
+            if (count === 0) return null
+            return (
+              <button
+                key={key}
+                className={`filter-tab ${analysisFilter === key ? 'active' : ''} analysis-tab-${key}`}
+                onClick={() => setAnalysisFilter(key)}
+              >
+                {group.label}
+                <span className="analysis-tab-count">{count}</span>
+              </button>
+            )
+          })}
         </div>
-      )}
+      </div>
 
       {loading ? (
         <div className="books-grid">
