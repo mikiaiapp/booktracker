@@ -372,7 +372,7 @@ export default function LibraryPage() {
       b.title.toLowerCase().includes(search.toLowerCase()) ||
       b.author?.toLowerCase().includes(search.toLowerCase()))
 
-  const totalReal = nonShellBooks.length
+  const totalReal = allBooks.length
 
   return (
     <>
