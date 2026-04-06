@@ -115,7 +115,7 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
         >
           <div className="auth-logo">
-            <BookOpen size={28} strokeWidth={1.5} />
+            <BookOpen size={24} strokeWidth={2} />
             <h1>BookTracker</h1>
           </div>
 
