@@ -356,10 +356,20 @@ export default function LibraryPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Excluir los libros "solo ficha" de la vista principal y de los totales
-  // FILTRO DEFINITIVO: Solo mostrar lo que tiene archivo físico subido. 
-  // Esto oculta la bibliografía (shell) incluso si el estado es confuso.
-  const allBooks = books.filter(b => b.file_path && b.status !== 'shell_error')
+  // Depuración: ver qué libros están llegando realmente
+  console.log("DEBUG: Libros recibidos de la API:", books.length);
+  if (books.length > 0) {
+    console.log("Ejemplo de libro:", books[0]);
+  }
+
+  // Filtrado: Excluir explícitamente los libros que son solo bibliografía (shell)
+  const allBooks = books.filter(b => 
+    b.status !== 'shell' && 
+    b.status !== 'shell_error' &&
+    b.status !== 'biblio' // Por si acaso hay algún otro estado legado
+  )
+
+  console.log("DEBUG: Libros tras filtrado:", allBooks.length);
 
   const filtered = allBooks
     .filter(b => filter === 'all' || b.read_status === filter)
