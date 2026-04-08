@@ -116,6 +116,37 @@ Sección **Environment variables** del Stack:
 
 ---
 
+## 🤖 IA Local (Ollama) — ¡Análisis Gratis!
+
+BookTracker permite ahora delegar los resúmenes de capítulos y tareas pesadas a un servidor **Ollama** local. Esto reduce el consumo de tokens de Gemini/OpenAI a prácticamente cero.
+
+### 1. Desplegar Ollama (Stack independiente en Portainer)
+
+Crea un nuevo stack llamado `ollama` con este contenido:
+
+```yaml
+version: "3"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - /volume1/docker/ollama:/root/.ollama
+```
+
+### 2. Descargar modelo y configurar
+
+1. Entra en la consola del contenedor `ollama` y ejecuta: `ollama pull llama3`
+2. En el stack de **BookTracker**, añade estas variables:
+   - `USE_OLLAMA_FOR_FAST_TASKS`: `true`
+   - `OLLAMA_URL`: `http://TU_IP_NAS:11434`
+   - `OLLAMA_MODEL`: `llama3`
+
+---
+
 ### 4 — Deploy
 
 Clic en **Deploy the stack**. La primera vez tarda 5–15 minutos.

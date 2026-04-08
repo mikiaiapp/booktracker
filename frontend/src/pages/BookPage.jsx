@@ -677,14 +677,17 @@ export default function BookPage() {
   if (loading) return (
     <div className="book-loading">
       <Loader size={28} className="spin" strokeWidth={1.5} />
+      <p>Cargando información del libro...</p>
     </div>
   )
 
   const activeData = data || prevData
   const book = activeData?.book || {}
-  if (!loading && !activeData) return (
+  const statusInfo = status || {}
+  
+  if (!activeData || !book.id) return (
     <div className="book-loading" style={{flexDirection:"column",gap:"1rem"}}>
-      <p style={{color:"var(--slate)"}}>No se pudo cargar el libro</p>
+      <p style={{color:"var(--slate)"}}>No se pudo encontrar el libro o no tienes permiso para verlo.</p>
       <button onClick={() => navigate("/")} style={{background:"var(--ink)",color:"var(--paper)",border:"none",padding:"0.5rem 1rem",borderRadius:"4px",cursor:"pointer"}}>
         Volver a la biblioteca
       </button>
@@ -692,8 +695,8 @@ export default function BookPage() {
   )
   const chapters = activeData?.chapters || []
   const characters = activeData?.characters || []
-  const isProcessing = PROCESSING_STATUSES.includes(status?.status)
-  const isShell = book?.status === 'shell' || book?.status === 'shell_error'
+  const isProcessing = PROCESSING_STATUSES.includes(statusInfo.status)
+  const isShell = book.status === 'shell' || book.status === 'shell_error'
 
   return (
     <div className="book-page">

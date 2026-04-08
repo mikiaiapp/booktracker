@@ -6,6 +6,21 @@ import asyncio
 from typing import Optional
 from app.core.config import settings
 
+async def _call_ollama(prompt: str) -> str:
+    url = f"{settings.OLLAMA_URL}/api/generate"
+    payload = {
+        "model": settings.OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {"temperature": 0.5}
+    }
+    timeout = httpx.Timeout(600.0, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(url, json=payload)
+        if r.status_code != 200:
+            raise ValueError(f"Ollama Error: {r.text}")
+        return r.json()["response"]
+
 def _compress_text(text: str) -> str:
     if not text: return ""
     return re.sub(r'\s+', ' ', text).strip()
@@ -14,8 +29,15 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     base_m = settings.AI_MODEL.lower()
     m = base_m
     
-    # Enrutamiento de modelos (Flash/Mini para tareas rápidas)
+    # Enrutamiento de modelos (Ollama, Flash o Mini para tareas rápidas)
     if is_fast_task:
+        if str(settings.USE_OLLAMA_FOR_FAST_TASKS).lower() == "true":
+            try:
+                # Combinamos system y user para Ollama (formato completion simple)
+                return await _call_ollama(f"{system}\n\n{user}")
+            except Exception as e:
+                print(f"[AI] Error en Ollama (Falla hacia el cloud...): {e}")
+
         if "gemini" in base_m:
             m = "gemini-1.5-flash"
         elif "gpt-3" in base_m or "gpt-4" in base_m:

@@ -6,14 +6,13 @@ from app.core.database import get_user_db
 from app.models.book import Book, Chapter, Character, AnalysisJob
 from app.services.ai_analyzer import *
 from app.services.tts_service import synthesize_podcast
-from app.workers.queue_manager import update_progress, on_done
+from app.core.config import settings
 
 # --- Helpers de Estado ---
 
 async def _finalize_book_status(db, book):
     """
-    Evalúa qué partes del libro están hechas y actualiza book.status en la DB.
-    Esto permite que la UI deje de mostrar "Procesando..." al final de cada fase.
+    Evalua que partes del libro estan hechas y actualiza book.status en la DB.
     """
     from app.models.book import Chapter, Character
     from sqlalchemy import select
@@ -32,17 +31,13 @@ async def _finalize_book_status(db, book):
     elif not book.mindmap_data or not book.mindmap_data.get("branches"): 
         is_perfect = False
     
-    # Si todo está perfecto → complete. 
-    # Si falta algo pero ya no estamos procesando → analizado o incompleto.
     if is_perfect:
         book.status = "complete"
     else:
-        # Si al menos tiene los capítulos estructurados pero faltan extras
         book.status = "incomplete" if book.phase2_done else "structured"
     
     await db.commit()
     print(f"[WORKER] Estado finalizado para {book.id}: {book.status}")
-from app.core.config import settings
 
 def run_async(coro):
     try:
@@ -56,10 +51,11 @@ async def _get_summaries_text(db, book_id):
     res = await db.execute(select(Chapter).where(Chapter.book_id == book_id, Chapter.summary_status == "done").order_by(Chapter.order))
     return "\n\n".join([f"[{c.title}]\n{c.summary}" for c in res.scalars().all() if c.summary])
 
-# --- FASE 1: IDENTIFICACIÓN (FICHA Y AUTOR) ---
-@celery_app.task(name="process_book_phase1")
-def process_book_phase1(user_id: str, book_id: str, chain: bool = True, force: bool = False):
+# --- FASE 1: IDENTIFICACION (FICHA Y AUTOR) ---
+@celery_app.task(name="process_book_phase1", bind=True)
+def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, force: bool = False):
     from app.services.book_identifier import identify_book
+    from app.workers.queue_manager import update_progress, on_done
     async def _p1():
         async for db in get_user_db(user_id):
             res = await db.execute(select(Book).where(Book.id == book_id))
@@ -70,37 +66,40 @@ def process_book_phase1(user_id: str, book_id: str, chain: bool = True, force: b
             for k, v in meta.items():
                 if hasattr(book, k) and v: setattr(book, k, v)
             
-            # --- SEGUNDA CAPA: Detección de duplicado por Título/Autor/ISBN REALES ---
             from app.api.books import _find_existing_book
             dup = await _find_existing_book(db, book.title, book.author, book.isbn, exclude_id=book_id) if not force else None
+            
             if dup:
-                print(f"[WORKER] Deteniendo: el libro '{book.title}' ya existe (id={dup.id})")
                 book.status = "duplicate"
-                book.error_msg = f"Este libro ya existe en tu biblioteca como '{dup.title}'"
+                book.error_msg = f"Este libro ya existe en tu biblioteca"
                 await db.commit()
                 on_done(user_id, book_id)
                 return
 
-            book.phase1_done, book.status = True, "identified"
+            # Asegurar que un libro con archivo real nunca sea "shell"
+            if book.status == "shell" or not book.status:
+                book.status = "identified"
+            
+            book.phase1_done = True
             await db.commit()
             if book.author: reidentify_author_task.delay(user_id, book.author)
             
-            # Encadenamiento inteligente: F1 -> F2 si F2 está vacío
             if not book.phase2_done:
                 process_book_phase2.delay(user_id, book_id, chain=True)
             else:
                 on_done(user_id, book_id)
     return run_async(_p1())
 
-# --- FASE 2: ESTRUCTURA Y RESÚMENES INDIVIDUALES ---
-@celery_app.task(name="process_book_phase2")
-def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
+# --- FASE 2: ESTRUCTURA Y RESUMENES ---
+@celery_app.task(name="process_book_phase2", bind=True)
+def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True):
     from app.services.book_parser import parse_book_structure
+    from app.workers.queue_manager import update_progress, on_done
     async def _p2():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase2", 5, "Analizando estructura y capítulos...")
+            update_progress(user_id, book_id, "phase2", 5, "Analizando estructura...")
             struct = await parse_book_structure(book.file_path, book.file_type)
             await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
             for i, chap in enumerate(struct.get("chapters", [])):
@@ -118,28 +117,27 @@ def process_book_phase2(user_id: str, book_id: str, chain: bool = True):
                 else:
                     ch.summary, ch.summary_status = "", "error"
                 await db.commit()
-                # Pausa de cortesía para no saturar la cuota de tokens por minuto (TPM)
                 await asyncio.sleep(4)
             
             book.phase2_done = True
-            book.status = "structured"  # Libera la UI del estado "Procesando" infinito
+            book.status = "structured"
             await db.commit()
             
-            # Encadenamiento inteligente: F2 -> F3 si F3 está vacío
             if not book.phase3_done:
                 process_book_phase3.delay(user_id, book_id, chain=True)
             else:
                 on_done(user_id, book_id)
     return run_async(_p2())
 
-# --- FASE 3: PERSONAJES (PROFUNDO) ---
-@celery_app.task(name="process_book_phase3")
-def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
+# --- FASE 3: PERSONAJES ---
+@celery_app.task(name="process_book_phase3", bind=True)
+def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False):
+    from app.workers.queue_manager import update_progress, on_done
     async def _p3():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase3", 5, "Preparando análisis de personajes...")
+            update_progress(user_id, book_id, "phase3", 5, "Analizando personajes...")
             all_summaries = await _get_summaries_text(db, book_id)
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
@@ -147,17 +145,16 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
             char_list = await get_character_list(all_summaries)
             for i, c in enumerate(char_list):
                 char_name = c["name"]
-                update_progress(user_id, book_id, "phase3", int(60+(i/len(char_list)*20)), f"Estudio de: {char_name}")
+                update_progress(user_id, book_id, "phase3", int(60+(i/len(char_list)*20)), f"Personaje: {char_name}")
                 detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title)
                 
-                # Guardar con garantía de datos si detail existe, o al menos con nombre si falla
                 char_data = {
                     "book_id": book_id,
                     "name": char_name,
-                    "role": detail.get("role") if detail else "Sin análisis de función (Error al procesar)",
-                    "description": detail.get("description") if detail else "Sin descripción disponible",
-                    "personality": detail.get("personality") if detail else "Sin análisis de personalidad",
-                    "arc": detail.get("arc") if detail else "Sin análisis de evolución",
+                    "role": detail.get("role") if detail else "Sin analisis",
+                    "description": detail.get("description") if detail else "Sin descripcion",
+                    "personality": detail.get("personality") if detail else "Sin analisis",
+                    "arc": detail.get("arc") if detail else "Sin analisis",
                     "relationships": detail.get("relationships") if detail and isinstance(detail.get("relationships"), dict) else {},
                     "key_moments": detail.get("key_moments") if detail and isinstance(detail.get("key_moments"), list) else [],
                     "quotes": detail.get("quotes") if detail and isinstance(detail.get("quotes"), list) else []
@@ -168,14 +165,11 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
             
             book.phase3_done = True
             await db.commit()
-            print(f"[WORKER] Fase 3 terminada para {book_id}")
             
-            # Encadenamiento inteligente: F3 -> F4 si F4 está vacío
             next_is_empty = not book.global_summary or len(book.global_summary.strip()) < 10
             if next_is_empty:
                 process_book_phase4.delay(user_id, book_id, chain=True)
             else:
-                # Si F4 ya tiene info, paramos, pero verificamos si falta F5 por si acaso
                 if not book.mindmap_data or len(str(book.mindmap_data)) < 50:
                     process_book_phase5.delay(user_id, book_id, chain=True)
                 else:
@@ -184,32 +178,28 @@ def process_book_phase3(user_id: str, book_id: str, chain: bool = False):
     return run_async(_p3())
 
 # --- FASE 4: RESUMEN GLOBAL ---
-@celery_app.task(name="process_book_phase4")
-def process_book_phase4(user_id: str, book_id: str, chain: bool = False):
+@celery_app.task(name="process_book_phase4", bind=True)
+def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
+    from app.workers.queue_manager import update_progress, on_done
     async def _p4():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
             update_progress(user_id, book_id, "phase4", 5, "Generando resumen global...")
             
-            # Si ya tiene datos y lanzamos individualmente, podemos forzar,
-            # pero en cadena respetamos la regla de "solo si está vacío".
             if chain and book.global_summary and len(book.global_summary.strip()) > 10:
-                print(f"[WORKER] Fase 4 omitida: ya tiene datos para {book_id}")
                 if not book.mindmap_data:
                     process_book_phase5.delay(user_id, book_id, chain=True)
                 else:
                     on_done(user_id, book_id)
                 return
 
-            print(f"[WORKER] Iniciando Fase 4 para {book_id}")
             all_summaries = await _get_summaries_text(db, book_id)
-            update_progress(user_id, book_id, "phase4", 85, "Redactando ensayo global...")
+            update_progress(user_id, book_id, "phase4", 85, "Redactando ensayo...")
             book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
             book.has_global_summary = True
             await db.commit()
             
-            # Encadenamiento inteligente: F4 -> F5 si F5 está vacío
             if not book.mindmap_data or len(str(book.mindmap_data)) < 50:
                 process_book_phase5.delay(user_id, book_id, chain=True)
             else:
@@ -218,8 +208,9 @@ def process_book_phase4(user_id: str, book_id: str, chain: bool = False):
     return run_async(_p4())
 
 # --- FASE 5: MAPA MENTAL ---
-@celery_app.task(name="process_book_phase5")
-def process_book_phase5(user_id: str, book_id: str, chain: bool = False):
+@celery_app.task(name="process_book_phase5", bind=True)
+def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
+    from app.workers.queue_manager import update_progress, on_done
     async def _p5():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
@@ -227,21 +218,18 @@ def process_book_phase5(user_id: str, book_id: str, chain: bool = False):
             update_progress(user_id, book_id, "phase5", 5, "Generando mapa mental...")
             
             if chain and book.mindmap_data and len(str(book.mindmap_data)) > 50:
-                print(f"[WORKER] Fase 5 omitida: ya tiene datos para {book_id}")
                 if not book.podcast_audio_path:
                     process_book_phase6.delay(user_id, book_id)
                 else:
                     on_done(user_id, book_id)
                 return
 
-            print(f"[WORKER] Iniciando Fase 5 para {book_id}")
             all_summaries = await _get_summaries_text(db, book_id)
-            update_progress(user_id, book_id, "phase5", 90, "Estructurando mapa mental...")
+            update_progress(user_id, book_id, "phase5", 90, "Estructurando mapa...")
             book.mindmap_data = await generate_mindmap(all_summaries, book.title)
             book.has_mindmap = True
             await db.commit()
             
-            # Encadenamiento inteligente: F5 -> F6 si F6 está vacío
             if not book.podcast_audio_path or not os.path.exists(book.podcast_audio_path):
                 process_book_phase6.delay(user_id, book_id)
             else:
@@ -250,24 +238,19 @@ def process_book_phase5(user_id: str, book_id: str, chain: bool = False):
     return run_async(_p5())
 
 # --- FASE 6: PODCAST ---
-@celery_app.task(name="process_book_phase6")
-def process_book_phase6(user_id: str, book_id: str):
+@celery_app.task(name="process_book_phase6", bind=True)
+def process_book_phase6(self, user_id: str, book_id: str):
+    from app.workers.queue_manager import update_progress, on_done
     async def _p6():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase6", 5, "Generando guión de podcast...")
+            update_progress(user_id, book_id, "phase6", 5, "Generando podcast...")
             
-            # Si ya tiene audio y script, y entramos por cadena, podemos saltar
-            if book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script:
-                print(f"[WORKER] Fase 6 omitida: ya tiene podcast para {book_id}")
-                # Pero aún así validamos el status final
-                pass 
-            else:
-                print(f"[WORKER] Iniciando Fase 6 para {book_id}")
+            if not (book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script):
                 char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
                 chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
-                update_progress(user_id, book_id, "phase6", 95, "Sincronizando audio del podcast...")
+                update_progress(user_id, book_id, "phase6", 95, "Sincronizando audio...")
                 script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
                 book.podcast_script = script
                 audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
@@ -276,242 +259,83 @@ def process_book_phase6(user_id: str, book_id: str):
                     await synthesize_podcast(script, audio_path)
                     book.podcast_audio_path = audio_path
                 except Exception as e:
-                    print(f"[WORKER] Error en síntesis de audio: {e}")
+                    print(f"[WORKER] Error audio tts: {e}")
             
             book.podcast_done = True
             await db.commit()
-            
-            # Evaluación final de salud del libro
             await _finalize_book_status(db, book)
-            
-            print(f"[WORKER] Proceso completo para {book_id}. Status: {book.status}")
             on_done(user_id, book_id)
     return run_async(_p6())
 
-# --- RESUMEN DE UN CAPÍTULO INDIVIDUAL (botón "+ Resumir") ---
+# --- OTROS ---
+
 @celery_app.task(name="summarize_chapter_task")
 def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
+    from app.workers.queue_manager import update_progress
     async def _task():
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             ch   = (await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id))).scalar_one_or_none()
-            if not book or not ch:
-                return
+            if not book or not ch: return
             ch.summary_status = "processing"
             await db.commit()
             update_progress(user_id, book_id, "phase2", 50, f"Resumiendo: {ch.title}")
             try:
                 s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
                 if s and s.get("summary"):
-                    ch.summary        = s.get("summary")
-                    ch.key_events     = s.get("key_events", [])
-                    ch.summary_status = "done"
+                    ch.summary, ch.key_events, ch.summary_status = s["summary"], s.get("key_events", []), "done"
                 else:
                     ch.summary_status = "error"
-            except Exception:
+            except:
                 ch.summary_status = "error"
             await db.commit()
-            # Si todos los capítulos están listos, marcar el libro como estructurado
             all_chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id))).scalars().all()
-            all_done = all(c.summary_status in ("done", "skipped", "quota_exceeded") for c in all_chaps)
-            if all_done:
+            if all(c.summary_status in ("done", "skipped") for c in all_chaps):
                 book.phase2_done = True
                 book.status = "structured"
                 await db.commit()
     return run_async(_task())
 
-# --- FASE REPARACIÓN (SILENCIOSA) ---
+@celery_app.task(name="reanalyze_characters_task")
+def reanalyze_characters_task(user_id: str, book_id: str):
+    return process_book_phase3.delay(user_id, book_id, chain=False)
+
 @celery_app.task(name="process_book_repair_events")
 def process_book_repair_events(user_id: str, book_id: str):
     from app.services.ai_analyzer import extract_key_events_from_summary
-    from sqlalchemy import or_
+    from app.workers.queue_manager import update_progress, on_done
     async def _task():
         async for db in get_user_db(user_id):
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
             if not book: return
-            
-            # Buscar capítulos con resumen pero sin eventos clave
-            res_ch = await db.execute(
-                select(Chapter).where(
-                    Chapter.book_id == book_id,
-                    Chapter.summary != None,
-                    or_(Chapter.key_events == None, Chapter.key_events == "[]", Chapter.key_events == "")
-                ).order_by(Chapter.order)
-            )
+            res_ch = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
             chaps = res_ch.scalars().all()
-            if not chaps:
-                on_done(user_id, book_id)
-                return
-
             total = len(chaps)
             for i, ch in enumerate(chaps):
-                pct = int((i / total) * 100)
-                update_progress(user_id, book_id, "repair", pct, f"Reparando hitos: {ch.title}")
-                
+                update_progress(user_id, book_id, "repair", int((i/total)*100), f"Reparando: {ch.title}")
                 events = await extract_key_events_from_summary(ch.summary)
-                if events:
-                    ch.key_events = events
-                    await db.commit()
-            
-            update_progress(user_id, book_id, "repair", 100, "Finalizado")
+                if events: ch.key_events = events; await db.commit()
             on_done(user_id, book_id)
-            
     return run_async(_task())
-
-# --- BOTONES DE REANALIZAR (INDIVIDUALES) ---
-
-@celery_app.task(name="reanalyze_characters_task")
-def reanalyze_characters_task(user_id: str, book_id: str):
-    return process_book_phase3.delay(user_id, book_id, chain=False)
-
-@celery_app.task(name="reanalyze_single_character_task")
-def reanalyze_single_character_task(user_id: str, book_id: str, character_id: str):
-    async def _task():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            char = (await db.execute(select(Character).where(Character.id == character_id))).scalar_one_or_none()
-            if not book or not char: return
-            
-            update_progress(user_id, book_id, "phase3", 50, f"Reanalizando personaje: {char.name}")
-            all_summaries = await _get_summaries_text(db, book_id)
-            is_main = char.role in ("protagonist", "main", "antagonist") if char.role else False
-            detail = await analyze_single_character(char.name, is_main, all_summaries, book.title)
-            if detail:
-                char.description  = detail.get("description")  or char.description
-                char.personality  = detail.get("personality")  or char.personality
-                char.arc          = detail.get("arc")          or char.arc
-                char.relationships = detail.get("relationships") if isinstance(detail.get("relationships"), dict) else char.relationships
-                char.key_moments  = detail.get("key_moments")  if isinstance(detail.get("key_moments"),  list) else char.key_moments
-                char.quotes       = detail.get("quotes")       if isinstance(detail.get("quotes"),       list) else char.quotes
-                if detail.get("role"): char.role = detail.get("role")
-            await db.commit()
-    return run_async(_task())
-
-@celery_app.task(name="reanalyze_summary_task")
-def reanalyze_summary_task(user_id: str, book_id: str):
-    return process_book_phase4.delay(user_id, book_id, chain=False)
-
-@celery_app.task(name="reanalyze_mindmap_task")
-def reanalyze_mindmap_task(user_id: str, book_id: str):
-    return process_book_phase5.delay(user_id, book_id, chain=False)
-
-@celery_app.task(name="fetch_shell_metadata")
-def fetch_shell_metadata(user_id: str, book_id: str):
-    from app.services.book_identifier import search_book_metadata
-    async def _shell():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            meta = await search_book_metadata(book.title, book.author)
-            for k, v in meta.items():
-                if hasattr(book, k) and v: setattr(book, k, v)
-            book.phase1_done, book.status = True, "shell"
-            await db.commit()
-    return run_async(_shell())
 
 @celery_app.task(name="reidentify_author_task")
 def reidentify_author_task(user_id: str, author_name: str):
     from app.services.book_identifier import get_author_bio_in_spanish, get_author_bibliography
     from app.api.books import _find_existing_book
     import uuid
-
     async def _ra():
         async for db in get_user_db(user_id):
-            # 1. Obtener bio y bibliografía fresca (ya viene dedup/ordenado/con sinopsis)
             bio = await get_author_bio_in_spanish(author_name)
             bib = await get_author_bibliography(author_name)
-            
-            # 2. Sincronizar Bibliografía → Base de Datos (Auto-crear fichas)
             for item in bib:
-                title = item.get("title")
-                isbn = item.get("isbn")
-                if not title: continue
-                
-                # Buscar si ya existe este libro en la DB del usuario
-                existing = await _find_existing_book(db, title, author_name, isbn)
-                
+                t = item.get("title")
+                if not t: continue
+                existing = await _find_existing_book(db, t, author_name, item.get("isbn"))
                 if not existing:
-                    # Crear automáticamente la "ficha básica" (shell book)
-                    new_shell = Book(
-                        id=str(uuid.uuid4()),
-                        title=title,
-                        author=author_name,
-                        isbn=isbn,
-                        year=item.get("year"),
-                        cover_url=item.get("cover_url"),
-                        synopsis=item.get("synopsis"),
-                        status="shell",
-                        phase1_done=True
-                    )
-                    db.add(new_shell)
-                    print(f"[WORKER] Auto-creada ficha para: {title}")
-                else:
-                    # Si ya existe pero le faltan datos (ej: sinopsis o portada), enriquecerlo
-                    needs_update = False
-                    if not existing.synopsis and item.get("synopsis"):
-                        existing.synopsis = item["synopsis"]; needs_update = True
-                    if not existing.cover_url and not existing.cover_local and item.get("cover_url"):
-                        existing.cover_url = item["cover_url"]; needs_update = True
-                    if not existing.isbn and isbn:
-                        existing.isbn = isbn; needs_update = True
-                    if not existing.year and item.get("year"):
-                        existing.year = item["year"]; needs_update = True
-                    
-                    if needs_update:
-                        await db.commit()
-
+                    db.add(Book(id=str(uuid.uuid4()), title=t, author=author_name, isbn=item.get("isbn"), status="shell", phase1_done=True))
             await db.commit()
-
-            # 3. Limpieza de Duplicados (Deduplicación agresiva en DB)
-            # Buscamos todos los libros de este autor y agrupamos por título normalizado
-            from app.api.books import _normalize_title
-            
-            res_all = await db.execute(select(Book).where(Book.author == author_name))
-            all_books = res_all.scalars().all()
-            
-            groups = {} # norm_title -> [books]
-            for b in all_books:
-                nt = _normalize_title(b.title)
-                if nt not in groups: groups[nt] = []
-                groups[nt].append(b)
-            
-            for nt, cluster in groups.items():
-                if len(cluster) <= 1: continue
-                
-                # Orden de prioridad: Analizado (complete/analyzed) > Incompleto > Shell
-                def score(bk):
-                    if bk.status in ("complete", "analyzed") or bk.phase3_done: return 100
-                    if bk.status == "incomplete": return 50
-                    if bk.status == "shell": return 10
-                    return 0
-                
-                cluster.sort(key=score, reverse=True)
-                canonical = cluster[0]
-                redundants = cluster[1:]
-                
-                for red in redundants:
-                    # NUNCA borrar uno analizado si el canónico no lo está (pero cluster[0] ya es el mejor)
-                    # Si ambos están analizados, el usuario tendrá dos copias, pero aquí borraremos el "menor"
-                    # El usuario pidió: "borrar el que este como 'solo ficha' o 'no añadido' nunca como 'analizado'"
-                    if score(red) < 100: # Solo borramos si NO está analizado
-                        print(f"[WORKER] Deduplicando: eliminando {red.title} (id={red.id}) en favor de {canonical.title}")
-                        # Borrar archivos asociados
-                        if red.cover_local and os.path.exists(red.cover_local):
-                            try: os.remove(red.cover_local)
-                            except: pass
-                        await db.delete(red)
-            
+            books = (await db.execute(select(Book).where(Book.author == author_name))).scalars().all()
+            for b in books: b.author_bio, b.author_bibliography = bio, bib
             await db.commit()
-
-            # 4. Actualizar bio y biblio en todos los libros restantes del autor
-            remaining_res = await db.execute(select(Book).where(Book.author == author_name))
-            remaining_books = remaining_res.scalars().all()
-            for b in remaining_books:
-                b.author_bio = bio
-                b.author_bibliography = bib
-            
-            await db.commit()
-            print(f"[WORKER] Reidentificación de autor '{author_name}' finalizada.")
-
     return run_async(_ra())

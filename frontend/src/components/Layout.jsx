@@ -11,6 +11,26 @@ export default function Layout() {
 
   const handleLogout = () => { logout(); navigate('/login') }
 
+  // --- Pull to Refresh Logic (Móvil) ---
+  React.useEffect(() => {
+    let startY = 0
+    const handleTouchStart = (e) => { startY = e.touches[0].pageY }
+    const handleTouchEnd = (e) => {
+      const endY = e.changedTouches[0].pageY
+      const distance = endY - startY
+      // Si arrastra más de 150px hacia abajo y está en el tope de la página
+      if (distance > 150 && window.scrollY <= 5) {
+        window.location.reload()
+      }
+    }
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [])
+
   return (
     <div className="layout">
       <aside className="sidebar">
@@ -37,6 +57,10 @@ export default function Layout() {
             <span>Perfil</span>
           </NavLink>
         </nav>
+
+        <div className="sidebar-branding-v2">
+          <img src="/favicon.png" alt="BookTracker Logo" className="sidebar-main-logo" />
+        </div>
 
         <div className="sidebar-footer">
           <Link to="/profile" className="user-badge" style={{textDecoration:'none'}}>

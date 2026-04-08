@@ -210,10 +210,10 @@ def _pump(uid: str):
     r.set(_ak(uid), book_id, ex=7200)
     _set_info(uid, book_id, "starting", 5, "Iniciando…", title)
 
-    _launch(uid, book_id, phases, force=force)
+    _launch(uid, book_id, phases, title=title, force=force)
 
 
-def _launch(uid: str, book_id: str, phases: list, force: bool = False):
+def _launch(uid: str, book_id: str, phases: list, title: str = "", force: bool = False):
     """Lanza la primera fase solicitada. La cadena interna en tasks.py hace el resto."""
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
@@ -225,6 +225,7 @@ def _launch(uid: str, book_id: str, phases: list, force: bool = False):
         "1":       lambda: process_book_phase1.delay(uid, book_id, chain=True, force=force),
         "2":       lambda: process_book_phase2.delay(uid, book_id, chain=True),
         "3":       lambda: process_book_phase3.delay(uid, book_id, chain=True),
+        "3b":      lambda: process_book_phase3.delay(uid, book_id, chain=True), # Alias para compatibilidad
         "4":       lambda: process_book_phase4.delay(uid, book_id, chain=True),
         "podcast": lambda: process_book_phase6.delay(uid, book_id),
         "repair":  lambda: process_book_repair_events.delay(uid, book_id),

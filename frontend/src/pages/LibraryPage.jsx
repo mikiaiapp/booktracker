@@ -357,7 +357,9 @@ export default function LibraryPage() {
   }, [])
 
   // Excluir los libros "solo ficha" de la vista principal y de los totales
-  const allBooks = books.filter(b => b.status !== 'shell' && b.status !== 'shell_error')
+  // FILTRO DEFINITIVO: Solo mostrar lo que tiene archivo físico subido. 
+  // Esto oculta la bibliografía (shell) incluso si el estado es confuso.
+  const allBooks = books.filter(b => b.file_path && b.status !== 'shell_error')
 
   const filtered = allBooks
     .filter(b => filter === 'all' || b.read_status === filter)

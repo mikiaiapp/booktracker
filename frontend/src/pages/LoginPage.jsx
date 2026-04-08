@@ -62,7 +62,6 @@ export default function LoginPage() {
     try {
       const { data } = await api.post('/auth/forgot-password', { email: forgotEmail })
       if (data.dev_mode && data.code) {
-        // Sin SMTP configurado — mostrar código directamente
         toast.success(`Código: ${data.code}`, { duration: 30000, icon: '🔑' })
         setForgotCode(data.code)
       } else {
@@ -115,7 +114,7 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
         >
           <div className="auth-logo">
-            <BookOpen size={24} strokeWidth={2} />
+            <img src="/logo-premium.png" alt="BookTracker" className="auth-brand-img-premium" />
             <h1>BookTracker</h1>
           </div>
 

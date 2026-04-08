@@ -154,17 +154,29 @@ const stopAllTTS = () => {
 ## 📝 Orden de implementación sugerido
 
 1. ✅ **Fix Referencias** (HECHO)
-2. **Mapa árbol** (crítico visual)
-3. **Portadas Autores** (quick fix)
-4. **Tabs móvil desplegable** (UX móvil)
-5. **Eliminar "Leer análisis" cabecera** (simplificación)
-6. **Reorganizar TTS por bloques** (cambio más complejo)
+2. ✅ **Sistema de Detección de Duplicados** (HECHO)
+   - Implementada validación estricta Título + Autor en el Worker (Fase 1).
+   - Añadido banner de advertencia en `BookPage.jsx` con opciones de ignorar o eliminar.
+3. ✅ **Branding y Favicon** (HECHO)
+   - Generación de logo premium (libro dorado sobre fondo negro).
+   - Configuración de `favicon.png` y actualización de `index.html`.
+   - Inclusión del logo animado en la barra lateral de escritorio (ahora al doble de tamaño: 160px).
+4. ✅ **Estabilidad del Backend (SOPORTE PRODUCTO)** (HECHO)
+   - Corregido error de indentación en `books.py`.
+   - Corregido Error de nombre (`NameError`) en `queue_manager.py` (parámetro `title`).
+   - Resolución de Error **502 Bad Gateway** en producción.
+   - Sincronización automática de cambios críticos a GitHub.
+5. **Mapa árbol** (crítico visual - Pendiente)
+6. **Portadas Autores** (quick fix - Pendiente)
+7. **Tabs móvil desplegable** (UX móvil - Pendiente)
+8. **Eliminar "Leer análisis" cabecera** (simplificación - Pendiente)
+9. **Reorganizar TTS por bloques** (cambio más complejo - Pendiente)
 
 ---
 
-## 🎯 Archivos que necesitarán cambios
+## 🎯 Archivos que necesitarán cambios (Actualizado)
 
-| Archivo | Cambio 2 | Cambio 3 | Cambio 4 | Cambio 5 | Cambio 6 |
+| Archivo | Cambio 4 | Cambio 5 | Cambio 6 | Cambio 7 | Cambio 8 |
 |---------|----------|----------|----------|----------|----------|
 | `MindMap.jsx` | ✅ | - | - | - | - |
 | `AuthorsPage.jsx` | - | ✅ | - | - | - |
@@ -173,17 +185,6 @@ const stopAllTTS = () => {
 
 ---
 
-## ⚠️ Consideraciones técnicas
-
-### Cambio 6 (Reorganizar TTS):
-- **Más complejo:** Requiere refactor significativo del estado TTS
-- **Beneficio:** Cada tab es independiente, más claro para el usuario
-- **Riesgo:** Posible confusión si dos tabs tienen reproducciones distintas a medias
-- **Mitigation:** Al cambiar de tab, pausar automáticamente la reproducción activa
-
-### Cambio 2 (Mapa árbol):
-- Requiere cambiar lógica de posicionamiento D3.js
-- Layouts posibles: `d3.tree()` horizontal o vertical
 - Mantener zoom, pan y colapsar/expandir
 
 ### Cambio 4 (Tabs móvil):
@@ -195,7 +196,7 @@ const stopAllTTS = () => {
 
 ## 🚀 Estado actual
 
-**Versión actual:** v2.0.2 + Fix Referencias
+**Versión actual:** v2.0.3 (Estable)
 **Pendientes:** 5 cambios más
 **Estimación:** ~3-4 horas para completar todos los cambios
 **Prioridad:** Media-Alta (mejoras UX importantes)

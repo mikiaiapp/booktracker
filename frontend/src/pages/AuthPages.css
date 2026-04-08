@@ -96,9 +96,18 @@
 .auth-logo {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 3rem;
+  justify-content: center;
+  gap: 0.85rem;
+  margin-bottom: 2.5rem;
   color: var(--ink);
+}
+
+.auth-brand-img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 9px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
 .auth-logo h1 {

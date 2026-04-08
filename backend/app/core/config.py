@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     AI_MODEL: str = "gemini-2.0-flash"   # por defecto gratuito
     TTS_PROVIDER: str = "openai"
 
+    # Ollama — IA Local
+    OLLAMA_URL: str = "http://ollama:11434"
+    OLLAMA_MODEL: str = "llama3"
+    USE_OLLAMA_FOR_FAST_TASKS: str = "false" # "true" o "false"
+
     DATABASE_DIR: str = "/data/databases"
     UPLOADS_DIR: str = "/data/uploads"
     AUDIO_DIR: str = "/data/audio"

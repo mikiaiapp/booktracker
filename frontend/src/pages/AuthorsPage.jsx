@@ -453,11 +453,11 @@ export default function AuthorsPage() {
               </div>
             )}
 
-            {/* Bibliografía completa en formato Referencias */}
+            {/* Bibliografía completa estructurada */}
             {(selected.books?.length > 0 || selected.bibliography?.length > 0) && (
               <div className="author-section">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <h3 style={{ margin: 0 }}>Bibliografía completa</h3>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <h3 style={{ margin: 0 }}>Bibliografía</h3>
                   <div className="biblio-filter-tabs">
                     {[['all','Todos'],['analyzed','Analizados'],['unanalyzed','Sin analizar']].map(([val, label]) => (
                       <button
@@ -468,125 +468,149 @@ export default function AuthorsPage() {
                     ))}
                   </div>
                 </div>
-                <div className="refs-grid">
-                  {/* Libros ya en la app */}
-                  {selected.books.filter(book => {
-                    const isAnalyzed = book.status === 'complete' || book.phase3_done
-                    if (biblioFilter === 'analyzed') return isAnalyzed
-                    if (biblioFilter === 'unanalyzed') return !isAnalyzed
-                    return true
-                  }).map(book => {
-                    const isAnalyzed = book.status === 'complete' || book.phase3_done
-                    // Un libro "solo ficha" es shell puro — si tiene archivo ya es otra cosa
-                    const isShell = (book.status === 'shell' || book.status === 'shell_error') && !book.file_path
-                    const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified', 'uploading', 'uploaded'].includes(book.status)
-                    const canDelete = !isAnalyzed
-                    return (
-                      <Link
-                        key={book.id}
-                        to={`/book/${book.id}`}
-                        className="ref-item"
-                        style={{ textDecoration: 'none', position: 'relative' }}
-                      >
-                        <div className="ref-cover">
-                          <BookCover
-                            src={coverSrc(book)}
-                            isbn={book.isbn}
-                            title={book.title}
-                            author={selected.name}
-                            alt={book.title}
-                            size={60}
-                          />
-                        </div>
-                        <div className="ref-info">
-                          <h4 className="ref-title">{book.title}</h4>
-                          {book.year && <span className="ref-year">{book.year}</span>}
-                          {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--gold)', fontWeight: '500' }}>✦ Analizado</span>}
-                          {isProcessing && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#f39c12' }}>Procesando…</span>}
-                          {isShell && <span className="ref-badge" style={{ fontSize: '0.75rem', color: 'var(--mist)' }}>Solo ficha</span>}
-                          {!isShell && !isAnalyzed && !isProcessing && <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#3498db' }}>Sin analizar</span>}
-                        </div>
-                        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', display: 'flex', gap: '4px' }}>
-                          <button
-                            className="ref-refresh-btn"
-                            onClick={e => { e.preventDefault(); handleRefreshBook(book.id) }}
-                            disabled={refreshingBook[book.id]}
-                            title="Actualizar portada, sinopsis e ISBN"
-                            style={{ background: 'white', border: '1.5px solid #ddd', borderRadius: '4px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.9rem' }}
-                          >
-                            {refreshingBook[book.id] ? '⏳' : '↻'}
-                          </button>
-                          {canDelete && (
-                            <button
-                              onClick={e => { e.preventDefault(); handleDeleteBook(book) }}
-                              disabled={deletingBook[book.id]}
-                              title="Eliminar libro"
-                              style={{ background: 'white', border: '1.5px solid #e74c3c', borderRadius: '4px', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.85rem', color: '#e74c3c' }}
-                            >
-                              {deletingBook[book.id] ? '⏳' : '×'}
-                            </button>
-                          )}
-                        </div>
-                      </Link>
-                    )
-                  })}
 
-                  {/* Libros de la bibliografía que NO están en la app */}
-                  {biblioFilter !== 'analyzed' && (selected.bibliography || []).filter(item => {
-                    const title = typeof item === 'string' ? item : item.title
-                    if (!title || title.trim() === '') return false
-                    return !isAlreadyInApp(item, selected.books)
-                  }).map((item, i) => {
-                    const title = typeof item === 'string' ? item : item.title
-                    const isbn = typeof item === 'string' ? null : item.isbn
-                    const year = typeof item === 'string' ? null : item.year
-                    const cover_url = typeof item === 'string' ? null : item.cover_url
-                    const key = isbn || title
-                    const isCreating = creating[key]
-                    return (
-                      <div key={i} className="ref-item" style={{ position: 'relative', opacity: 0.8 }}>
-                        <div className="ref-cover">
-                          <BookCover
-                            src={cover_url || null}
-                            isbn={isbn}
-                            title={title}
-                            author={selected.name}
-                            alt={title}
-                            size={60}
-                          />
-                        </div>
-                        <div className="ref-info">
-                          <h4 className="ref-title">{title}</h4>
-                          {year && <span className="ref-year">{year}</span>}
-                          <span className="ref-badge" style={{ fontSize: '0.75rem', color: '#95a5a6' }}>No añadido</span>
-                        </div>
-                        <button
-                          className="ref-add-btn"
-                          onClick={() => handleAddShell(item, selected.name)}
-                          disabled={isCreating}
-                          title="Añadir ficha"
-                          style={{
-                            position: 'absolute',
-                            top: '0.5rem',
-                            right: '0.5rem',
-                            background: 'var(--gold)',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '28px',
-                            height: '28px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            color: 'var(--ink)'
-                          }}
-                        >
-                          {isCreating ? '…' : <Plus size={16} />}
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
+                {/* --- SECCIÓN 1: MIS LIBROS (Analizados o en proceso) --- */}
+                {biblioFilter !== 'unanalyzed' && selected.books.filter(b => {
+                  const isAnalyzed = b.status === 'complete' || b.phase3_done
+                  if (biblioFilter === 'analyzed') return isAnalyzed
+                  return true
+                }).length > 0 && (
+                  <div className="biblio-subcategory">
+                    <h4>Libros en mi biblioteca</h4>
+                    <div className="refs-grid">
+                      {selected.books
+                        .filter(book => {
+                          const isAnalyzed = book.status === 'complete' || book.phase3_done
+                          if (biblioFilter === 'analyzed') return isAnalyzed
+                          return true
+                        })
+                        .sort((a, b) => (b.year || 0) - (a.year || 0)) // Orden cronológico desc
+                        .map(book => {
+                          const isAnalyzed = book.status === 'complete' || book.phase3_done
+                          const isShell = (book.status === 'shell' || book.status === 'shell_error') && !book.file_path
+                          const isProcessing = ['summarizing', 'analyzing_structure', 'identifying', 'structured', 'identified', 'uploading', 'uploaded'].includes(book.status)
+                          const canDelete = !isAnalyzed
+                          return (
+                            <Link
+                              key={book.id}
+                              to={`/book/${book.id}`}
+                              className="ref-item"
+                              style={{ textDecoration: 'none', position: 'relative' }}
+                            >
+                              <div className="ref-cover">
+                                <BookCover
+                                  src={coverSrc(book)}
+                                  isbn={book.isbn}
+                                  title={book.title}
+                                  author={selected.name}
+                                  alt={book.title}
+                                  size={60}
+                                />
+                              </div>
+                              <div className="ref-info">
+                                <h4 className="ref-title">{book.title}</h4>
+                                {book.year && <span className="ref-year">{book.year}</span>}
+                                {isAnalyzed && <span className="ref-badge" style={{ fontSize: '0.72rem', color: 'var(--gold)', fontWeight: '600' }}>✦ ANALIZADO</span>}
+                                {isProcessing && <span className="ref-badge" style={{ fontSize: '0.72rem', color: '#f39c12' }}>PROCESANDO…</span>}
+                                {isShell && <span className="ref-badge" style={{ fontSize: '0.72rem', color: 'var(--mist)' }}>SOLO FICHA</span>}
+                                {!isShell && !isAnalyzed && !isProcessing && <span className="ref-badge" style={{ fontSize: '0.72rem', color: '#3498db' }}>SIN ANALIZAR</span>}
+                              </div>
+                              <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', display: 'flex', gap: '4px' }}>
+                                <button
+                                  className="ref-refresh-btn"
+                                  onClick={e => { e.preventDefault(); handleRefreshBook(book.id) }}
+                                  disabled={refreshingBook[book.id]}
+                                  style={{ background: 'white', border: '1.5px solid #eee', borderRadius: '4px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.8rem' }}
+                                >
+                                  {refreshingBook[book.id] ? '⏳' : '↻'}
+                                </button>
+                                {canDelete && (
+                                  <button
+                                    onClick={e => { e.preventDefault(); handleDeleteBook(book) }}
+                                    disabled={deletingBook[book.id]}
+                                    style={{ background: 'white', border: '1.5px solid #ffeded', borderRadius: '4px', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '0.8rem', color: '#e74c3c' }}
+                                  >
+                                    {deletingBook[book.id] ? '⏳' : '×'}
+                                  </button>
+                                )}
+                              </div>
+                            </Link>
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {/* --- SECCIÓN 2: OTRAS OBRAS (Bibliografía externa) --- */}
+                {biblioFilter !== 'analyzed' && (selected.bibliography || []).filter(item => {
+                  const title = typeof item === 'string' ? item : item.title
+                  if (!title || title.trim() === '') return false
+                  return !isAlreadyInApp(item, selected.books)
+                }).length > 0 && (
+                  <div className="biblio-subcategory" style={{ marginTop: '2.5rem' }}>
+                    <h4>Otras obras del autor</h4>
+                    <div className="refs-grid">
+                      {(selected.bibliography || [])
+                        .filter(item => {
+                          const title = typeof item === 'string' ? item : item.title
+                          if (!title || title.trim() === '') return false
+                          return !isAlreadyInApp(item, selected.books)
+                        })
+                        .sort((a, b) => (b.year || 0) - (a.year || 0)) // Orden cronológico desc
+                        .map((item, i) => {
+                          const title = typeof item === 'string' ? item : item.title
+                          const isbn = typeof item === 'string' ? null : item.isbn
+                          const year = typeof item === 'string' ? null : item.year
+                          const cover_url = typeof item === 'string' ? null : item.cover_url
+                          const key = isbn || title
+                          const isCreating = creating[key]
+                          return (
+                            <div key={i} className="ref-item" style={{ position: 'relative', opacity: 0.85, background: 'rgba(255,255,255,0.4)' }}>
+                              <div className="ref-cover">
+                                <BookCover
+                                  src={cover_url || null}
+                                  isbn={isbn}
+                                  title={title}
+                                  author={selected.name}
+                                  alt={title}
+                                  size={60}
+                                />
+                              </div>
+                              <div className="ref-info">
+                                <h4 className="ref-title">{title}</h4>
+                                {year && <span className="ref-year">{year}</span>}
+                                <span className="ref-badge" style={{ fontSize: '0.72rem', color: '#94a3b8' }}>FUERA DE BIBLIOTECA</span>
+                              </div>
+                              <button
+                                className="ref-add-btn"
+                                onClick={() => handleAddShell(item, selected.name)}
+                                disabled={isCreating}
+                                title="Añadir a mi biblioteca"
+                                style={{
+                                  position: 'absolute',
+                                  top: '0.5rem',
+                                  right: '0.5rem',
+                                  background: 'var(--gold)',
+                                  border: 'none',
+                                  borderRadius: '50%',
+                                  width: '26px',
+                                  height: '26px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  color: 'var(--ink)',
+                                  boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                                }}
+                              >
+                                {isCreating ? '…' : <Plus size={15} />}
+                              </button>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>

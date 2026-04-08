@@ -528,6 +528,67 @@
 /* Info tab */
 .info-tab { display: flex; flex-direction: column; gap: 2rem; max-width: 720px; }
 
+/* Duplicate Banner */
+.duplicate-banner {
+  background: rgba(192, 57, 43, 0.05);
+  border: 1.5px solid rgba(192, 57, 43, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  margin-bottom: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  animation: slideDown 0.3s ease;
+}
+
+.duplicate-banner-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  color: #c0392b;
+}
+
+.duplicate-banner-content div { flex: 1; }
+.duplicate-banner-content strong { display: block; margin-bottom: 0.2rem; font-size: 1rem; }
+.duplicate-banner-content p { font-size: 0.85rem; margin: 0; opacity: 0.9; line-height: 1.4; }
+
+.duplicate-banner-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dup-btn-ignore, .dup-btn-delete {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dup-btn-ignore {
+  background: rgba(201, 169, 110, 0.1);
+  border: 1px solid var(--gold);
+  color: var(--gold);
+}
+.dup-btn-ignore:hover { background: var(--gold); color: white; }
+
+.dup-btn-delete {
+  background: rgba(192, 57, 43, 0.1);
+  border: 1px solid #c0392b;
+  color: #c0392b;
+}
+.dup-btn-delete:hover { background: #c0392b; color: white; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .info-tts-controls {
   display: flex;
   align-items: center;

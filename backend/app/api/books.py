@@ -56,57 +56,45 @@ def _is_name_inversion(name_a: str, name_b: str) -> bool:
 async def _find_existing_book(db, title: str, author: str, isbn: str, exclude_id: str = None):
     """
     Busca si ya existe un libro en la BD con el mismo ISBN o título+autor.
-    Retorna (libro, es_duplicado_exacto) o (None, False).
-    Considera libros en cualquier estado (shell, analizado, etc).
+    Retorna el libro encontrado o None.
     """
-    from sqlalchemy import func as sqlfunc
+    from sqlalchemy import select
 
-    result = await db.execute(
-        select(Book).where(
-            Book.id != exclude_id if exclude_id else True
-        )
-    )
-    all_books = result.scalars().all()
-
-    norm_title = _normalize_title(title or "")
-    isbn_b = _isbn_base(isbn or "")
-    author_words = _normalize_author_words(author or "")
-
-    best_match = None
-
-    for b in all_books:
-        if exclude_id and b.id == exclude_id:
-            continue
-
-        # Comprobar autor
-        author_match = False
-        if not author or not b.author:
-            author_match = True  # sin autor, no podemos descartar
-        elif b.author == author:
-            author_match = True
-        elif _is_name_inversion(b.author, author):
-            author_match = True
-        else:
-            bw = _normalize_author_words(b.author)
-            if bw and author_words and len(bw & author_words) >= 2:
-                author_match = True
-
-        if not author_match:
-            continue
-
-        # Match por ISBN exacto
-        if isbn and b.isbn and b.isbn == isbn:
+    # 1. Match por ISBN (siempre es la prueba más robusta)
+    if isbn:
+        isbn_b = _isbn_base(isbn)
+        result = await db.execute(select(Book).where(Book.isbn == isbn))
+        b = result.scalar_one_or_none()
+        if b and (not exclude_id or b.id != exclude_id):
             return b
+        
+        # También buscar por ISBN base
+        if isbn_b:
+            result = await db.execute(select(Book).where(Book.isbn.like(f"{isbn_b}%")))
+            all_isbn_matches = result.scalars().all()
+            for b in all_isbn_matches:
+                if not exclude_id or b.id != exclude_id:
+                    return b
 
-        # Match por ISBN base
-        if isbn_b and b.isbn and _isbn_base(b.isbn) == isbn_b:
-            return b
+    # 2. Match por Título + Autor
+    if title and author:
+        norm_title = _normalize_title(title)
+        author_words = _normalize_author_words(author)
 
-        # Match por título normalizado
-        if norm_title and b.title and _normalize_title(b.title) == norm_title:
-            best_match = b
+        result = await db.execute(select(Book).where(Book.id != exclude_id if exclude_id else True))
+        all_books = result.scalars().all()
 
-    return best_match
+        for b in all_books:
+            if b.title and _normalize_title(b.title) == norm_title:
+                # Comprobar si el autor coincide
+                if b.author:
+                    if b.author == author: return b
+                    if _is_name_inversion(b.author, author): return b
+                    bw = _normalize_author_words(b.author)
+                    if bw and author_words and len(bw & author_words) >= 2:
+                        return b
+    
+    return None
 
 
 # ── Upload book ───────────────────────────────────────────────────────────────
@@ -116,56 +104,36 @@ async def upload_book(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    print(f"[API] Iniciando subida de: {file.filename}")
     # Validate file type
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in ("pdf", "epub"):
         raise HTTPException(400, "Only PDF and EPUB files are supported")
 
-    content = await file.read()
+    try:
+        content = await file.read()
+        print(f"[API] Archivo leido: {len(content)} bytes")
+    except Exception as e:
+        print(f"[API] Error al leer archivo: {e}")
+        raise HTTPException(500, f"Error al leer el archivo: {e}")
 
-    # ── Detección temprana de duplicados ──
-    # Extraer título del nombre del archivo y normalizarlo
-    base_title = file.filename.rsplit(".", 1)[0]
-    norm_upload_title = _normalize_title(base_title)
-
-    # Buscar duplicados usando la lógica avanzada de normalización
-    existing_book = await _find_existing_book(db, base_title, "", "")
-    
-    if existing_book:
-        # Si ya existe y no es un "shell" vacío (es decir, ya tiene o tuvo archivo o progreso)
-        if existing_book.phase3_done or existing_book.status not in ("shell", "shell_error"):
-             raise HTTPException(
-                400,
-                f"El libro '{existing_book.title}' ya existe en tu biblioteca. "
-                f"No se recomienda duplicarlo."
-            )
-        # Si es un shell, lo reutilizaremos (lógica de abajo lo manejará)
-        shell_book = existing_book if existing_book.status in ("shell", "shell_error") else None
-    else:
-        shell_book = None
-
+    shell_book = None
     book_id = str(uuid.uuid4())
     filename = f"{book_id}.{ext}"
     user_dir = os.path.join(settings.UPLOADS_DIR, current_user.id)
-    os.makedirs(user_dir, exist_ok=True)
-    file_path = os.path.join(user_dir, filename)
+    
+    try:
+        os.makedirs(user_dir, exist_ok=True)
+        file_path = os.path.join(user_dir, filename)
+        async with aiofiles.open(file_path, "wb") as f:
+            await f.write(content)
+        print(f"[API] Archivo guardado en: {file_path}")
+    except Exception as e:
+        print(f"[API] Error al guardar archivo: {e}")
+        raise HTTPException(500, f"Error al guardar disco: {e}")
 
-    async with aiofiles.open(file_path, "wb") as f:
-        await f.write(content)
-
-    if shell_book:
-        # Promover el shell existente añadiéndole el archivo
-        shell_book.file_path = file_path
-        shell_book.file_type = ext
-        shell_book.file_size = len(content)
-        shell_book.phase1_done = False
-        shell_book.phase2_done = False
-        shell_book.phase3_done = False
-        await db.commit()
-        book = shell_book
-        book_id = shell_book.id
-        print(f"Upload: reutilizando shell '{shell_book.title}' (id={shell_book.id})")
-    else:
+    try:
+        base_title = file.filename.rsplit(".", 1)[0]
         book = Book(
             id=book_id,
             title=base_title,
@@ -177,15 +145,24 @@ async def upload_book(
         db.add(book)
         await db.commit()
         await db.refresh(book)
+        print(f"[API] Libro registrado en DB: {book.id}")
+    except Exception as e:
+        print(f"[API] Error DB: {e}")
+        raise HTTPException(500, f"Error base de datos: {e}")
 
-    # Encolar en la cola serializada (un solo libro IA a la vez)
-    book.status = "queued"
-    await db.commit()
-
-    from app.workers.queue_manager import enqueue as q_enqueue
-    q_enqueue(current_user.id, book.id, book.title, ["1", "2", "3", "3b", "podcast"])
+    # Encolar en la cola serializada
+    try:
+        book.status = "queued"
+        await db.commit()
+        
+        from app.workers.queue_manager import enqueue as q_enqueue
+        q_enqueue(current_user.id, book.id, book.title, ["1", "2", "3", "4", "podcast"])
+        print(f"[API] Libro encolado con exito")
+    except Exception as e:
+        print(f"[API] Error al encolar: {e}")
 
     return {"id": book.id, "status": "queued", "task_id": None}
+
 
 
 # ── List books ────────────────────────────────────────────────────────────────
@@ -197,6 +174,16 @@ async def list_books(
     from sqlalchemy import func
     result = await db.execute(select(Book).order_by(Book.created_at.desc()))
     books = result.scalars().all()
+    
+    # AUTO-REPARACIÓN: Si hay libros marcados como 'shell' pero tienen archivo, 
+    # es que son libros reales "escondidos". Los rescatamos.
+    repaired = False
+    for b in books:
+        if b.status == "shell" and b.file_path:
+            b.status = "identified"
+            repaired = True
+    if repaired:
+        await db.commit()
 
     # Pre-cargar conteos de capítulos y personajes para "curar" estados atascados
     # (Agrupados por book_id para eficiencia)
