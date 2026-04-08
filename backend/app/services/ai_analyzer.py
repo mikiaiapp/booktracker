@@ -25,16 +25,18 @@ def _compress_text(text: str) -> str:
     if not text: return ""
     return re.sub(r'\s+', ' ', text).strip()
 
-async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False) -> str:
+async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False) -> tuple[str, str]:
     base_m = settings.AI_MODEL.lower()
     m = base_m
+    used_model = m
     
     # Enrutamiento de modelos (Ollama, Flash o Mini para tareas rápidas)
     if is_fast_task:
         if str(settings.USE_OLLAMA_FOR_FAST_TASKS).lower() == "true":
             try:
-                # Combinamos system y user para Ollama (formato completion simple)
-                return await _call_ollama(f"{system}\n\n{user}")
+                # Combinamos system y user para Ollama
+                resp = await _call_ollama(f"{system}\n\n{user}")
+                return resp, f"Ollama ({settings.OLLAMA_MODEL})"
             except Exception as e:
                 print(f"[AI] Error en Ollama (Falla hacia el cloud...): {e}")
 
@@ -42,24 +44,25 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             m = "gemini-1.5-flash"
         elif "gpt-3" in base_m or "gpt-4" in base_m:
             m = "gpt-4o-mini"
-            
+    
+    used_model = m
     timeout = httpx.Timeout(600.0, connect=10.0)
+    
     if "gemini" in m:
         api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
-        # Es necesario sobreescribir la URL con el modelo específico (m)
         url = f"https://generativelanguage.googleapis.com/v1/models/{m}:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": f"{system}\n\n{user}"}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.5}}
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(url, json=payload)
             if r.status_code != 200: raise ValueError(f"Gemini Error: {r.text}")
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"]
+            return r.json()["candidates"][0]["content"]["parts"][0]["text"], m
     else:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         resp = await client.chat.completions.create(model=m, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
-        return resp.choices[0].message.content
+        return resp.choices[0].message.content, m
 
-async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 5, is_fast_task: bool = False) -> str:
+async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 5, is_fast_task: bool = False) -> tuple[str, str]:
     for attempt in range(max_retries):
         try:
             return await _call_ai(system, user, max_tokens, is_fast_task)
@@ -106,10 +109,10 @@ async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
         f"Realiza un resumen magistral y minucioso del siguiente texto:\n{compressed_text}"
     )
     try:
-        raw = await _call_ai_with_retry(system, user, 2000, is_fast_task=True)
+        raw, model_name = await _call_ai_with_retry(system, user, 2000, is_fast_task=True)
         parsed = _parse_json(raw)
         if not parsed:
-            return None
+            return None, model_name
         # Normalizar claves españolas por si la IA no sigue el esquema
         if "summary" not in parsed:
             parsed["summary"] = (
@@ -132,10 +135,10 @@ async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
         # Limpieza básica: asegurar que sean strings y no estén vacíos
         if isinstance(parsed["key_events"], list):
             parsed["key_events"] = [str(x).strip() for x in parsed["key_events"] if x and len(str(x)) > 5]
-        return parsed if parsed.get("summary") else None
+        return (parsed if parsed.get("summary") else None), model_name
     except Exception as e:
         print(f"Error al resumir capítulo {chapter_title}: {e}")
-        return None
+        return None, "Error"
 
 async def get_character_list(all_summaries: str) -> list:
     if not all_summaries or len(all_summaries.strip()) < 50:
@@ -143,12 +146,13 @@ async def get_character_list(all_summaries: str) -> list:
     system = "Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
     user = f"""Resúmenes de la trama:\n{all_summaries[:25000]}\n\n---\nBasándote en los resúmenes anteriores, identifica TODOS los personajes."""
     try:
-        raw = await _call_ai_with_retry(system, user, 1000, is_fast_task=True)
+        raw, model_name = await _call_ai_with_retry(system, user, 1000, is_fast_task=True)
         data = _parse_json(raw)
-        return [c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else []
+        res = [c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else []
+        return res, model_name
     except Exception as e:
         print(f"Error al obtener listado de personajes: {e}")
-        return []
+        return [], "Error"
 
 async def extract_key_events_from_summary(summary_text: str) -> list:
     if not summary_text or len(summary_text.strip()) < 50:
@@ -160,14 +164,14 @@ async def extract_key_events_from_summary(summary_text: str) -> list:
     )
     user = f"Resumen del capítulo:\n{summary_text}"
     try:
-        raw = await _call_ai_with_retry(system, user, 600, is_fast_task=True)
+        raw, model_name = await _call_ai_with_retry(system, user, 600, is_fast_task=True)
         data = _parse_json(raw)
         if isinstance(data, list):
-            return [str(x).strip() for x in data if x and len(str(x)) > 5]
-        return []
+            return [str(x).strip() for x in data if x and len(str(x)) > 5], model_name
+        return [], model_name
     except Exception as e:
         print(f"Error al extraer eventos clave del resumen: {e}")
-        return []
+        return [], "Error"
 
 async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
     if not all_summaries or len(all_summaries.strip()) < 50:
@@ -196,11 +200,11 @@ Esquema JSON obligatorio:
   "quotes": ["Cita clave"]
 }}"""
     try:
-        raw = await _call_ai_with_retry(system, user, 3500)
-        return _parse_json(raw)
+        raw, model_name = await _call_ai_with_retry(system, user, 3500)
+        return _parse_json(raw), model_name
     except Exception as e:
         print(f"Error al analizar personaje {name}: {e}")
-        return None
+        return None, "Error"
 
 async def generate_global_summary(all_summaries: str, book_title: str, author: str) -> str:
     if not all_summaries or len(all_summaries.strip()) < 50:
@@ -216,7 +220,7 @@ Basándote en los resúmenes anteriores, escribe un ensayo literario magistral."
         return await _call_ai_with_retry(system, user, 5000)
     except Exception as e:
         print(f"Error al generar ensayo global: {e}")
-        return ""
+        return "", "Error"
 
 async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
     if not all_summaries or len(all_summaries.strip()) < 50:
@@ -243,10 +247,10 @@ Resúmenes de la trama:
 ---
 Basándote en los resúmenes anteriores, genera el mapa mental completo para la obra."""
     try:
-        raw = await _call_ai_with_retry(system, user, 5000, is_fast_task=True)
-        return _parse_json(raw) or {"center": book_title, "branches": []}
+        raw, model_name = await _call_ai_with_retry(system, user, 5000, is_fast_task=True)
+        return (_parse_json(raw) or {"center": book_title, "branches": []}), model_name
     except:
-        return {"center": book_title, "branches": []}
+        return {"center": book_title, "branches": []}, "Error"
 
 async def generate_podcast_script(book_title, author, summary, chars) -> str:
     if not summary or len(summary.strip()) < 50:
@@ -276,4 +280,4 @@ async def generate_podcast_script(book_title, author, summary, chars) -> str:
         return await _call_ai_with_retry(system, user, 8000, is_fast_task=True)
     except Exception as e:
         print(f"Error al generar guion de podcast: {e}")
-        return ""
+        return "", "Error"

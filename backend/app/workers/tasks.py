@@ -107,12 +107,14 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True):
             await db.commit()
             
             chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
+            chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
             for i, ch in enumerate(chaps):
                 update_progress(user_id, book_id, "phase2", int(20 + (i/len(chaps)*40)), f"Resumiendo: {ch.title}")
-                s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
-                if s and s.get("summary"):
-                    ch.summary = s.get("summary")
-                    ch.key_events = s.get("key_events", [])
+                res, used_m = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
+                update_progress(user_id, book_id, "phase2", int(20 + (i/len(chaps)*40)), f"Resumiendo: {ch.title} [{used_m}]")
+                if res and res.get("summary"):
+                    ch.summary = res.get("summary")
+                    ch.key_events = res.get("key_events", [])
                     ch.summary_status = "done"
                 else:
                     ch.summary, ch.summary_status = "", "error"
@@ -142,11 +144,11 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False):
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
             
-            char_list = await get_character_list(all_summaries)
+            char_list, m_list = await get_character_list(all_summaries)
             for i, c in enumerate(char_list):
                 char_name = c["name"]
-                update_progress(user_id, book_id, "phase3", int(60+(i/len(char_list)*20)), f"Personaje: {char_name}")
-                detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title)
+                update_progress(user_id, book_id, "phase3", int(60+(i/len(char_list)*20)), f"Personaje: {char_name} [{m_list}]")
+                detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title)
                 
                 char_data = {
                     "book_id": book_id,
@@ -196,7 +198,8 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
 
             all_summaries = await _get_summaries_text(db, book_id)
             update_progress(user_id, book_id, "phase4", 85, "Redactando ensayo...")
-            book.global_summary = await generate_global_summary(all_summaries, book.title, book.author)
+            res_global, m_global = await generate_global_summary(all_summaries, book.title, book.author)
+            book.global_summary = res_global
             book.has_global_summary = True
             await db.commit()
             
@@ -226,7 +229,8 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
 
             all_summaries = await _get_summaries_text(db, book_id)
             update_progress(user_id, book_id, "phase5", 90, "Estructurando mapa...")
-            book.mindmap_data = await generate_mindmap(all_summaries, book.title)
+            res_map, m_map = await generate_mindmap(all_summaries, book.title)
+            book.mindmap_data = res_map
             book.has_mindmap = True
             await db.commit()
             
@@ -251,7 +255,7 @@ def process_book_phase6(self, user_id: str, book_id: str):
                 char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
                 chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
                 update_progress(user_id, book_id, "phase6", 95, "Sincronizando audio...")
-                script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
+                script, m_script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
                 book.podcast_script = script
                 audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
                 os.makedirs(os.path.dirname(audio_path), exist_ok=True)
@@ -281,7 +285,8 @@ def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
             await db.commit()
             update_progress(user_id, book_id, "phase2", 50, f"Resumiendo: {ch.title}")
             try:
-                s = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
+                s, m_single = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author)
+                update_progress(user_id, book_id, "phase2", 50, f"Resumiendo: {ch.title} [{m_single}]")
                 if s and s.get("summary"):
                     ch.summary, ch.key_events, ch.summary_status = s["summary"], s.get("key_events", []), "done"
                 else:
@@ -314,7 +319,8 @@ def process_book_repair_events(user_id: str, book_id: str):
             total = len(chaps)
             for i, ch in enumerate(chaps):
                 update_progress(user_id, book_id, "repair", int((i/total)*100), f"Reparando: {ch.title}")
-                events = await extract_key_events_from_summary(ch.summary)
+                events, m_repair = await extract_key_events_from_summary(ch.summary)
+                update_progress(user_id, book_id, "repair", int((i/total)*100), f"Reparando: {ch.title} [{m_repair}]")
                 if events: ch.key_events = events; await db.commit()
             on_done(user_id, book_id)
     return run_async(_task())

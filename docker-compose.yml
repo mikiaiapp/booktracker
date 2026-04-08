@@ -132,6 +132,28 @@ services:
     networks:
       - booktracker-net
 
+  # -----------------------------------------------------------
+  # OLLAMA · IA Local (Opcional, requiere GPU para velocidad)
+  # -----------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: booktracker-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - /volume1/docker/booktracker/data/ollama:/root/.ollama
+    # Descomenta las siguientes líneas si tienes una tarjeta NVIDIA y drivers instalados en el host
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - booktracker-net
+
 # ── Red interna ────────────────────────────────────────────────
 networks:
   booktracker-net:
