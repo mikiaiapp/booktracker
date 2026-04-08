@@ -34,9 +34,9 @@ export default function Layout() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="sidebar-brand">
-          <BookOpen size={22} strokeWidth={1.5} />
-          <span>BookTracker</span>
+        <div className="sidebar-brand-v3">
+          <img src="/logo-premium.png" alt="BookTracker" className="sidebar-logo-premium" />
+          <span className="brand-text">BookTracker</span>
         </div>
 
         <nav className="sidebar-nav">
@@ -59,7 +59,7 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-branding-v2">
-          <img src="/favicon.png" alt="BookTracker Logo" className="sidebar-main-logo" />
+          <img src="/logo-premium.png" alt="Logo" className="sidebar-logo-small" />
         </div>
 
         <div className="sidebar-footer">

@@ -110,6 +110,15 @@
   box-shadow: 0 4px 12px rgba(0,0,0,0.12);
 }
 
+/* Logo Premium reescalado para ser elegante */
+.auth-brand-img-premium {
+  height: 42px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.06));
+  margin-bottom: 0.5rem;
+}
+
 .auth-logo h1 {
   font-family: var(--font-display);
   font-size: 1.5rem;
