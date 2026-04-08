@@ -43,8 +43,7 @@ const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', re
 const ANALYSIS_GROUPS = {
   analyzed:   { label: 'Analizados', statuses: ['complete', 'analyzed'] },
   incomplete: { label: 'A medias',   statuses: ['incomplete'] },
-  processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'summarizing', 'generating_podcast', 'uploaded', 'structured'] },
-  queued:     { label: 'En cola',    statuses: ['queued'] },
+  processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'analyzing', 'summarizing', 'generating_podcast', 'uploaded', 'structured', 'queued'] },
   identified: { label: 'Identificados', statuses: ['identified'] },
   pending:    { label: 'Pendientes',  statuses: ['duplicate', 'error'] },
 }
