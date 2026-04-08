@@ -35,7 +35,6 @@ export default function Layout() {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand-v3">
-          <img src="/logo-premium.png" alt="BookTracker" className="sidebar-logo-premium" />
           <span className="brand-text">BookTracker</span>
         </div>
 
@@ -58,8 +57,8 @@ export default function Layout() {
           </NavLink>
         </nav>
 
-        <div className="sidebar-branding-v2">
-          <img src="/logo-premium.png" alt="Logo" className="sidebar-logo-small" />
+        <div className="sidebar-branding-v3">
+          <img src="/logo-premium.png" alt="Logo Premium" className="sidebar-logo-footer-large" />
         </div>
 
         <div className="sidebar-footer">

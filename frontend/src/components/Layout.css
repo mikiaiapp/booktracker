@@ -21,22 +21,17 @@
   padding: 1.5rem 1.5rem 2rem;
   display: flex;
   align-items: center;
+  justify-content: center; /* Centrar texto */
   gap: 0.85rem;
-}
-
-.sidebar-logo-premium {
-  height: 34px;
-  width: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
 }
 
 .brand-text {
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: 1.35rem; /* Un pelín más grande al estar solo */
   font-weight: 500;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.05em;
   color: var(--paper);
+  text-transform: uppercase;
 }
 
 .sidebar-brand-premium {
@@ -161,6 +156,27 @@
   flex: 1;
   min-height: 100vh;
   background: var(--cream);
+}
+
+.sidebar-branding-v3 {
+  padding: 2rem 1rem;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-logo-footer-large {
+  height: 80px;
+  width: auto;
+  object-fit: contain;
+  background: transparent !important;
+  opacity: 0.7;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+
+.sidebar:hover .sidebar-logo-footer-large {
+  opacity: 0.95;
 }
 
 .sidebar-branding-v2 {
