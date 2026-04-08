@@ -2,64 +2,6 @@
 #  BookTracker · docker-compose.yml
 #  Optimizado para Synology NAS + Portainer (Stack via GitHub)
 # =============================================================
-#
-#  ANTES DEL PRIMER DEPLOY en Portainer:
-#
-#  1. Crear carpetas de datos en el NAS (una sola vez vía SSH):
-#       mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
-#
-#  2. En Portainer → Stacks → Add stack → Repository:
-#       - Repository URL:  https://github.com/TU_USUARIO/TU_REPO
-#       - Compose path:    docker-compose.yml
-#
-#  3. En la sección "Environment variables" de Portainer añadir
-#     las variables listadas al final de este archivo.
-#
-#  ACCESO:  http://IP-NAS:8080
-#
-#  ACTUALIZAR CÓDIGO:
-#    - Haz cambios en tu repo de GitHub
-#    - En Portainer: Stacks → booktracker → "Pull and redeploy"
-#    - Espera 2-3 minutos mientras reconstruye las imágenes
-# =============================================================
-
-version: "3.9"
-
-# ── Variables compartidas entre backend y worker ───────────────
-x-backend-env: &backend-env
-  SECRET_KEY:           ${SECRET_KEY:?Variable SECRET_KEY no definida en Portainer}
-  ANTHROPIC_API_KEY:    ${ANTHROPIC_API_KEY:-}
-  OPENAI_API_KEY:       ${OPENAI_API_KEY:-}
-  GEMINI_API_KEY:       ${GEMINI_API_KEY:-}
-  GOOGLE_API_KEY:       ${GOOGLE_API_KEY:-}
-  AI_MODEL:             ${AI_MODEL:-gemini-2.0-flash}
-  TTS_PROVIDER:         ${TTS_PROVIDER:-openai}
-  ELEVENLABS_API_KEY:   ${ELEVENLABS_API_KEY:-}
-  DATABASE_DIR:         /data/databases
-# =============================================================
-#  BookTracker · docker-compose.yml
-#  Optimizado para Synology NAS + Portainer (Stack via GitHub)
-# =============================================================
-#
-#  ANTES DEL PRIMER DEPLOY en Portainer:
-#
-#  1. Crear carpetas de datos en el NAS (una sola vez vía SSH):
-#       mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
-#
-#  2. En Portainer → Stacks → Add stack → Repository:
-#       - Repository URL:  https://github.com/TU_USUARIO/TU_REPO
-#       - Compose path:    docker-compose.yml
-#
-#  3. En la sección "Environment variables" de Portainer añadir
-#     las variables listadas al final de este archivo.
-#
-#  ACCESO:  http://IP-NAS:8080
-#
-#  ACTUALIZAR CÓDIGO:
-#    - Haz cambios en tu repo de GitHub
-#    - En Portainer: Stacks → booktracker → "Pull and redeploy"
-#    - Espera 2-3 minutos mientras reconstruye las imágenes
-# =============================================================
 
 version: "3.9"
 
