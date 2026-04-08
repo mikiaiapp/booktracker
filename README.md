@@ -116,34 +116,54 @@ Sección **Environment variables** del Stack:
 
 ---
 
-## 🤖 IA Local (Ollama) — ¡Análisis Gratis!
+## 🤖 IA Local (Ollama + Open WebUI) — ¡Análisis Gratis!
 
-BookTracker permite ahora delegar los resúmenes de capítulos y tareas pesadas a un servidor **Ollama** local. Esto reduce el consumo de tokens de Gemini/OpenAI a prácticamente cero.
+BookTracker permite delegar los resúmenes y tareas pesadas a un servidor **Ollama** local. Esto elimina el consumo de tokens de Gemini y mejora la privacidad.
 
 ### 1. Desplegar Ollama (Stack independiente en Portainer)
 
-Crea un nuevo stack llamado `ollama` con este contenido:
+Para un rendimiento óptimo en **Synology**, usa este `docker-compose.yml` en un nuevo stack llamado `ollama`:
 
 ```yaml
 version: "3"
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: ollama
+    container_name: ollama-standalone
     restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
-      - /volume1/docker/ollama:/root/.ollama
+      - /volume1/docker/ollama/data:/root/.ollama
+    # 🏎️ ACELERACIÓN PARA SYNOLOGY (Intel iGPU):
+    # Descomenta las siguientes 2 líneas si tu NAS tiene CPU Intel con gráfica:
+    # devices:
+    #   - /dev/dri:/dev/dri
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h  # Mantiene el modelo en RAM para evitar esperas
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    volumes:
+      - /volume1/docker/ollama/webui:/app/backend/data
 ```
 
-### 2. Descargar modelo y configurar
+### 2. Configuración y Optimización
 
-1. Entra en la consola del contenedor `ollama` y ejecuta: `ollama pull llama3`
-2. En el stack de **BookTracker**, añade estas variables:
+1. **Descargar Modelo**: Entra en `http://IP-NAS:8081` (Open WebUI), regístrate y descarga el modelo `llama3.1:8b` (o `phi3` si tu NAS es poco potente).
+2. **Aceleración**: Si Ollama tarda más de 1 minuto en responder, asegúrate de haber mapeado `/dev/dri` en el stack de Ollama (esto requiere que el paquete "Video Station" o similar esté instalado para activar los drivers en el NAS).
+3. **Vincular con BookTracker**: En el stack de **BookTracker**, configura estas variables:
    - `USE_OLLAMA_FOR_FAST_TASKS`: `true`
    - `OLLAMA_URL`: `http://TU_IP_NAS:11434`
-   - `OLLAMA_MODEL`: `llama3`
+   - `OLLAMA_MODEL`: `llama3.1`
 
 ---
 
