@@ -143,7 +143,7 @@ async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
 async def get_character_list(all_summaries: str) -> list:
     if not all_summaries or len(all_summaries.strip()) < 50:
         return []
-    system = "Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{"name": "...", "is_main": true/false}]"
+    system = '''Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{"name": "...", "is_main": true/false}]'''
     user = f"""Resúmenes de la trama:\n{all_summaries[:25000]}\n\n---\nBasándote en los resúmenes anteriores, identifica TODOS los personajes."""
     try:
         raw, model_name = await _call_ai_with_retry(system, user, 1000, is_fast_task=True)
@@ -160,7 +160,7 @@ async def extract_key_events_from_summary(summary_text: str) -> list:
     system = (
         "Eres un experto en análisis literario de España. "
         "A partir del resumen de un capítulo que se te proporcionará, extrae exactamente entre 3 y 5 eventos clave (hitos narrativos fundamentes). "
-        "Sé conciso y directo. Responde SOLO con un array JSON de strings: ["Hito 1", "Hito 2", ...]"
+        "Sé conciso y directo. Responde SOLO con un array JSON de strings: ['Hito 1', 'Hito 2', ...]"
     )
     user = f"Resumen del capítulo:\n{summary_text}"
     try:
