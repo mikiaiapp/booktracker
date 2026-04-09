@@ -1,7 +1,7 @@
 version: "3.8"
 
 services:
-  # 💾 BASE DE DATOS (SQLite por ahora, mapeado a volumen)
+  # 💾 BASE DE DATOS (Mapeo de permisos)
   db:
     image: alpine:latest
     container_name: booktracker-db-init
@@ -33,7 +33,6 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - USE_OLLAMA_FOR_FAST_TASKS=false
-      - OLLAMA_URL=http://ollama:11434
     depends_on:
       - redis
     networks:
@@ -57,7 +56,7 @@ services:
       - /volume1/docker/booktracker/data/uploads:/app/uploads
       - /volume1/docker/booktracker/data/audio:/app/audio
       - /volume1/docker/booktracker/data/covers:/app/covers
-      environment:
+    environment:
       - DATABASE_URL=sqlite+aiosqlite:///app/db/books.db
       - REDIS_URL=redis://redis:6379/0
       - UPLOADS_DIR=/app/uploads
