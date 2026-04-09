@@ -16,7 +16,6 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-api
     restart: unless-stopped
-    # No exponemos puerto 8000 al host para evitar conflictos; Nginx se encarga del proxy interno.
     volumes:
       - /volume1/docker/booktracker/data:/app/data
       - /volume1/docker/booktracker/data/db:/app/db
@@ -24,13 +23,14 @@ services:
       - /volume1/docker/booktracker/data/audio:/app/audio
       - /volume1/docker/booktracker/data/covers:/app/covers
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///app/db/books.db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_DIR=/app/db
       - UPLOADS_DIR=/app/uploads
       - AUDIO_DIR=/app/audio
       - COVERS_DIR=/app/covers
+      - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       - USE_OLLAMA_FOR_FAST_TASKS=false
     depends_on:
       - redis
@@ -51,13 +51,14 @@ services:
       - /volume1/docker/booktracker/data/audio:/app/audio
       - /volume1/docker/booktracker/data/covers:/app/covers
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///app/db/books.db
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_DIR=/app/db
       - UPLOADS_DIR=/app/uploads
       - AUDIO_DIR=/app/audio
       - COVERS_DIR=/app/covers
+      - REDIS_URL=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
       - USE_OLLAMA_FOR_FAST_TASKS=false
     depends_on:
       - redis
@@ -79,7 +80,6 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-ui
     restart: unless-stopped
-    # No exponemos puerto 3000 al host; Nginx se encarga del acceso web.
     depends_on:
       - backend
     networks:
