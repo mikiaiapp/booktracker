@@ -30,12 +30,12 @@ const PROCESSING_STATUSES = ['queued', 'identifying', 'analyzing_structure', 'su
 // ── Modal de confirmación propio (evita el checkbox del window.confirm nativo) ──
 function ConfirmModal({ message, onConfirm, onCancel }) {
   return (
-    <div className=\"confirm-overlay\" onClick={onCancel}>
-      <div className=\"confirm-box\" onClick={e => e.stopPropagation()}>
-        <p className=\"confirm-msg\">{message}</p>
-        <div className=\"confirm-btns\">
-          <button className=\"confirm-btn-cancel\" onClick={onCancel}>Cancelar</button>
-          <button className=\"confirm-btn-ok\" onClick={onConfirm}>Aceptar</button>
+    <div className="confirm-overlay" onClick={onCancel}>
+      <div className="confirm-box" onClick={e => e.stopPropagation()}>
+        <p className="confirm-msg">{message}</p>
+        <div className="confirm-btns">
+          <button className="confirm-btn-cancel" onClick={onCancel}>Cancelar</button>
+          <button className="confirm-btn-ok" onClick={onConfirm}>Aceptar</button>
         </div>
       </div>
     </div>
@@ -677,8 +677,8 @@ export default function BookPage() {
   }
 
   if (loading) return (
-    <div className=\"book-loading\">
-      <Loader size={28} className=\"spin\" strokeWidth={1.5} />
+    <div className="book-loading">
+      <Loader size={28} className="spin" strokeWidth={1.5} />
       <p>Cargando información del libro...</p>
     </div>
   )
@@ -688,9 +688,9 @@ export default function BookPage() {
   const statusInfo = status || {}
   
   if (!activeData || !book.id) return (
-    <div className=\"book-loading\" style={{flexDirection:\"column\",gap:\"1rem\"}}>
-      <p style={{color:\"var(--slate)\"}}>No se pudo encontrar el libro o no tienes permiso para verlo.</p>
-      <button onClick={() => navigate(\"/\")} style={{background:\"var(--ink)\",color:\"var(--paper)\",border:\"none\",padding:\"0.5rem 1rem\",borderRadius:\"4px\",cursor:\"pointer\"}}>
+    <div className="book-loading" style={{flexDirection:"column",gap:"1rem"}}>
+      <p style={{color:"var(--slate)"}}>No se pudo encontrar el libro o no tienes permiso para verlo.</p>
+      <button onClick={() => navigate("/")} style={{background:"var(--ink)",color:"var(--paper)",border:"none",padding:"0.5rem 1rem",borderRadius:"4px",cursor:"pointer"}}>
         Volver a la biblioteca
       </button>
     </div>
@@ -701,17 +701,17 @@ export default function BookPage() {
   const isShell = book.status === 'shell' || book.status === 'shell_error'
 
   return (
-    <div className=\"book-page\">
-      <div className=\"book-hero\">
-        <button className=\"back-btn\" onClick={() => navigate('/')}>
+    <div className="book-page">
+      <div className="book-hero">
+        <button className="back-btn" onClick={() => navigate('/')}>
           <ArrowLeft size={16} /> Biblioteca
         </button>
 
-        <div className=\"hero-content\">
-          <div className=\"hero-cover\" style={{ cursor: 'pointer', position: 'relative' }} onClick={() => setCoverPickerOpen(true)} title=\"Haz clic para cambiar la portada\">
+        <div className="hero-content">
+          <div className="hero-cover" style={{ cursor: 'pointer', position: 'relative' }} onClick={() => setCoverPickerOpen(true)} title="Haz clic para cambiar la portada">
             <HeroCover key={coverKey} book={book} />
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: '0.7rem', textAlign: 'center', padding: '4px 0', opacity: 0, transition: 'opacity 0.2s' }}
-              className=\"cover-change-hint\">
+              className="cover-change-hint">
               ✏ Cambiar
             </div>
           </div>
@@ -924,14 +924,14 @@ export default function BookPage() {
           })}
         </div>
 
-        <div className=\"tab-content\">
+        <div className="tab-content">
           {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={playInfo} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={stopInfoTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} onDelete={handleDelete} />}
           {tab === 'chapters' && <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(c) => { stopTTS(); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); ttsActiveRef.current = true; setTtsPlaying(true); speakItem([{id:c.id, title:c.title, text:chapterToText(c)}], 0); setTtsMode('single') }} onPlayFromChapter={(c) => playFromChapter(c, chapters)} onResume={resumeCurrentTTS} onStop={stopTTS} onPause={pauseTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} />}
           {tab === 'characters' && <CharactersTab characters={characters} ttsPlaying={ttsCharPlaying} ttsPaused={ttsCharPaused} ttsCharacter={ttsCharacter} onPlay={playCharacter} onPlayFrom={(c) => playFromCharacter(c, characters)} onPause={pauseCharTTS} onResume={resumeCharTTS} onStop={stopCharTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} bookId={id} onDone={load} />}
           {tab === 'summary' && <SummaryTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playSummary(book)} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />}
           {tab === 'mindmap' && (
-            <div className=\"prose-content\" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
-               <TabPhaseBar phase={5} label=\"Mapa Mental\" doneProp=\"has_mindmap\" canProp=\"has_global_summary\" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
+            <div className="prose-content" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
+               <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
                <h2 style={{marginBottom:'1rem'}}>Mapa mental de ideas</h2>
                <div style={{flex:1, minHeight:0, background:'#fcfaf7', borderRadius:'12px', border:'1px solid var(--paper-dark)'}}>
                  <MindMap data={book.mindmap_data} />
@@ -939,37 +939,37 @@ export default function BookPage() {
             </div>
           )}
           {tab === 'podcast' && (
-            <div className=\"prose-content\">
-               <TabPhaseBar phase={6} label=\"Podcast\" doneProp=\"podcast_done\" canProp=\"has_mindmap\" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
+            <div className="prose-content">
+               <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1.5rem'}}>
                  <h2 style={{margin:0}}>Podcast del libro</h2>
                </div>
                {statusInfo.podcast_done ? (
-                 <div className=\"podcast-player-card\">
-                   <div className=\"podcast-visual\">
+                 <div className="podcast-player-card">
+                   <div className="podcast-visual">
                      <div className={`wave-bar ${audioPlaying ? 'animate' : ''}`} />
                      <div className={`wave-bar ${audioPlaying ? 'animate' : ''}`} style={{animationDelay:'0.2s'}} />
                      <div className={`wave-bar ${audioPlaying ? 'animate' : ''}`} style={{animationDelay:'0.4s'}} />
-                     <Mic size={48} color=\"var(--gold)\" style={{opacity:0.2, position:'absolute'}} />
+                     <Mic size={48} color="var(--gold)" style={{opacity:0.2, position:'absolute'}} />
                    </div>
-                   <div className=\"podcast-controls\">
-                     <button className=\"p-play-btn\" onClick={toggleAudio}>
+                   <div className="podcast-controls">
+                     <button className="p-play-btn" onClick={toggleAudio}>
                        {audioPlaying ? <Pause size={24} /> : <Play size={24} />}
                        {audioPlaying ? 'Pausar Podcast' : audioPaused ? 'Continuar Podcast' : 'Escuchar Podcast'}
                      </button>
                      {(audioPlaying || audioPaused) && (
-                       <button className=\"p-stop-btn\" onClick={() => stopAudio()}>
+                       <button className="p-stop-btn" onClick={() => stopAudio()}>
                          <Square size={16} /> Parar
                        </button>
                      )}
-                     <a href={analysisAPI.podcastAudioUrl(id)} download className=\"p-download-link\">
+                     <a href={analysisAPI.podcastAudioUrl(id)} download className="p-download-link">
                         Descargar MP3
                      </a>
                    </div>
                    {book.podcast_script && (
-                     <div className=\"podcast-script\">
+                     <div className="podcast-script">
                        <h3>Guión del episodio</h3>
-                       <div className=\"script-content\">
+                       <div className="script-content">
                          {book.podcast_script.split('\n').map((line, i) => (
                            <p key={i} className={line.startsWith('Locutor') ? 'script-speaker' : ''}>{line}</p>
                          ))}
@@ -978,18 +978,18 @@ export default function BookPage() {
                    )}
                  </div>
                ) : (
-                 <div className=\"empty-podcast\">
+                 <div className="empty-podcast">
                    <Mic size={40} />
                    <p>El podcast aún no se ha generado.</p>
                    {statusInfo.has_mindmap && !isProcessing && (
-                     <button className=\"phase-btn\" onClick={() => triggerPhase(6)}>Generar Podcast ahora</button>
+                     <button className="phase-btn" onClick={() => triggerPhase(6)}>Generar Podcast ahora</button>
                    )}
                  </div>
                )}
             </div>
           )}
           {tab === 'chat' && (
-            <div className=\"prose-content\" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
+            <div className="prose-content" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
                <h2 style={{marginBottom:'1rem'}}>Diálogo Literario</h2>
                <div style={{flex:1, minHeight:0}}>
                  <LiteraryDialogue bookId={id} bookTitle={book.title} />
@@ -997,18 +997,18 @@ export default function BookPage() {
             </div>
           )}
           {tab === 'refs' && (
-            <div className=\"prose-content\">
+            <div className="prose-content">
                <h2>Referencias externas</h2>
-               <div className=\"refs-grid\">
-                 <a href={`https://www.google.com/search?q=libro+${encodeURIComponent(book.title)}+${encodeURIComponent(book.author || '')}`} target=\"_blank\" className=\"ref-card\">
+               <div className="refs-grid">
+                 <a href={`https://www.google.com/search?q=libro+${encodeURIComponent(book.title)}+${encodeURIComponent(book.author || '')}`} target="_blank" className="ref-card">
                    <Box size={24} />
                    <span>Google Search</span>
                  </a>
-                 <a href={`https://es.wikipedia.org/wiki/${encodeURIComponent(book.title)}`} target=\"_blank\" className=\"ref-card\">
+                 <a href={`https://es.wikipedia.org/wiki/${encodeURIComponent(book.title)}`} target="_blank" className="ref-card">
                    <FileText size={24} />
                    <span>Wikipedia</span>
                  </a>
-                 <a href={`https://www.goodreads.com/search?q=${encodeURIComponent(book.title)}`} target=\"_blank\" className=\"ref-card\">
+                 <a href={`https://www.goodreads.com/search?q=${encodeURIComponent(book.title)}`} target="_blank" className="ref-card">
                    <Star size={24} />
                    <span>Goodreads</span>
                  </a>
@@ -1131,8 +1131,8 @@ function HeroCover({ book }) {
   }, [src, srcError, book.isbn, book.title])
 
   if (!src || srcError) {
-    if (fallback) return <img src={fallback} alt=\"Portada fallback\" onError={() => setFallback(null)} />
-    return <div className=\"cover-ph-lg\"><BookOpen size={48} /></div>
+    if (fallback) return <img src={fallback} alt="Portada fallback" onError={() => setFallback(null)} />
+    return <div className="cover-ph-lg"><BookOpen size={48} /></div>
   }
 
   return <img src={src} alt={book.title} onError={() => setSrcError(true)} />
@@ -1150,15 +1150,15 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
   const btnClass = isDone ? 'secondary' : 'primary'
 
   return (
-    <div className=\"tab-phase-bar\">
+    <div className="tab-phase-bar">
       {isProcessing ? (
-        <div className=\"tab-phase-processing-wrap\">
-          <span className=\"tab-phase-processing\">
-            <Loader size={14} className=\"spin-icon\" />
-            <span className=\"progress-msg-text\">{progressMsg || 'Procesando…'}</span>
-            {status?.model && <span className=\"ai-model-tag\">{status.model}</span>}
+        <div className="tab-phase-processing-wrap">
+          <span className="tab-phase-processing">
+            <Loader size={14} className="spin-icon" />
+            <span className="progress-msg-text">{progressMsg || 'Procesando…'}</span>
+            {status?.model && <span className="ai-model-tag">{status.model}</span>}
           </span>
-          <button className=\"tab-phase-cancel-btn\" onClick={onCancel} title=\"Detener análisis\">
+          <button className="tab-phase-cancel-btn" onClick={onCancel} title="Detener análisis">
             <X size={12} /> Detener
           </button>
         </div>
@@ -1181,36 +1181,36 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
   const isDuplicate = status.status === 'duplicate'
 
   return (
-    <div className=\"info-tab\">
+    <div className="info-tab">
       {isDuplicate && (
-        <div className=\"duplicate-banner\">
-          <div className=\"duplicate-banner-content\">
+        <div className="duplicate-banner">
+          <div className="duplicate-banner-content">
             <AlertCircle size={20} />
             <div>
               <strong>Posible libro duplicado</strong>
               <p>{status.error_msg || 'Este libro parece que ya existe en tu biblioteca.'}</p>
             </div>
           </div>
-          <div className=\"duplicate-banner-actions\">
-            <button className=\"dup-btn-ignore\" onClick={() => onTrigger(1, true)}>
+          <div className="duplicate-banner-actions">
+            <button className="dup-btn-ignore" onClick={() => onTrigger(1, true)}>
               <RefreshCw size={14} /> Ignorar y analizar de todos modos
             </button>
-            <button className=\"dup-btn-delete\" onClick={onDelete}>
+            <button className="dup-btn-delete" onClick={onDelete}>
               <Trash2 size={14} /> Eliminar este libro
             </button>
           </div>
         </div>
       )}
-      <TabPhaseBar phase={1} label=\"Ficha y Autor\" doneProp=\"phase1_done\" canProp={null} status={status} isProcessing={isProcessing} onTrigger={onTrigger} onCancel={onCancel} progressMsg={progressMsg} />
+      <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" canProp={null} status={status} isProcessing={isProcessing} onTrigger={onTrigger} onCancel={onCancel} progressMsg={progressMsg} />
       {book.synopsis && (
-        <div className=\"info-tts-controls\">
+        <div className="info-tts-controls">
           {!ttsPlaying && !ttsPaused && (
-            <button className=\"info-tts-play-btn\" onClick={() => onPlay(book)}>
+            <button className="info-tts-play-btn" onClick={() => onPlay(book)}>
               <Play size={16} /> Reproducir ficha
             </button>
           )}
           {ttsPaused && (
-            <span className=\"tts-indicator\" style={{color:'var(--mist)', fontSize:'0.85rem'}}>
+            <span className="tts-indicator" style={{color:'var(--mist)', fontSize:'0.85rem'}}>
               ⏸ Pausado — usa los controles de arriba para continuar
             </span>
           )}
@@ -1219,7 +1219,7 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
 
       {book.synopsis && <section><h3>Sinopsis</h3><p>{book.synopsis}</p></section>}
       {!book.synopsis && (
-        <p className=\"empty-tab\">La sinopsis aún se está cargando…</p>
+        <p className="empty-tab">La sinopsis aún se está cargando…</p>
       )}
     </div>
   )
@@ -1228,19 +1228,19 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
 // ── SummaryTab ─────────────────────────────────────────────────────────────────
 function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger, progressMsg }) {
   return (
-    <div className=\"prose-content\">
-      <TabPhaseBar phase={4} label=\"Resumen Global\" doneProp=\"has_global_summary\" canProp=\"phase3_done\" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
+    <div className="prose-content">
+      <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" canProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.25rem',flexWrap:'wrap',gap:'0.75rem'}}>
         <h2 style={{margin:0}}>Resumen global</h2>
         {book.global_summary && (
-          <div className=\"info-tts-controls\" style={{marginBottom:0}}>
+          <div className="info-tts-controls" style={{marginBottom:0}}>
             {!ttsPlaying && !ttsPaused && (
-              <button className=\"info-tts-play-btn\" onClick={onPlay}>
+              <button className="info-tts-play-btn" onClick={onPlay}>
                 <Play size={15}/> Escuchar
               </button>
             )}
             {ttsPaused && (
-              <span className=\"tts-indicator\" style={{color:'var(--mist)', fontSize:'0.85rem'}}>
+              <span className="tts-indicator" style={{color:'var(--mist)', fontSize:'0.85rem'}}>
                 ⏸ Pausado — usa los controles de arriba para continuar
               </span>
             )}
@@ -1280,35 +1280,35 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   }
 
   return (
-    <div className=\"chapters-list\">
-      <TabPhaseBar phase={2} label=\"Capítulos\" doneProp=\"phase2_done\" canProp=\"phase1_done\" status={status} isProcessing={isProcessing} onTrigger={onTrigger} onCancel={onCancel} progressMsg={progressMsg} />
+    <div className="chapters-list">
+      <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" canProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} onCancel={onCancel} progressMsg={progressMsg} />
       {chapters.map((ch, i) => (
         <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'open' : ''}`}>
-          <button className=\"chapter-header\" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
-            <span className=\"ch-num\">{String(i + 1).padStart(2, '0')}</span>
-            <span className=\"ch-title\">{ch.title}</span>
-            <div className=\"ch-meta\">
+          <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
+            <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
+            <span className="ch-title">{ch.title}</span>
+            <div className="ch-meta">
               {ch.summary_status === 'done'
-                ? <span className=\"badge badge-green\">Resumido</span>
+                ? <span className="badge badge-green">Resumido</span>
                 : ch.summary_status === 'quota_exceeded'
-                  ? <span className=\"badge badge-rust\" title={ch.summary || 'Cuota agotada'}>⏰ Cuota agotada</span>
+                  ? <span className="badge badge-rust" title={ch.summary || 'Cuota agotada'}>⏰ Cuota agotada</span>
                 : ch.summary_status === 'skipped'
-                  ? <span className=\"badge badge-slate\" title=\"Contenido bloqueado por filtros de seguridad\">⚠ Omitido</span>
+                  ? <span className="badge badge-slate" title="Contenido bloqueado por filtros de seguridad">⚠ Omitido</span>
                 : ch.summary_status === 'processing'
-                  ? <span className=\"badge badge-gold\">Procesando…</span>
+                  ? <span className="badge badge-gold">Procesando…</span>
                 : ch.summary_status === 'error'
                   ? (
                     <button
-                      className=\"summarize-ch-btn summarize-ch-btn--error\"
+                      className="summarize-ch-btn summarize-ch-btn--error"
                       onClick={(e) => handleSummarize(e, ch)}
                       disabled={summarizing[ch.id]}
-                      title=\"Error al resumir. Haz clic para reintentar\"
+                      title="Error al resumir. Haz clic para reintentar"
                     >
                       {summarizing[ch.id] ? '…' : '⚠️ Reintentar'}
                     </button>
                   )
                   : <button
-                      className=\"summarize-ch-btn\"
+                      className="summarize-ch-btn"
                       onClick={(e) => handleSummarize(e, ch)}
                       disabled={summarizing[ch.id]}
                     >
@@ -1316,59 +1316,56 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                     </button>
               }
               {ch.summary_status === 'done' && (
-                <div className=\"ch-tts-btns\" onClick={e => e.stopPropagation()}>
-                  {/* Botón play/pausa/continuar del capítulo */}
+                <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
                   {ttsPlaying && ttsChapter === ch.id ? (
-                    <button className=\"ch-tts-btn pause\" onClick={onPause} title=\"Pausar\">
+                    <button className="ch-tts-btn pause" onClick={onPause} title="Pausar">
                       <Pause size={12} />
                     </button>
                   ) : ttsChapterPaused && ttsChapter === ch.id ? (
-                    <button className=\"ch-tts-btn play\" onClick={onResume} title=\"Continuar\">
+                    <button className="ch-tts-btn play" onClick={onResume} title="Continuar">
                       <Play size={12} />
                     </button>
                   ) : (
-                    <button className=\"ch-tts-btn play\" onClick={() => onPlayChapter(ch)} title=\"Reproducir solo este capítulo\">
+                    <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)} title="Reproducir solo este capítulo">
                       <Play size={12} />
                     </button>
                   )}
-                  {/* Stop — solo visible si este capítulo está activo (playing o paused) */}
                   {(ttsChapter === ch.id && (ttsPlaying || ttsChapterPaused)) && (
-                    <button className=\"ch-tts-btn stop\" onClick={onStop} title=\"Parar reproducción\">
+                    <button className="ch-tts-btn stop" onClick={onStop} title="Parar reproducción">
                       <Square size={12} />
                     </button>
                   )}
-                  {/* Leer desde aquí — solo si no hay nada activo en este capítulo */}
                   {!(ttsChapter === ch.id && (ttsPlaying || ttsChapterPaused)) && (
-                    <button className=\"ch-tts-btn play-from\" onClick={() => onPlayFromChapter(ch)} title=\"Leer desde aquí hasta el final\">
+                    <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
                       <Volume2 size={12} />
                     </button>
                   )}
                 </div>
               )}
-              {ch.page_start && <span className=\"ch-pages\">p. {ch.page_start}–{ch.page_end}</span>}
+              {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
               {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>
           </button>
           <AnimatePresence>
             {expanded === ch.id && (
-              <motion.div className=\"chapter-body\"
+              <motion.div className="chapter-body"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}>
-                <div className=\"chapter-body-inner\">
+                <div className="chapter-body-inner">
                   {ch.summary
                     ? <p>{ch.summary}</p>
-                    : <p className=\"muted\">Resumen no disponible para este capítulo</p>
+                    : <p className="muted">Resumen no disponible para este capítulo</p>
                   }
                   {ch.key_events?.length > 0 ? (
-                    <div className=\"key-events\">
+                    <div className="key-events">
                       <strong>Eventos clave:</strong>
                       <ul>{ch.key_events.map((e, i) => <li key={i}>{e}</li>)}</ul>
                     </div>
                   ) : ch.summary_status === 'done' && (
-                    <div className=\"key-events-missing\">
+                    <div className="key-events-missing">
                       <button 
-                        className=\"btn-text-link\" 
+                        className="btn-text-link" 
                         onClick={(e) => handleSummarize(e, ch)}
                         disabled={summarizing[ch.id]}
                       >
@@ -1409,63 +1406,63 @@ function CharactersTab({ characters, ttsPlaying, ttsPaused, ttsCharacter, onPlay
   }
 
   return (
-    <div className=\"characters-tab\">
-      <TabPhaseBar phase={3} label=\"Personajes\" doneProp=\"phase3_done\" canProp=\"phase2_done\" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
-      <div className=\"characters-header\">
-        <div className=\"characters-info\">
+    <div className="characters-tab">
+      <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" canProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
+      <div className="characters-header">
+        <div className="characters-info">
           <h2 style={{margin:0}}>Personajes</h2>
-          <span className=\"characters-count\">{characters.length} encontrados</span>
+          <span className="characters-count">{characters.length} encontrados</span>
         </div>
-        <div className=\"characters-actions\">
+        <div className="characters-actions">
           {ttsPlaying || ttsPaused ? (
-             <div className=\"tts-indicator\">
-                {ttsPlaying ? <Loader size={12} className=\"spin\" /> : <Pause size={12} />}
+             <div className="tts-indicator">
+                {ttsPlaying ? <Loader size={12} className="spin" /> : <Pause size={12} />}
                 <span>{ttsCharacter}</span>
-                <button className=\"tts-control-btn stop\" onClick={() => onStop()} title=\"Parar\"><Square size={10} /></button>
+                <button className="tts-control-btn stop" onClick={() => onStop()} title="Parar"><Square size={10} /></button>
              </div>
           ) : (
-            characters.length > 0 && <button className=\"reanalyze-chars-btn\" onClick={() => onPlayFrom(characters[0])}><Play size={12} /> Leer todos</button>
+            characters.length > 0 && <button className="reanalyze-chars-btn" onClick={() => onPlayFrom(characters[0])}><Play size={12} /> Leer todos</button>
           )}
           {!isProcessing && characters.length > 0 && (
-             <button className=\"reanalyze-chars-btn\" onClick={() => onTrigger(3)}>Reanalizar todos</button>
+             <button className="reanalyze-chars-btn" onClick={() => onTrigger(3)}>Reanalizar todos</button>
           )}
         </div>
       </div>
 
-      <div className=\"characters-grid\">
+      <div className="characters-grid">
         {characters.map(char => (
           <div key={char.id} className={`char-card ${ttsCharacter === char.name ? 'active' : ''}`}>
-            <div className=\"char-avatar\">
+            <div className="char-avatar">
                {char.name.charAt(0)}
             </div>
-            <div className=\"char-content\">
-              <div className=\"char-header-row\">
+            <div className="char-content">
+              <div className="char-header-row">
                 <h3>{char.name}</h3>
-                <div className=\"char-btns\">
+                <div className="char-btns">
                    {ttsCharacter === char.name ? (
-                      ttsPlaying ? <button className=\"char-inline-btn\" onClick={onPause}><Pause size={14} /></button>
-                                : <button className=\"char-inline-btn\" onClick={onResume}><Play size={14} /></button>
+                      ttsPlaying ? <button className="char-inline-btn" onClick={onPause}><Pause size={14} /></button>
+                                : <button className="char-inline-btn" onClick={onResume}><Play size={14} /></button>
                    ) : (
-                      <button className=\"char-inline-btn\" onClick={() => onPlay(char)} title=\"Escuchar ficha\"><Play size={14} /></button>
+                      <button className="char-inline-btn" onClick={() => onPlay(char)} title="Escuchar ficha"><Play size={14} /></button>
                    )}
-                   <button className=\"char-inline-btn\" onClick={() => onPlayFrom(char, characters)} title=\"Leer desde aquí\"><Volume2 size={14} /></button>
-                   <button className=\"char-inline-btn\" onClick={() => handleReanalyze(char)} disabled={analyzing[char.id]} title=\"Reanalizar este personaje\">
+                   <button className="char-inline-btn" onClick={() => onPlayFrom(char, characters)} title="Leer desde aquí"><Volume2 size={14} /></button>
+                   <button className="char-inline-btn" onClick={() => handleReanalyze(char)} disabled={analyzing[char.id]} title="Reanalizar este personaje">
                      <RefreshCw size={14} className={analyzing[char.id] ? 'spin' : ''} />
                    </button>
                 </div>
               </div>
-              <p className=\"char-role\">{char.role}</p>
-              <p className=\"char-desc\">{char.description}</p>
+              <p className="char-role">{char.role}</p>
+              <p className="char-desc">{char.description}</p>
               
-              <div className=\"char-details-grid\">
+              <div className="char-details-grid">
                 {char.personality && (
-                  <div className=\"char-detail-box\">
+                  <div className="char-detail-box">
                     <strong>Personalidad</strong>
                     <p>{char.personality}</p>
                   </div>
                 )}
                 {char.arc && (
-                  <div className=\"char-detail-box\">
+                  <div className="char-detail-box">
                     <strong>Evolución</strong>
                     <p>{char.arc}</p>
                   </div>
@@ -1473,11 +1470,11 @@ function CharactersTab({ characters, ttsPlaying, ttsPaused, ttsCharacter, onPlay
               </div>
 
               {char.relationships && Object.keys(char.relationships).length > 0 && (
-                <div className=\"char-relas\">
+                <div className="char-relas">
                   <strong>Relaciones:</strong>
-                  <div className=\"relas-tags\">
+                  <div className="relas-tags">
                     {Object.entries(char.relationships).map(([name, rel]) => (
-                      <span key={name} className=\"rela-tag\"><b>{name}</b>: {rel}</span>
+                      <span key={name} className="rela-tag"><b>{name}</b>: {rel}</span>
                     ))}
                   </div>
                 </div>
@@ -1493,20 +1490,20 @@ function CharactersTab({ characters, ttsPlaying, ttsPaused, ttsCharacter, onPlay
 function Box({ size, ...props }) {
   return (
     <svg
-      xmlns=\"http://www.w3.org/2000/svg\"
+      xmlns="http://www.w3.org/2000/svg"
       width={size}
       height={size}
-      viewBox=\"0 0 24 24\"
-      fill=\"none\"
-      stroke=\"currentColor\"
-      strokeWidth=\"2\"
-      strokeLinecap=\"round\"
-      strokeLinejoin=\"round\"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       {...props}
     >
-      <path d=\"M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z\" />
-      <path d=\"m3.3 7 8.7 5 8.7-5\" />
-      <path d=\"M12 22V12\" />
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="M12 22V12" />
     </svg>
   )
 }
