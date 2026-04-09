@@ -16,8 +16,7 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-api
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # No exponemos puerto 8000 al host para evitar conflictos; Nginx se encarga del proxy interno.
     volumes:
       - /volume1/docker/booktracker/data:/app/data
       - /volume1/docker/booktracker/data/db:/app/db
@@ -80,10 +79,27 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-ui
     restart: unless-stopped
-    ports:
-      - "3000:80"
+    # No exponemos puerto 3000 al host; Nginx se encarga del acceso web.
     depends_on:
       - backend
+    networks:
+      - booktracker-net
+
+  # 🛡️ NGINX (Reverse Proxy & Static Files)
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: booktracker-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - /volume1/docker/booktracker/data/covers:/data/covers
+      - /volume1/docker/booktracker/data/audio:/data/audio
+    depends_on:
+      - backend
+      - frontend
     networks:
       - booktracker-net
 
