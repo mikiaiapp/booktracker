@@ -27,6 +27,8 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
   const [isLoading, setIsLoading] = useState(false);
   const [mode, setMode] = useState('erudite');
   const [isSpeaking, setIsSpeaking] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
 
   // Cargar historial al inicio
@@ -45,7 +47,8 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
       const response = await fetch(`/api/chat/${bookId}`);
       if (response.ok) {
         const data = await response.json();
-        setMessages(data.messages || []);
+        const history = Array.isArray(data) ? data : (data.messages || []);
+        setMessages(history);
       }
     } catch (err) {
       console.error("Error cargando historial:", err);
@@ -72,10 +75,13 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
         })
       });
 
-      if (!response.ok) throw new Error("Error en la respuesta de la IA");
       
       const data = await response.json();
-      setMessages(prev => [...prev, data.assistant_response]);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: data.response,
+        model: data.model
+      }]);
     } catch (err) {
       console.error("Error enviando mensaje:", err);
       setMessages(prev => [...prev, { 
@@ -109,6 +115,38 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
       window.speechSynthesis.speak(utterance);
       setIsSpeaking(msgId);
     }
+  };
+
+  // Dictado por Voz (Speech to Text)
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Tu navegador no soporta reconocimiento de voz");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'es-ES';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => prev ? `${prev} ${transcript}` : transcript);
+      setIsRecording(false);
+    };
+    recognition.onerror = () => setIsRecording(false);
+    recognition.onend = () => setIsRecording(false);
+
+    recognition.start();
+    recognition.current = recognition;
   };
 
   return (
@@ -165,11 +203,17 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
         ) : (
           messages.map((msg, i) => (
             <div key={i} className={`message-bubble ${msg.role}`}>
-              {msg.content}
+              <div className="message-content">
+                {msg.content}
+                {msg.role === 'assistant' && msg.model && (
+                  <span className="model-tag">{msg.model}</span>
+                )}
+              </div>
               {msg.role === 'assistant' && (
                 <button 
                   className={`voice-btn ${isSpeaking === i ? 'playing' : ''}`}
                   onClick={() => toggleSpeech(msg.content, i)}
+                  title="Escuchar respuesta"
                 >
                   {isSpeaking === i ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
@@ -187,16 +231,24 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Area */}
       <form className="chat-input-area" onSubmit={sendMessage}>
+        <button 
+          type="button" 
+          className={`mic-btn ${isRecording ? 'recording' : ''}`}
+          onClick={toggleRecording}
+          title={isRecording ? "Detener grabación" : "Dictar por voz"}
+        >
+          <Mic size={18} />
+          {isRecording && <span className="mic-pulse"></span>}
+        </button>
         <input
           type="text"
-          placeholder={`Habla con el ${MODES.find(m => m.id === mode).label}...`}
+          placeholder={isRecording ? "Escuchando..." : `Habla con el ${MODES.find(m => m.id === mode).label}...`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoading}
         />
-        <button type="submit" disabled={!input.trim() || isLoading}>
+        <button type="submit" className="send-btn" disabled={!input.trim() || isLoading}>
           {isLoading ? <RefreshCw className="loader-icon" size={18} /> : <Send size={18} />}
         </button>
       </form>

@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
 class MessageSchema(BaseModel):
     role: str
     content: str
+    model: Optional[str] = None
     created_at: Optional[str] = None
 
 @router.get("/{book_id}/history", response_model=List[MessageSchema])
@@ -24,7 +25,7 @@ async def get_chat_history(book_id: str, user: dict = Depends(get_current_user))
     async for db in get_user_db(user["id"]):
         res = await db.execute(select(ChatMessage).where(ChatMessage.book_id == book_id).order_by(ChatMessage.created_at))
         msgs = res.scalars().all()
-        return [{"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()} for m in msgs]
+        return [{"role": m.role, "content": m.content, "model": m.model, "created_at": m.created_at.isoformat()} for m in msgs]
 
 @router.post("/{book_id}/send")
 async def send_chat_message(book_id: str, req: ChatRequest, user: dict = Depends(get_current_user)):
@@ -58,7 +59,7 @@ async def send_chat_message(book_id: str, req: ChatRequest, user: dict = Depends
         ai_resp, used_m = await talk_to_book(book.title, book.author, context, req.message, req.mode, history)
 
         # 6. Guardar respuesta IA
-        ai_msg = ChatMessage(book_id=book_id, role="assistant", content=ai_resp, mode=req.mode)
+        ai_msg = ChatMessage(book_id=book_id, role="assistant", content=ai_resp, mode=req.mode, model=used_m)
         db.add(ai_msg)
         await db.commit()
 

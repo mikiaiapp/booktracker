@@ -119,4 +119,5 @@ class ChatMessage(BookBase):
     role = Column(String, nullable=False)  # user | assistant
     content = Column(Text, nullable=False)
     mode = Column(String, default="default")  # default | author | critic | child
+    model = Column(String, nullable=True)     # gemini-1.5-flash | gpt-4o | etc
     created_at = Column(DateTime, server_default=func.now())
