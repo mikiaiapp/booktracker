@@ -892,17 +892,21 @@ export default function BookPage() {
             const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
             
             let StatusIcon, statusClass;
+            const isProcessingThis = isProcessing && (
+              (t.id === 'info' && statusInfo.status === 'identifying') ||
+              (t.id === 'chapters' && (statusInfo.status === 'analyzing_structure' || statusInfo.status === 'summarizing' || !statusInfo.chapters_summarized)) ||
+              (t.id === 'characters' && statusInfo.status === 'analyzing_characters') ||
+              (t.id === 'summary' && statusInfo.status === 'summarizing') ||
+              (t.id === 'podcast' && statusInfo.status === 'generating_podcast')
+            )
+
+            const showDone = isDone && (t.id !== 'chapters' || statusInfo.chapters_summarized)
+
             if (t.statusKey || t.id === 'refs') {
-              if (isDone) {
+              if (showDone && !isProcessingThis) {
                 StatusIcon = CheckCircle;
                 statusClass = 'status-done';
-              } else if (isProcessing && (
-                (t.id === 'info' && statusInfo.status === 'identifying') ||
-                (t.id === 'chapters' && statusInfo.status === 'analyzing_structure') ||
-                (t.id === 'characters' && statusInfo.status === 'summarizing') ||
-                (t.id === 'summary' && statusInfo.status === 'summarizing') ||
-                (t.id === 'podcast' && statusInfo.status === 'generating_podcast')
-              )) {
+              } else if (isProcessingThis) {
                 StatusIcon = Loader;
                 statusClass = 'status-loading';
               } else {
@@ -1146,6 +1150,17 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
   const isDone = doneProp === 'status' ? true : status[doneProp]
   const canTrigger = canProp ? status[canProp] : true
 
+  // Lógica para determinar si ESTA fase específica se está procesando
+  const phaseStatusMap = {
+    1: ['identifying'],
+    2: ['analyzing_structure', 'summarizing'], // Incluimos summarising porque a veces se solapa
+    3: ['analyzing_characters'],
+    4: ['summarizing'],
+    6: ['generating_podcast']
+  }
+  
+  const isThisPhaseProcessing = isProcessing && (phaseStatusMap[phase]?.includes(status.status) || false)
+
   const labels = {
     1: 'Repetir Ficha y Autor',
     2: 'Reanalizar Capítulos',
@@ -1161,7 +1176,7 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
         {isDone ? <CheckCircle size={20} className="status-done" /> : <div className="phase-dot">{phase}</div>}
         <div>
           <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--ink)' }}>Fase {phase}: {label}</h3>
-          {isProcessing && (
+          {isThisPhaseProcessing && (
             <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginTop:'0.2rem'}}>
                <Loader size={12} className="spin" style={{color:'var(--gold)'}} />
                <span style={{fontSize:'0.75rem', color: 'var(--gold)', fontWeight: 600}}>{progressMsg || 'Procesando…'}</span>
@@ -1172,10 +1187,10 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
       </div>
 
       <div style={{ display: 'flex', gap: '0.75rem' }}>
-        {isProcessing && (
+        {isThisPhaseProcessing && (
           <button className="cancel-btn" onClick={onCancel} style={{margin:0}}>Detener</button>
         )}
-        {canTrigger && !isProcessing && (
+        {canTrigger && !isThisPhaseProcessing && (
           <button 
             className="reanalyze-btn" 
             style={{ margin: 0 }} 

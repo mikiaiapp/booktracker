@@ -49,16 +49,26 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     timeout = httpx.Timeout(600.0, connect=10.0)
     
     if "gemini" in m:
-        api_key = settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY")
+        # Priorizar settings pero limpiar posibles cadenas vacías de env vars
+        api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip()
+        if not api_key:
+            raise ValueError("No se ha configurado la GEMINI_API_KEY")
+            
         url = f"https://generativelanguage.googleapis.com/v1/models/{m}:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": f"{system}\n\n{user}"}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.5}}
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(url, json=payload)
-            if r.status_code != 200: raise ValueError(f"Gemini Error: {r.text}")
+            if r.status_code != 200: 
+                err_body = r.text
+                print(f"[AI] ERROR GEMINI ({r.status_code}): {err_body}")
+                raise ValueError(f"Gemini API Error: {err_body}")
             return r.json()["candidates"][0]["content"]["parts"][0]["text"], m
     else:
+        api_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
+        if not api_key:
+            raise ValueError("No se ha configurado la OPENAI_API_KEY")
         from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        client = AsyncOpenAI(api_key=api_key)
         resp = await client.chat.completions.create(model=m, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
         return resp.choices[0].message.content, m
 

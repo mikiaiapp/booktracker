@@ -426,7 +426,8 @@
 }
 
 .status-done { color: var(--forest); }
-.status-loading { color: var(--gold); animation: spin 2s linear infinite; }
+.status-loading svg, svg.status-loading { animation: spin 2s linear infinite; }
+.status-loading { color: var(--gold); }
 .status-pending { color: var(--slate); opacity: 0.35; } 
 .status-error { color: var(--danger); }
 
