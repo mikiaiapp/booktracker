@@ -62,7 +62,14 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 err_body = r.text
                 print(f"[AI] ERROR GEMINI ({r.status_code}): {err_body}")
                 raise ValueError(f"Gemini API Error: {err_body}")
-            return r.json()["candidates"][0]["content"]["parts"][0]["text"], m
+            
+            data = r.json()
+            if not data.get("candidates") or not data["candidates"][0].get("content"):
+                # A veces Gemini bloquea contenido sensible y devuelve candidates vacíos
+                print(f"[AI] Gemini bloqueó la respuesta o devolvió vacío: {data}")
+                return "Lo siento, la IA ha bloqueado esta respuesta por motivos de seguridad o ha devuelto un resultado vacío.", m
+
+            return data["candidates"][0]["content"]["parts"][0]["text"], m
     else:
         api_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
         if not api_key:
