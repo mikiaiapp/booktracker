@@ -281,3 +281,51 @@ async def generate_podcast_script(book_title, author, summary, chars) -> str:
     except Exception as e:
         print(f"Error al generar guion de podcast: {e}")
         return "", "Error"
+
+async def talk_to_book(book_title: str, author: str, context: str, user_msg: str, mode: str = "default", history: list = None) -> tuple[str, str]:
+    """
+    Diálogo Literario masivo con inyección de contexto.
+    """
+    p_modes = {
+        "author": f"Responde como el autor \u00ab{author}\u00ab de la obra \u00ab{book_title}\u00ab. Defiende tu visión, estilo y motivaciones.",
+        "critic": f"Sé un crítico literario implacable de la RAE. Analiza la obra \u00ab{book_title}\u00ab buscando debilidades, clichés o genialidades ocultas.",
+        "child": f"Explica detalles de \u00ab{book_title}\u00ab como si hablaras con un niño de 10 años, con mucha magia y sencillez.",
+        "default": f"Eres un experto literario erudito en la obra \u00ab{book_title}\u00ab de \u00ab{author}\u00ab. Ayuda al usuario a entender mejor el libro."
+    }
+    
+    system = (
+        f"{p_modes.get(mode, p_modes['default'])}\n"
+        "Básate EXCLUSIVAMENTE en el contexto proporcionado abajo (análisis previo de la obra).\n"
+        "Si el usuario pregunta algo que no está en el contexto, sé honesto pero mantén el personaje.\n\n"
+        f"--- CONTEXTO DEL LIBRO ---\n{context[:30000]}"
+    )
+    
+    # Construcción de historial para la IA
+    messages = [{"role": "system", "content": system}]
+    if history:
+        for h in history[-6:]: # Últimos 6 mensajes para no saturar tokens
+            messages.append({"role": h["role"], "content": h["content"]})
+    
+    messages.append({"role": "user", "content": user_msg})
+    
+    # Usamos _call_ai directamente para manejar los mensajes
+    try:
+        # En el chat usamos el modelo principal (no el fast) para máxima calidad
+        from app.core.config import settings
+        m = settings.AI_MODEL.lower()
+        if "gemini" in m:
+            # Reutilizamos _call_ai pero enviamos los mensajes combinados para Gemini si es necesario
+            # Pero _call_ai actual ya maneja system + user. Combinamos historial en el user prompt para simplificar
+            hist_str = ""
+            if history:
+                 hist_str = "\n".join([f"{h['role']}: {h['content']}" for h in history[-6:]])
+            combined_user = f"{hist_str}\nUser: {user_msg}"
+            return await _call_ai_with_retry(system, combined_user, 2000)
+        else:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            resp = await client.chat.completions.create(model=m, max_tokens=2000, messages=messages)
+            return resp.choices[0].message.content, m
+    except Exception as e:
+        print(f"Error en el Diálogo Literario: {e}")
+        return "Lo lamento, ha ocurrido un error en la comunicación literaria.", "Error"

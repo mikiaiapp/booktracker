@@ -5,10 +5,11 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
-  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X
+  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X, MessageSquare
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI } from '../utils/api'
 import MindMap from '../components/MindMap'
+import LiteraryDialogue from '../components/LiteraryDialogue'
 import { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
 import './BookPage.css'
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'summary',    label: 'Resumen global',  icon: Brain,        statusKey: 'has_global_summary' },
   { id: 'mindmap',    label: 'Mapa mental',     icon: Map,          statusKey: 'has_mindmap' },
   { id: 'podcast',    label: 'Podcast',         icon: Mic,          statusKey: 'podcast_done' },
+  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'phase2_done' },
   { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: null },
 ]
 

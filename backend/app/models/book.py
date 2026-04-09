@@ -109,3 +109,14 @@ class AnalysisJob(BookBase):
     detail = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
+
+
+class ChatMessage(BookBase):
+    __tablename__ = "chat_messages"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    book_id = Column(String, nullable=False, index=True)
+    role = Column(String, nullable=False)  # user | assistant
+    content = Column(Text, nullable=False)
+    mode = Column(String, default="default")  # default | author | critic | child
+    created_at = Column(DateTime, server_default=func.now())

@@ -5,7 +5,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import init_global_db
-from app.api import auth, books, analysis, users
+from app.api import auth, books, analysis, users, chat
 
 
 @asynccontextmanager
@@ -41,3 +41,4 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(books.router, prefix="/api/books", tags=["books"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
