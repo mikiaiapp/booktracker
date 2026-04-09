@@ -671,7 +671,7 @@ export default function BookPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`¿Eliminar \"${data?.book?.title}\"?`)) return
+    if (!confirm(`¿Eliminar "${data?.book?.title}"?`)) return
     await booksAPI.delete(id)
     navigate('/')
   }
@@ -798,18 +798,18 @@ export default function BookPage() {
               ))}
             </div>
 
-              <div className="pipeline-wrapper">
-                <ProcessingPipeline status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} book={book} />
-              </div>
+            <div className="pipeline-wrapper">
+              <ProcessingPipeline status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} book={book} />
+            </div>
 
-              <div className="hero-actions-row">
+            <div className="hero-actions-row">
               {statusInfo?.has_global_summary && (
                 <button className="export-pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
                   <FileText size={16} />
                   Genera PDF del análisis
                 </button>
               )}
-              
+
               {book.file_path && (
                 <button
                   className="export-pdf-btn"
@@ -1401,7 +1401,7 @@ function CharactersTab({ characters, ttsPlaying, ttsPaused, ttsCharacter, onPlay
       setTimeout(() => { clearInterval(poll); setAnalyzing(s => ({ ...s, [char.id]: false })); onDone() }, 15000)
     } catch {
        setAnalyzing(s => ({ ...s, [char.id]: false }))
-       toast.error(\"Error al reanalizar\")
+       toast.error('Error al reanalizar')
     }
   }
 
