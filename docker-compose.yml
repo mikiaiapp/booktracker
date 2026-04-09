@@ -37,11 +37,6 @@ services:
       - redis
     networks:
       - booktracker-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 1G
 
   # ⚙️ WORKER (Procesamiento de fondo)
   worker:
@@ -69,11 +64,6 @@ services:
       - redis
     networks:
       - booktracker-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.80'
-          memory: 2G
 
   # 🔴 REDIS (Cola de tareas)
   redis:
@@ -82,11 +72,6 @@ services:
     restart: unless-stopped
     networks:
       - booktracker-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.20'
-          memory: 256M
 
   # 🌐 FRONTEND (Vite / React)
   frontend:
@@ -101,11 +86,6 @@ services:
       - backend
     networks:
       - booktracker-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.30'
-          memory: 512M
 
 networks:
   booktracker-net:
