@@ -82,7 +82,7 @@ export default function RegisterPage() {
       <div className="auth-panel">
         <motion.div className="auth-form-wrap" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <div className="auth-logo">
-            <BookOpen size={28} strokeWidth={1.5} />
+            <img src="/logo-light.png" alt="BookTracker" className="auth-brand-img-premium" />
             <h1>BookTracker</h1>
           </div>
 

@@ -114,7 +114,7 @@ export default function LoginPage() {
           transition={{ duration: 0.5 }}
         >
           <div className="auth-logo">
-            <img src="/logo-premium.png" alt="BookTracker" className="auth-brand-img-premium" />
+            <img src="/logo-light.png" alt="BookTracker" className="auth-brand-img-premium" />
             <h1>BookTracker</h1>
           </div>
 
