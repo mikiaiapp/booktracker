@@ -6,8 +6,8 @@ services:
     image: alpine:latest
     container_name: booktracker-db-init
     volumes:
-      - /volume1/docker/booktracker/data/db:/app/db
-    command: /bin/sh -c "chmod -R 777 /app/db"
+      - /volume1/docker/booktracker/data/databases:/app/databases
+    command: /bin/sh -c "chmod -R 777 /app/databases"
 
   # 🚀 BACKEND (FastAPI)
   backend:
@@ -18,12 +18,12 @@ services:
     restart: unless-stopped
     volumes:
       - /volume1/docker/booktracker/data:/app/data
-      - /volume1/docker/booktracker/data/db:/app/db
+      - /volume1/docker/booktracker/data/databases:/app/databases
       - /volume1/docker/booktracker/data/uploads:/app/uploads
       - /volume1/docker/booktracker/data/audio:/app/audio
       - /volume1/docker/booktracker/data/covers:/app/covers
     environment:
-      - DATABASE_DIR=/app/db
+      - DATABASE_DIR=/app/databases
       - UPLOADS_DIR=/app/uploads
       - AUDIO_DIR=/app/audio
       - COVERS_DIR=/app/covers
@@ -46,12 +46,12 @@ services:
     restart: unless-stopped
     volumes:
       - /volume1/docker/booktracker/data:/app/data
-      - /volume1/docker/booktracker/data/db:/app/db
+      - /volume1/docker/booktracker/data/databases:/app/databases
       - /volume1/docker/booktracker/data/uploads:/app/uploads
       - /volume1/docker/booktracker/data/audio:/app/audio
       - /volume1/docker/booktracker/data/covers:/app/covers
     environment:
-      - DATABASE_DIR=/app/db
+      - DATABASE_DIR=/app/databases
       - UPLOADS_DIR=/app/uploads
       - AUDIO_DIR=/app/audio
       - COVERS_DIR=/app/covers
