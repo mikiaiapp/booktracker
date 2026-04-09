@@ -20,9 +20,9 @@ const TABS = [
   { id: 'characters', label: 'Personajes',      icon: User,         statusKey: 'phase3_done' },
   { id: 'summary',    label: 'Resumen global',  icon: Brain,        statusKey: 'has_global_summary' },
   { id: 'mindmap',    label: 'Mapa mental',     icon: Map,          statusKey: 'has_mindmap' },
-  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'phase1_done' },
+  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'status' }, // Siempre disponible si hay libro
   { id: 'podcast',    label: 'Podcast',         icon: Mic,          statusKey: 'podcast_done' },
-  { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: null },
+  { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: 'status' }, // Brillante si hay libro
 ]
 
 const PROCESSING_STATUSES = ['queued', 'identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
@@ -802,17 +802,17 @@ export default function BookPage() {
               <ProcessingPipeline status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} book={book} />
             </div>
 
-            <div className="hero-actions-row">
+            <div className="hero-actions-container">
               {statusInfo?.has_global_summary && (
-                <button className="export-pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
+                <button className="hero-action-btn pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
                   <FileText size={16} />
-                  Genera PDF del análisis
+                  <span>Genera PDF</span>
                 </button>
               )}
 
               {book.file_path && (
                 <button
-                  className="export-pdf-btn"
+                  className="hero-action-btn epub-btn"
                   title="Descargar archivo original"
                   onClick={async () => {
                     try {
@@ -832,11 +832,11 @@ export default function BookPage() {
                   }}
                 >
                   <BookOpen size={16} />
-                  Descarga EPUB
+                  <span>Descarga EPUB</span>
                 </button>
               )}
 
-              <label className="export-pdf-btn" style={{ cursor: 'pointer' }} title="Reemplazar archivo PDF/EPUB del libro">
+              <label className="hero-action-btn replace-btn" style={{ cursor: 'pointer' }} title="Reemplazar archivo PDF/EPUB del libro">
                 <input type="file" accept=".pdf,.epub" style={{ display: 'none' }}
                   onChange={async (e) => {
                     const file = e.target.files[0]; if (!file) return
@@ -848,7 +848,8 @@ export default function BookPage() {
                       load()
                     } catch { toast.error('Error al subir el archivo') }
                   }} />
-                <RefreshCw size={14} /> Reemplazar archivos
+                <RefreshCw size={14} /> 
+                <span>Reemplazar archivos</span>
               </label>
             </div>
           </div>
@@ -870,7 +871,7 @@ export default function BookPage() {
               {TABS.map(t => {
                 const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
                 const iconMap = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',chat:'💬',podcast:'🎙️',refs:'🔗'}
-                const can = t.id === 'chat' ? (statusInfo.phase1_done) : true
+                const can = true
                 return (
                   <option key={t.id} value={t.id} disabled={!can}>
                     {iconMap[t.id] || '•'} {t.label} {!isDone ? '(Pendiente)' : ''}
@@ -885,7 +886,7 @@ export default function BookPage() {
           {TABS.map(t => {
             const Icon = t.icon
             const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
-            const can = t.id === 'chat' ? (statusInfo.phase1_done) : true
+            const can = true
             
             let StatusIcon, statusClass;
             if (t.statusKey || t.id === 'refs') {

@@ -168,39 +168,58 @@
 }
 
 /* Export PDF button basis */
-.export-pdf-btn {
+.hero-actions-container {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.hero-action-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.6rem;
-  padding: 0.6rem 1.25rem;
-  background: var(--gold);
-  color: var(--ink);
-  border: none;
+  padding: 0.65rem 1.4rem;
+  background: rgba(201, 169, 110, 0.15);
+  color: var(--gold);
+  border: 1.5px solid rgba(201, 169, 110, 0.4);
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   transition: all var(--transition);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  flex: 1; /* Esto los hace homogéneos */
+  min-width: 160px;
+  white-space: nowrap;
 }
 
-.export-pdf-btn:hover {
-  background: var(--gold-light);
+.hero-action-btn:hover {
+  background: rgba(201, 169, 110, 0.25);
+  border-color: var(--gold);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-.export-pdf-btn:active {
-  transform: translateY(0);
-}
-
-.export-pdf-btn svg {
-  flex-shrink: 0;
-}
-
-.download-file-btn {
+.hero-action-btn.pdf-btn {
   background: var(--gold);
   color: var(--ink);
+  border: none;
+}
+
+.hero-action-btn.pdf-btn:hover {
+  background: var(--gold-light);
+}
+
+.hero-action-btn.replace-btn {
+  background: none;
+  border-color: rgba(255,255,255,0.2);
+  color: var(--mist);
+}
+
+.hero-action-btn.replace-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 /* Shell upload */
