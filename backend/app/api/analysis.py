@@ -803,3 +803,35 @@ async def analyze_single_character_endpoint(
     from app.workers.tasks import analyze_single_character_task
     task = analyze_single_character_task.delay(current_user.id, book_id, character_id)
     return {"task_id": task.id, "status": "processing"}
+
+
+# ── Queue Management ──────────────────────────────────────────
+
+@router.get("/queue")
+async def get_analysis_queue(current_user: User = Depends(get_current_user)):
+    from app.workers.queue_manager import get_queue_status
+    return get_queue_status(current_user.id)
+
+@router.post("/queue/pause")
+async def pause_analysis_queue(current_user: User = Depends(get_current_user)):
+    from app.workers.queue_manager import pause_queue
+    pause_queue(current_user.id)
+    return {"status": "paused"}
+
+@router.post("/queue/resume")
+async def resume_analysis_queue(current_user: User = Depends(get_current_user)):
+    from app.workers.queue_manager import resume_queue
+    resume_queue(current_user.id)
+    return {"status": "resumed"}
+
+@router.delete("/queue")
+async def clear_analysis_queue(current_user: User = Depends(get_current_user)):
+    from app.workers.queue_manager import clear_queue
+    clear_queue(current_user.id)
+    return {"status": "cleared"}
+
+@router.delete("/queue/{book_id}")
+async def cancel_queue_item(book_id: str, current_user: User = Depends(get_current_user)):
+    from app.workers.queue_manager import cancel_book_in_queue
+    cancel_book_in_queue(current_user.id, book_id)
+    return {"status": "cancelled"}

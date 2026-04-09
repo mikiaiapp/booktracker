@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
-    AI_MODEL: str = "gemini-2.0-flash"   # por defecto gratuito
+    AI_MODEL: str = "gemini-1.5-flash"   # Modelo más equilibrado y compatible
     TTS_PROVIDER: str = "openai"
 
     # Ollama — IA Local

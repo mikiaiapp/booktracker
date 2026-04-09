@@ -3,8 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.core.database import get_user_db
 from app.models.book import Book, Chapter, Character, ChatMessage
+from app.models.user import User
 from app.services.ai_analyzer import talk_to_book
-from app.api.auth import get_current_user
+from app.core.security import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -21,15 +22,15 @@ class MessageSchema(BaseModel):
     created_at: Optional[str] = None
 
 @router.get("/{book_id}/history", response_model=List[MessageSchema])
-async def get_chat_history(book_id: str, user: dict = Depends(get_current_user)):
-    async for db in get_user_db(user["id"]):
+async def get_chat_history(book_id: str, user: User = Depends(get_current_user)):
+    async for db in get_user_db(user.id):
         res = await db.execute(select(ChatMessage).where(ChatMessage.book_id == book_id).order_by(ChatMessage.created_at))
         msgs = res.scalars().all()
         return [{"role": m.role, "content": m.content, "model": m.model, "created_at": m.created_at.isoformat()} for m in msgs]
 
 @router.post("/{book_id}/send")
-async def send_chat_message(book_id: str, req: ChatRequest, user: dict = Depends(get_current_user)):
-    async for db in get_user_db(user["id"]):
+async def send_chat_message(book_id: str, req: ChatRequest, user: User = Depends(get_current_user)):
+    async for db in get_user_db(user.id):
         # 1. Obtener libro y validarlo
         book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
         if not book: raise HTTPException(status_code=404, detail="Libro no encontrado")
@@ -66,8 +67,8 @@ async def send_chat_message(book_id: str, req: ChatRequest, user: dict = Depends
         return {"response": ai_resp, "model": used_m}
 
 @router.delete("/{book_id}/clear")
-async def clear_chat_history(book_id: str, user: dict = Depends(get_current_user)):
-    async for db in get_user_db(user["id"]):
+async def clear_chat_history(book_id: str, user: User = Depends(get_current_user)):
+    async for db in get_user_db(user.id):
         await db.execute(delete(ChatMessage).where(ChatMessage.book_id == book_id))
         await db.commit()
         return {"status": "ok"}
