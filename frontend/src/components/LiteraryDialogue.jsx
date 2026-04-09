@@ -12,6 +12,7 @@ import {
   BookOpen,
   Mic
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import './LiteraryDialogue.css';
 
 const MODES = [

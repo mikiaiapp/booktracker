@@ -14,10 +14,16 @@ import { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
 import './BookPage.css'
 
+const TABS = [
+  { id: 'info',       label: 'Ficha',          icon: BookOpen,     statusKey: 'phase1_done' },
+  { id: 'chapters',   label: 'Capítulos',       icon: List,         statusKey: 'phase2_done' },
+  { id: 'characters', label: 'Personajes',      icon: User,         statusKey: 'phase3_done' },
+  { id: 'summary',    label: 'Resumen global',  icon: Brain,        statusKey: 'has_global_summary' },
   { id: 'mindmap',    label: 'Mapa mental',     icon: Map,          statusKey: 'has_mindmap' },
   { id: 'podcast',    label: 'Podcast',         icon: Mic,          statusKey: 'podcast_done' },
-  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'status' }, // Reordenado: ahora después de Podcast
+  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'status' },
   { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: 'status' },
+]
 
 const PROCESSING_STATUSES = ['queued', 'identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
 
