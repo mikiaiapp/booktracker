@@ -793,3 +793,13 @@ async def analyze_single_character_endpoint(
     book_id: str,
     character_id: str,
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(404, "Book not found")
+        
+    from app.workers.tasks import analyze_single_character_task
+    task = analyze_single_character_task.delay(current_user.id, book_id, character_id)
+    return {"task_id": task.id, "status": "processing"}
