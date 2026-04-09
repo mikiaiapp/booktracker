@@ -222,8 +222,9 @@
     z-index: 200;
   }
 
-  /* Ocultar marca y footer en móvil */
-  .sidebar-brand,
+  /* Ocultar marca y logos en móvil para dejar espacio a los botones */
+  .sidebar-brand-v3,
+  .sidebar-branding-v3,
   .sidebar-branding-v2,
   .sidebar-footer {
     display: none;
