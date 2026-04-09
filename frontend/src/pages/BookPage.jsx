@@ -20,8 +20,8 @@ const TABS = [
   { id: 'characters', label: 'Personajes',      icon: User,         statusKey: 'phase3_done' },
   { id: 'summary',    label: 'Resumen global',  icon: Brain,        statusKey: 'has_global_summary' },
   { id: 'mindmap',    label: 'Mapa mental',     icon: Map,          statusKey: 'has_mindmap' },
+  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'phase1_done' },
   { id: 'podcast',    label: 'Podcast',         icon: Mic,          statusKey: 'podcast_done' },
-  { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'status' },
   { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: null },
 ]
 
@@ -717,153 +717,144 @@ export default function BookPage() {
           </div>
 
           <div className=\"hero-info\">
-            <h1>{book.title}</h1>
-            {book.author && (
-              <p className=\"hero-author\">
-                <Link to=\"/authors\" state={{author: book.author}} className=\"author-link\">{book.author}</Link>
-              </p>
-            )}
-
-            {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || ttsCharPaused || audioPlaying || audioPaused) && (
-              <div className=\"hero-tts-global\">
-                {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (  // alguno reproduciendo
-                  <>
-                    <button className=\"hero-tts-btn\" onClick={() => {
-                      if (ttsPlaying)          pauseTTS()
-                      else if (ttsInfoPlaying)  pauseInfoTTS()
-                      else if (ttsCharPlaying)  pauseCharTTS()
-                      else if (audioPlaying)    toggleAudio()
-                    }}>
-                      <Pause size={14} /> Pausar reproducción
-                    </button>
-                    <button className=\"hero-tts-btn hero-tts-stop\" onClick={() => {
-                      if (ttsPlaying)      stopTTS()
-                      if (ttsInfoPlaying)  stopInfoTTS()
-                      if (ttsCharPlaying)  stopCharTTS()
-                      if (audioPlaying)    stopAudio()
-                    }}>
-                      <Square size={14} /> Stop
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button className=\"hero-tts-btn hero-tts-resume\" onClick={() => {
-                      if (ttsChapterPaused)   resumeCurrentTTS()
-                      else if (ttsCharPaused) resumeCharTTS()
-                      else if (ttsInfoPaused) resumeInfoTTS()
-                      else if (audioPaused)   toggleAudio()
-                    }}>
-                      <Play size={14} /> Continuar reproducción
-                    </button>
-                    <button className=\"hero-tts-btn hero-tts-stop\" onClick={() => {
-                      if (ttsChapterPaused || ttsChapter) stopTTS()
-                      if (ttsInfoPaused)  stopInfoTTS()
-                      if (ttsCharPaused)  stopCharTTS()
-                      if (audioPaused)    stopAudio()
-                    }}>
-                      <Square size={14} /> Stop
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className=\"hero-meta\">
-              {book.year && <span>{book.year}</span>}
-              {book.pages && <span>{book.pages} páginas</span>}
-              {book.isbn && <span>ISBN: {book.isbn}</span>}
-              {book.genre && <span>{book.genre}</span>}
-            </div>
-
-            <div className=\"star-rating\">
-              {[1,2,3,4,5].map(n => (
-                <button key={n} onClick={() => handleRating(n)}
-                  className={`star ${rating >= n ? 'filled' : ''}`}>
-                  <Star size={20} fill={rating >= n ? 'currentColor' : 'none'} />
-                </button>
-              ))}
-            </div>
-
-            <div className=\"read-status-btns\">
-              {[
-                { v: 'to_read', l: 'Por leer' },
-                { v: 'reading', l: 'Leyendo' },
-                { v: 'read', l: 'Leído ✓' },
-              ].map(s => (
-                <button key={s.v}
-                  className={`rs-btn ${book.read_status === s.v ? 'active' : ''}`}
-                  onClick={() => handleReadStatus(s.v)}>
-                  {s.l}
-                </button>
-              ))}
-            </div>
-
-            <div className=\"pipeline-wrapper\">
-              <ProcessingPipeline status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} book={book} />
-            </div>
-
-            <div className=\"hero-actions\">
-              <button className=\"export-pdf-btn\" onClick={exportToPDF}>
-                <FileText size={16} /> Exportar como PDF
-              </button>
-              {book.file_path && (
-                <a href={booksAPI.downloadUrl(id)} className=\"export-pdf-btn download-file-btn\">
-                   <BookOpen size={16} /> Descargar original
-                </a>
+            <div className="hero-info">
+              <h1>{book.title}</h1>
+              {book.author && (
+                <p className="hero-author">
+                  <Link to="/authors" state={{author: book.author}} className="author-link">{book.author}</Link>
+                </p>
               )}
-              {isShell && (
-                <div className=\"shell-upload-area\">
-                   <span className=\"shell-label\">Es un libro manual (shell)</span>
-                   <button className=\"shell-upload-btn\" onClick={() => document.getElementById('shell-file-input').click()}>
-                     <RefreshCw size={12} /> Adjuntar archivo para analizar
-                   </button>
-                   <input 
-                    id=\"shell-file-input\" 
-                    type=\"file\" 
-                    style={{display:'none'}} 
-                    onChange={async (e) => {
-                      const file = e.target.files[0]
-                      if(!file) return
-                      toast('Subiendo y analizando...', { icon: '⏳' })
-                      try {
-                        await uploadToShell(id, file)
-                        toast.success('Archivo subido. Iniciando análisis...')
-                        load()
-                      } catch {
-                        toast.error('Error al subir archivo')
-                      }
-                    }}
-                  />
+
+              {(ttsPlaying || ttsChapterPaused || ttsChapter || ttsInfoPlaying || ttsInfoPaused || ttsCharPlaying || ttsCharPaused || audioPlaying || audioPaused) && (
+                <div className="hero-tts-global">
+                  {(ttsPlaying || ttsInfoPlaying || ttsCharPlaying || audioPlaying) ? (
+                    <>
+                      <button className="hero-tts-btn" onClick={() => {
+                        if (ttsPlaying)          pauseTTS()
+                        else if (ttsInfoPlaying)  pauseInfoTTS()
+                        else if (ttsCharPlaying)  pauseCharTTS()
+                        else if (audioPlaying)    toggleAudio()
+                      }}>
+                        <Pause size={14} /> Pausar reproducción
+                      </button>
+                      <button className="hero-tts-btn hero-tts-stop" onClick={() => {
+                        if (ttsPlaying)      stopTTS()
+                        if (ttsInfoPlaying)  stopInfoTTS()
+                        if (ttsCharPlaying)  stopCharTTS()
+                        if (audioPlaying)    stopAudio()
+                      }}>
+                        <Square size={14} /> Stop
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="hero-tts-btn hero-tts-resume" onClick={() => {
+                        if (ttsChapterPaused)   resumeCurrentTTS()
+                        else if (ttsCharPaused) resumeCharTTS()
+                        else if (ttsInfoPaused) resumeInfoTTS()
+                        else if (audioPaused)   toggleAudio()
+                      }}>
+                        <Play size={14} /> Continuar reproducción
+                      </button>
+                      <button className="hero-tts-btn hero-tts-stop" onClick={() => {
+                        if (ttsChapterPaused || ttsChapter) stopTTS()
+                        if (ttsInfoPaused)  stopInfoTTS()
+                        if (ttsCharPaused)  stopCharTTS()
+                        if (audioPaused)    stopAudio()
+                      }}>
+                        <Square size={14} /> Stop
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
-              {!isShell && book.file_path && (
-                <button className=\"attach-file-btn\" onClick={() => document.getElementById('replace-file-input').click()} title=\"Sustituye el archivo actual por uno nuevo (EPUB/PDF)\">
-                  <RefreshCw size={12} /> Reemplazar archivo original
-                  <input 
-                    id=\"replace-file-input\" 
-                    type=\"file\" 
-                    style={{display:'none'}} 
-                    onChange={async (e) => {
-                      const file = e.target.files[0]
-                      if(!file) return
-                      if(!await confirm('¿Estás seguro de querer reemplazar el archivo original? Se mantendrá el análisis actual.')) return
-                      toast('Sustituyendo archivo...', { icon: '⏳' })
+
+              <div className="hero-meta">
+                {book.year && <span>{book.year}</span>}
+                {book.pages && <span>{book.pages} páginas</span>}
+                {book.isbn && <span>ISBN: {book.isbn}</span>}
+                {book.genre && <span>{book.genre}</span>}
+              </div>
+
+              <div className="star-rating">
+                {[1,2,3,4,5].map(n => (
+                  <button key={n} onClick={() => handleRating(n)}
+                    className={`star ${rating >= n ? 'filled' : ''}`}>
+                    <Star size={20} fill={rating >= n ? 'currentColor' : 'none'} />
+                  </button>
+                ))}
+              </div>
+
+              <div className="read-status-btns">
+                {[
+                  { v: 'to_read', l: 'Por leer' },
+                  { v: 'reading', l: 'Leyendo' },
+                  { v: 'read', l: 'Leído ✓' },
+                ].map(s => (
+                  <button key={s.v}
+                    className={`rs-btn ${book.read_status === s.v ? 'active' : ''}`}
+                    onClick={() => handleReadStatus(s.v)}>
+                    {s.l}
+                  </button>
+                ))}
+              </div>
+
+              <div className="hero-actions-row">
+                {statusInfo?.has_global_summary && (
+                  <button className="export-pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
+                    <FileText size={16} />
+                    Genera PDF del análisis
+                  </button>
+                )}
+                
+                {book.file_path && (
+                  <button
+                    className="export-pdf-btn"
+                    title={`Descargar archivo original`}
+                    onClick={async () => {
                       try {
-                        await uploadToShell(id, file)
-                        toast.success('Archivo reemplazado')
-                      } catch {
-                        toast.error('Error al subir archivo')
-                      }
+                        const token = localStorage.getItem('bt_token')
+                        const resp = await fetch(analysisAPI.downloadUrl(id), {
+                          headers: { Authorization: `Bearer ${token}` }
+                        })
+                        if (!resp.ok) { toast.error('No se pudo descargar el archivo'); return }
+                        const blob = await resp.blob()
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${book.title}.${book.file_type || 'pdf'}`
+                        a.click()
+                        setTimeout(() => URL.revokeObjectURL(url), 5000)
+                      } catch { toast.error('Error al descargar el archivo') }
                     }}
-                  />
-                </button>
-              )}
+                  >
+                    <BookOpen size={16} />
+                    Descarga EPUB
+                  </button>
+                )}
+
+                <label className="export-pdf-btn" style={{ cursor: 'pointer' }} title="Reemplazar archivo PDF/EPUB del libro">
+                  <input type="file" accept=".pdf,.epub" style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files[0]; if (!file) return
+                      if (!confirm('¿Reemplazar los archivos? El análisis se conservará.')) return
+                      try {
+                        toast('Subiendo archivo…', { icon: '⏳' })
+                        await uploadToShell(id, file)
+                        toast.success('Archivo subido. Identificando…')
+                        load()
+                      } catch { toast.error('Error al subir el archivo') }
+                    }} />
+                  <RefreshCw size={14} /> Reemplazar archivos
+                </label>
+              </div>
             </div>
+
+            <button className="delete-btn" onClick={handleDelete} title="Eliminar libro" style={{alignSelf: 'flex-start', marginTop: '1rem'}}>
+              <Trash2 size={20} />
+            </button>
           </div>
           
-          <button className=\"delete-btn\" onClick={handleDelete} title=\"Eliminar libro\">
-            <Trash2 size={20} />
-          </button>
         </div>
       </div>
 
@@ -878,6 +869,7 @@ export default function BookPage() {
             >
               {TABS.map(t => {
                 const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
+                const icon = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',chat:'💬',podcast:'🎙️',refs:'🔗'}[t.id]||'•'
                 const can = t.id === 'chat' ? (statusInfo.phase1_done) : true
                 return (
                   <option key={t.id} value={t.id} disabled={!can}>
@@ -897,17 +889,38 @@ export default function BookPage() {
             const isActivePhase = false // simplificado
             const can = t.id === 'chat' ? (statusInfo.phase1_done) : true
             
+            let StatusIcon, statusClass;
+            if (t.statusKey || t.id === 'refs') {
+              if (isDone) {
+                StatusIcon = CheckCircle;
+                statusClass = 'status-done';
+              } else if (isProcessing && (
+                (t.id === 'info' && status.status === 'identifying') ||
+                (t.id === 'chapters' && status.status === 'analyzing_structure') ||
+                (t.id === 'characters' && status.status === 'summarizing') ||
+                (t.id === 'summary' && status.status === 'summarizing') ||
+                (t.id === 'podcast' && status.status === 'generating_podcast')
+              )) {
+                StatusIcon = Loader;
+                statusClass = 'status-loading';
+              } else {
+                StatusIcon = AlertCircle;
+                statusClass = 'status-pending';
+              }
+            }
+            
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`} disabled={!can}>
-                <div className=\"tab-btn-main\">
+              <button 
+                key={t.id} 
+                onClick={() => setTab(t.id)} 
+                className={`tab-btn ${tab === t.id ? 'active' : ''} ${statusClass}`} 
+                disabled={!can}
+              >
+                <div className="tab-btn-main">
                   <Icon size={18} />
-                  <span className=\"tab-btn-text\">{t.label}</span>
+                  <span className="tab-btn-text">{t.label}</span>
                 </div>
-                {t.statusKey && (
-                  <div className=\"tab-status-icon\">
-                    {isDone ? <CheckCircle size={14} className=\"status-done\" /> : <div className=\"status-pending\" />}
-                  </div>
-                )}
+                {StatusIcon && <StatusIcon size={14} className={`tab-status-icon ${statusClass}`} />}
               </button>
             )
           })}
