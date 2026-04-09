@@ -68,6 +68,12 @@ async def get_user_engine(user_id: str):
         from app.models.book import BookBase
         async with engine.begin() as conn:
             await conn.run_sync(BookBase.metadata.create_all)
+            try:
+                # Intento de migración manual para SQLite
+                from sqlalchemy import text
+                await conn.execute(text("ALTER TABLE chat_messages ADD COLUMN model TEXT"))
+            except:
+                pass # Probablemente ya existe
     return _user_engines[user_id]
 
 
