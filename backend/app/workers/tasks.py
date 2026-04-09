@@ -265,10 +265,14 @@ def process_book_phase6(self, user_id: str, book_id: str):
                 try: 
                     await synthesize_podcast(script, audio_path)
                     book.podcast_audio_path = audio_path
+                    book.podcast_done = True
                 except Exception as e:
                     print(f"[WORKER] Error audio tts: {e}")
+                    book.error_msg = f"Error generando audio: {str(e)}"
+                    book.status = "error"
+            else:
+                book.podcast_done = True
             
-            book.podcast_done = True
             await db.commit()
             await _finalize_book_status(db, book)
             on_done(user_id, book_id)

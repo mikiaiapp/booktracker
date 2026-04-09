@@ -12,7 +12,7 @@ import {
   BookOpen,
   Mic
 } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { chatAPI } from '../utils/api';
 import './LiteraryDialogue.css';
 
 const MODES = [
@@ -29,6 +29,7 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
   const [mode, setMode] = useState('erudite');
   const [isSpeaking, setIsSpeaking] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [activeModel, setActiveModel] = useState(null);
   const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
 
@@ -44,13 +45,13 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
 
   const loadHistory = async () => {
     try {
-      // Usar fetch nativo para evitar dependencias de axios
-      const response = await fetch(`/api/chat/${bookId}`);
-      if (response.ok) {
-        const data = await response.json();
-        const history = Array.isArray(data) ? data : (data.messages || []);
-        setMessages(history);
-      }
+      const { data } = await chatAPI.getHistory(bookId);
+      const history = Array.isArray(data) ? data : (data.messages || []);
+      setMessages(history);
+      
+      // Si hay mensajes, mostrar el último modelo usado
+      const lastAiMsg = [...history].reverse().find(m => m.role === 'assistant' && m.model);
+      if (lastAiMsg) setActiveModel(lastAiMsg.model);
     } catch (err) {
       console.error("Error cargando historial:", err);
     }
@@ -67,22 +68,14 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/chat/${bookId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: textToSend,
-          mode: mode
-        })
-      });
-
+      const { data } = await chatAPI.sendMessage(bookId, textToSend, mode);
       
-      const data = await response.json();
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: data.response,
         model: data.model
       }]);
+      setActiveModel(data.model);
     } catch (err) {
       console.error("Error enviando mensaje:", err);
       setMessages(prev => [...prev, { 
@@ -97,8 +90,9 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
   const clearChat = async () => {
     if (!window.confirm("¿Vaciar todo el historial de este libro?")) return;
     try {
-      await fetch(`/api/chat/${bookId}`, { method: 'DELETE' });
+      await chatAPI.clearHistory(bookId);
       setMessages([]);
+      setActiveModel(null);
     } catch (err) {
       console.error("Error borrando chat:", err);
     }
@@ -161,6 +155,13 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
             <p>{bookTitle} — {authorName}</p>
           </div>
         </div>
+
+        {activeModel && (
+          <div className="active-model-indicator">
+            <div className="model-pulse"></div>
+            <span>IA: {activeModel}</span>
+          </div>
+        )}
         
         <div className="mode-selector">
           {MODES.map(m => (

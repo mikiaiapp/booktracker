@@ -348,7 +348,7 @@ async def get_status(
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary),
         "has_mindmap":          bool(book.mindmap_data),
-        "podcast_done":         bool(book.podcast_script),
+        "podcast_done":         bool(book.podcast_script) and bool(book.podcast_audio_path) and os.path.exists(book.podcast_audio_path or ""),
         "error_msg":            book.error_msg,
         "chapters_total":       total_ch,
         "chapters_done":        done_ch,

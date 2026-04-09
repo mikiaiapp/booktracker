@@ -134,3 +134,10 @@ export const queueAPI = {
   clear:   ()         => api.delete('/analysis/queue'),
   cancel:  (bookId)   => api.delete(`/analysis/queue/${bookId}`),
 }
+
+// Chat Literario
+export const chatAPI = {
+  getHistory: (bookId) => api.get(`/chat/${bookId}/history`),
+  sendMessage: (bookId, message, mode) => api.post(`/chat/${bookId}/send`, { message, mode }),
+  clearHistory: (bookId) => api.delete(`/chat/${bookId}/clear`),
+}

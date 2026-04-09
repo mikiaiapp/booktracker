@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import {
   BookOpen, User, List, Brain, Map, Mic, Star, ExternalLink,
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
-  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X, MessageSquare
+  ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X, MessageSquare, Download
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI } from '../utils/api'
 import MindMap from '../components/MindMap'
@@ -446,7 +446,6 @@ export default function BookPage() {
     localStorage.removeItem(infoStorageKey)
   }
 
-  React.useEffect(() => { return () => window.speechSynthesis.cancel() }, [])
   const [tab, setTab] = useState('info')
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [coverPickerOpen, setCoverPickerOpen] = useState(false)
@@ -489,17 +488,6 @@ export default function BookPage() {
       return () => clearTimeout(t)
     }
   }, [status])
-
-  const cancelProcess = async () => {
-    if (!confirm('¿Cancelar el proceso en curso?')) return
-    try {
-      await analysisAPI.cancel(id)
-      toast('Proceso cancelado')
-      load()
-    } catch {
-      toast.error('Error al cancelar')
-    }
-  }
 
   const triggerPhase = async (phase, force = false) => {
     try {
@@ -578,6 +566,28 @@ export default function BookPage() {
     }
     if (audioEl) { audioEl.pause(); audioEl.currentTime = 0 }
     setAudioPlaying(false); setAudioPaused(false)
+  }
+
+  const handleDownloadAudio = async () => {
+    if (!statusInfo?.podcast_done) return toast.error('El podcast aún no está listo')
+    try {
+      const token = localStorage.getItem('bt_token')
+      const resp = await fetch(analysisAPI.podcastAudioUrl(id), {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (!resp.ok) throw new Error('Error al descargar')
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${book.title} - Podcast.mp3`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      toast.error('No se pudo descargar el audio')
+    }
   }
 
   const exportToPDF = async () => {
@@ -698,7 +708,6 @@ export default function BookPage() {
   const chapters = activeData?.chapters || []
   const characters = activeData?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(statusInfo.status)
-  const isShell = book.status === 'shell' || book.status === 'shell_error'
 
   return (
     <div className="book-page">
@@ -709,7 +718,7 @@ export default function BookPage() {
 
         <div className="hero-content">
           <div className="hero-cover" style={{ cursor: 'pointer', position: 'relative' }} onClick={() => setCoverPickerOpen(true)} title="Haz clic para cambiar la portada">
-            <HeroCover key={coverKey} book={book} />
+            <HeroCover book={book} />
             <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.55)', color: 'white', fontSize: '0.7rem', textAlign: 'center', padding: '4px 0', opacity: 0, transition: 'opacity 0.2s' }}
               className="cover-change-hint">
               ✏ Cambiar
@@ -798,7 +807,6 @@ export default function BookPage() {
               ))}
             </div>
 
-
             <div className="hero-actions-container">
               {statusInfo?.has_global_summary && (
                 <button className="hero-action-btn pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
@@ -868,9 +876,8 @@ export default function BookPage() {
               {TABS.map(t => {
                 const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
                 const iconMap = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',chat:'💬',podcast:'🎙️',refs:'🔗'}
-                const can = true
                 return (
-                  <option key={t.id} value={t.id} disabled={!can}>
+                  <option key={t.id} value={t.id}>
                     {iconMap[t.id] || '•'} {t.label} {!isDone ? '(Pendiente)' : ''}
                   </option>
                 )
@@ -883,7 +890,6 @@ export default function BookPage() {
           {TABS.map(t => {
             const Icon = t.icon
             const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
-            const can = true
             
             let StatusIcon, statusClass;
             if (t.statusKey || t.id === 'refs') {
@@ -904,13 +910,12 @@ export default function BookPage() {
                 statusClass = 'status-pending';
               }
             }
-            
+
             return (
               <button 
                 key={t.id} 
                 onClick={() => setTab(t.id)} 
                 className={`tab-btn ${tab === t.id ? 'active' : ''} ${statusClass}`} 
-                disabled={!can}
               >
                 <div className="tab-btn-main">
                   <Icon size={18} />
@@ -924,93 +929,117 @@ export default function BookPage() {
 
         <div className="tab-content">
           {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={playInfo} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={stopInfoTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} onDelete={handleDelete} />}
-          {tab === 'chapters' && <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} ttsQueue={ttsQueue} onPlayChapter={(c) => { stopTTS(); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); ttsActiveRef.current = true; setTtsPlaying(true); speakItem([{id:c.id, title:c.title, text:chapterToText(c)}], 0); setTtsMode('single') }} onPlayFromChapter={(c) => playFromChapter(c, chapters)} onResume={resumeCurrentTTS} onStop={stopTTS} onPause={pauseTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} />}
+          {tab === 'chapters' && <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} onPlayChapter={(c) => { stopTTS(); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); ttsActiveRef.current = true; setTtsPlaying(true); speakItem([{id:c.id, title:c.title, text:chapterToText(c)}], 0); setTtsMode('single') }} onPlayFromChapter={(c) => playFromChapter(c, chapters)} onResume={resumeCurrentTTS} onStop={stopTTS} onPause={pauseTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} />}
           {tab === 'characters' && <CharactersTab characters={characters} ttsPlaying={ttsCharPlaying} ttsPaused={ttsCharPaused} ttsCharacter={ttsCharacter} onPlay={playCharacter} onPlayFrom={(c) => playFromCharacter(c, characters)} onPause={pauseCharTTS} onResume={resumeCharTTS} onStop={stopCharTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} bookId={id} onDone={load} />}
           {tab === 'summary' && <SummaryTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playSummary(book)} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />}
           {tab === 'mindmap' && (
             <div className="prose-content" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
                <h2 style={{marginBottom:'1rem'}}>Mapa mental de ideas</h2>
-               <div style={{flex:1, minHeight:0, background:'#fcfaf7', borderRadius:'12px', border:'1px solid var(--paper-dark)'}}>
+               <div style={{flex:1, minHeight:0, background:'#fcfaf7', borderRadius:'12px', border:'1.5px solid var(--paper-dark)'}}>
                  <MindMap data={book.mindmap_data} />
                </div>
             </div>
           )}
           {tab === 'podcast' && (
             <div className="prose-content">
-               <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
-               <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1.5rem'}}>
-                 <h2 style={{margin:0}}>Podcast del libro</h2>
-               </div>
-               {statusInfo.podcast_done ? (
-                 <div className="podcast-player-card">
-                   <div className="podcast-visual">
-                     <div className={`wave-bar ${audioPlaying ? 'animate' : ''}`} />
-                     <div className={`wave-bar ${audioPlaying ? 'animate' : ''}`} style={{animationDelay:'0.2s'}} />
-                     <div className={`wave-bar ${audioPlaying ? 'animate' : ''}`} style={{animationDelay:'0.4s'}} />
-                     <Mic size={48} color="var(--gold)" style={{opacity:0.2, position:'absolute'}} />
-                   </div>
-                   <div className="podcast-controls">
-                     <button className="p-play-btn" onClick={toggleAudio}>
-                       {audioPlaying ? <Pause size={24} /> : <Play size={24} />}
-                       {audioPlaying ? 'Pausar Podcast' : audioPaused ? 'Continuar Podcast' : 'Escuchar Podcast'}
-                     </button>
-                     {(audioPlaying || audioPaused) && (
-                       <button className="p-stop-btn" onClick={() => stopAudio()}>
-                         <Square size={16} /> Parar
-                       </button>
-                     )}
-                     <a href={analysisAPI.podcastAudioUrl(id)} download className="p-download-link">
-                        Descargar MP3
-                     </a>
-                   </div>
-                   {book.podcast_script && (
-                     <div className="podcast-script">
-                       <h3>Guión del episodio</h3>
-                       <div className="script-content">
-                         {book.podcast_script.split('\n').map((line, i) => (
-                           <p key={i} className={line.startsWith('Locutor') ? 'script-speaker' : ''}>{line}</p>
-                         ))}
+                <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
+                {statusInfo.podcast_done ? (
+                  <div className="podcast-content">
+                    <div className="podcast-script-header">
+                      <h2 style={{margin:0}}>Episodio Generado</h2>
+                      <div style={{display:'flex', gap:'0.75rem'}}>
+                        <button className="download-mp3-btn" onClick={handleDownloadAudio} title="Descargar podcast">
+                           <Download size={16} />
+                           <span>Descargar MP3</span>
+                        </button>
+                        <button className={`download-mp3-btn ${audioPlaying ? 'active' : ''}`} onClick={toggleAudio}>
+                          {audioPlaying ? <Pause size={18} /> : <Play size={18} />}
+                          <span>{audioPlaying ? 'Pausar' : audioPaused ? 'Continuar' : 'Escuchar'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="podcast-player-card" style={{background:'var(--ink)', borderRadius:'12px', padding:'2.5rem', marginBottom:'2.5rem', display:'flex', alignItems:'center', gap:'2.5rem', boxShadow:'var(--shadow-lg)'}}>
+                       <div className={`podcast-visual ${audioPlaying ? 'playing' : ''}`} style={{width:'100px', height:'100px', background:'rgba(255,255,255,0.05)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', border:'2px solid var(--gold)', position:'relative', boxShadow: audioPlaying ? '0 0 20px var(--gold)' : 'none', transition: 'all 0.5s' }}>
+                          <Mic size={40} color="var(--gold)" />
                        </div>
-                     </div>
-                   )}
-                 </div>
-               ) : (
-                 <div className="empty-podcast">
-                   <Mic size={40} />
-                   <p>El podcast aún no se ha generado.</p>
-                   {statusInfo.has_mindmap && !isProcessing && (
-                     <button className="phase-btn" onClick={() => triggerPhase(6)}>Generar Podcast ahora</button>
-                   )}
-                 </div>
-               )}
+                       <div style={{flex:1}}>
+                          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom:'1rem'}}>
+                            <div>
+                              <div style={{fontSize:'0.75rem', color:'var(--gold)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.15em', marginBottom:'0.25rem'}}>Podcast Literario</div>
+                              <div style={{fontSize:'1.1rem', color:'white', fontWeight:600}}>{book.title}</div>
+                            </div>
+                            <div style={{fontSize:'0.85rem', color:'var(--mist)'}}>{audioPlaying ? 'Reproduciendo...' : audioPaused ? 'En pausa' : 'Listo para escuchar'}</div>
+                          </div>
+                          <div style={{height:'6px', background:'rgba(255,255,255,0.1)', borderRadius:'10px', overflow:'hidden', position:'relative'}}>
+                             <div className={audioPlaying ? 'animate-progress' : ''} style={{height:'100%', background:'var(--gold)', width: audioPlaying ? '100%' : '0%', transition: audioPlaying ? 'width 300s linear' : 'none', boxShadow:'0 0 10px var(--gold)'}} />
+                          </div>
+                       </div>
+                    </div>
+
+                    {book.podcast_script && (
+                      <div className="podcast-script-card">
+                        <div className="podcast-script-header">
+                          <h3 style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
+                            <FileText size={20} color="var(--gold)" />
+                            Guión del Episodio
+                          </h3>
+                        </div>
+                        <div className="script-content">
+                          {book.podcast_script.split('\n').map((line, i) => {
+                            if (!line.trim()) return <br key={i} />
+                            const isSpeaker = line.includes(':')
+                            return (
+                              <p key={i} style={{ marginBottom: '1.25rem', opacity: isSpeaker ? 1 : 0.8, background: isSpeaker && line.startsWith('ANA') ? 'rgba(201,169,110,0.05)' : 'transparent', padding: isSpeaker ? '0.5rem 1rem' : '0', borderRadius: '8px', borderLeft: isSpeaker ? `3px solid ${line.startsWith('ANA') ? 'var(--gold)' : 'var(--ink)'}` : 'none' }}>
+                                {isSpeaker ? <strong>{line.split(':')[0]}:</strong> : null}
+                                {isSpeaker ? line.split(':')[1] : line}
+                              </p>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="empty-podcast" style={{ textAlign: 'center', padding: '4rem 2rem', background: 'white', borderRadius: '12px', border: '1.5px solid var(--paper-dark)' }}>
+                    <Mic size={48} color="var(--mist)" style={{ marginBottom: '1rem', opacity: 0.5 }} />
+                    <p style={{ color: 'var(--mist)', marginBottom: '1.5rem' }}>El podcast aún no se ha generado.</p>
+                    {statusInfo.has_mindmap && !isProcessing && (
+                      <button className="reanalyze-btn" style={{ margin: '0 auto' }} onClick={() => triggerPhase(6)}>
+                        <RefreshCw size={14} />
+                        <span>Generar Podcast ahora</span>
+                      </button>
+                    )}
+                  </div>
+                )}
             </div>
           )}
           {tab === 'chat' && (
             <div className="prose-content" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
-               <h2 style={{marginBottom:'1rem'}}>Diálogo Literario</h2>
-               <div style={{flex:1, minHeight:0}}>
-                 <LiteraryDialogue bookId={id} bookTitle={book.title} />
-               </div>
+                <h2 style={{marginBottom:'1rem'}}>Diálogo Literario</h2>
+                <div style={{flex:1, minHeight:0}}>
+                  <LiteraryDialogue bookId={id} bookTitle={book.title} />
+                </div>
             </div>
           )}
           {tab === 'refs' && (
             <div className="prose-content">
-               <h2>Referencias externas</h2>
-               <div className="refs-grid">
-                 <a href={`https://www.google.com/search?q=libro+${encodeURIComponent(book.title)}+${encodeURIComponent(book.author || '')}`} target="_blank" className="ref-card">
-                   <Box size={24} />
-                   <span>Google Search</span>
-                 </a>
-                 <a href={`https://es.wikipedia.org/wiki/${encodeURIComponent(book.title)}`} target="_blank" className="ref-card">
-                   <FileText size={24} />
-                   <span>Wikipedia</span>
-                 </a>
-                 <a href={`https://www.goodreads.com/search?q=${encodeURIComponent(book.title)}`} target="_blank" className="ref-card">
-                   <Star size={24} />
-                   <span>Goodreads</span>
-                 </a>
-               </div>
+                <h2>Referencias externas</h2>
+                <div className="refs-grid">
+                  <a href={`https://www.google.com/search?q=libro+${encodeURIComponent(book.title)}+${encodeURIComponent(book.author || '')}`} target="_blank" className="ref-card">
+                    <Box size={24} />
+                    <span>Google Search</span>
+                  </a>
+                  <a href={`https://es.wikipedia.org/wiki/${encodeURIComponent(book.title)}`} target="_blank" className="ref-card">
+                    <FileText size={24} />
+                    <span>Wikipedia</span>
+                  </a>
+                  <a href={`https://www.goodreads.com/search?q=${encodeURIComponent(book.title)}`} target="_blank" className="ref-card">
+                    <Star size={24} />
+                    <span>Goodreads</span>
+                  </a>
+                </div>
             </div>
           )}
         </div>
@@ -1032,7 +1061,7 @@ export default function BookPage() {
   )
 }
 
-function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = {} }) {
+function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel }) {
   if (!status) return null
   const steps = [
     { label: 'Fase 1: Ficha y Autor',        sublabel: 'Identificación, sinopsis, autor',     done: status.phase1_done,        trigger: () => onTrigger(1), canTrigger: true },
@@ -1061,7 +1090,7 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
           </span>
           {s.canTrigger && !isProcessing && (
             <button className="trigger-btn" onClick={s.trigger}>
-              {s.done ? 'Repetir' : s.resumable ? 'Reanudar' : 'Iniciar'}
+              {s.done ? 'Repetir' : 'Iniciar'}
             </button>
           )}
           {isProcessing && i === steps.findIndex(x => !x.done) && (
@@ -1071,42 +1100,21 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
           )}
         </div>
       ))}
-      {status.error_msg && (
-        <div className={`pipeline-error ${status.error_msg.includes('Cuota') || status.error_msg.includes('quota') ? 'quota-error' : ''}`}>
-          <AlertCircle size={14} />
-          <span>{status.error_msg.includes('Cuota') || status.status === 'quota_exceeded'
-            ? status.error_msg
-            : 'Error en el proceso'}</span>
-        </div>
-      )}
     </div>
   )
 }
 
 function HeroCover({ book }) {
-  // src canónica del libro (cover_local o cover_url)
   const src = coverSrc(book)
-  // fallback: portada obtenida externamente si src no existe o falla
   const [fallback, setFallback] = React.useState(null)
-  const [fetchedKey, setFetchedKey] = React.useState(null)
   const [srcError, setSrcError] = React.useState(false)
 
-  // Cuando src cambia (el padre recargó datos con nueva portada), resetear error
-  React.useEffect(() => {
-    setSrcError(false)
-  }, [src])
+  React.useEffect(() => { setSrcError(false) }, [src])
 
-  // Buscar portada externa SOLO si no hay src válida
-  const fetchKey = `${book.isbn || ''}|${book.title || ''}`
   React.useEffect(() => {
-    if (src && !srcError) return          // tenemos portada local — no buscar
+    if (src && !srcError) return
     if (!book.isbn && !book.title) return
-    if (fetchedKey === fetchKey && fallback) return  // ya buscamos esto
-
     let cancelled = false
-    setFallback(null)
-    setFetchedKey(fetchKey)
-
     const go = async () => {
       if (book.isbn) {
         try {
@@ -1116,7 +1124,6 @@ function HeroCover({ book }) {
           if (img && !cancelled) { setFallback(img.replace('http:', 'https:')); return }
         } catch {}
       }
-      // fallback por título si ISBN falla o no hay
       try {
         const resp = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(book.title)}`)
         const json = await resp.json()
@@ -1132,52 +1139,59 @@ function HeroCover({ book }) {
     if (fallback) return <img src={fallback} alt="Portada fallback" onError={() => setFallback(null)} />
     return <div className="cover-ph-lg"><BookOpen size={48} /></div>
   }
-
   return <img src={src} alt={book.title} onError={() => setSrcError(true)} />
 }
 
 function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger, onCancel, progressMsg }) {
   const isDone = doneProp === 'status' ? true : status[doneProp]
   const canTrigger = canProp ? status[canProp] : true
-  const isThisPhaseActive = isProcessing && (
-    (phase === 1 && status.status === 'identifying') ||
-    (phase === 2 && (status.status === 'analyzing_structure' || status.status === 'summarizing')) ||
-    (phase === 6 && status.status === 'generating_podcast')
-  )
-  const btnLabel = isDone ? `Repetir ${label}` : `Iniciar ${label}`
-  const btnClass = isDone ? 'secondary' : 'primary'
+
+  const labels = {
+    1: 'Repetir Ficha y Autor',
+    2: 'Reanalizar Capítulos',
+    3: 'Reanalizar Personajes',
+    4: 'Rehacer Resumen',
+    5: 'Rehacer Mapa',
+    6: 'Rehacer Podcast'
+  }
 
   return (
-    <div className="tab-phase-bar">
-      {isProcessing ? (
-        <div className="tab-phase-processing-wrap">
-          <span className="tab-phase-processing">
-            <Loader size={14} className="spin-icon" />
-            <span className="progress-msg-text">{progressMsg || 'Procesando…'}</span>
-            {status?.model && <span className="ai-model-tag">{status.model}</span>}
-          </span>
-          <button className="tab-phase-cancel-btn" onClick={onCancel} title="Detener análisis">
-            <X size={12} /> Detener
-          </button>
+    <div className="tab-phase-bar" style={{ marginBottom: '2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', borderBottom: '1.5px solid var(--paper-dark)', paddingBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+        {isDone ? <CheckCircle size={20} className="status-done" /> : <div className="phase-dot">{phase}</div>}
+        <div>
+          <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--ink)' }}>Fase {phase}: {label}</h3>
+          {isProcessing && (
+            <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginTop:'0.2rem'}}>
+               <Loader size={12} className="spin" style={{color:'var(--gold)'}} />
+               <span style={{fontSize:'0.75rem', color: 'var(--gold)', fontWeight: 600}}>{progressMsg || 'Procesando…'}</span>
+               {status?.model && <span className="ai-model-tag">{status.model}</span>}
+            </div>
+          )}
         </div>
-      ) : (
-        <button
-          className={`tab-phase-btn ${btnClass}`}
-          onClick={() => onTrigger(phase)}
-          disabled={!canTrigger}
-          title={!canTrigger ? 'Completa la fase anterior primero' : undefined}
-        >
-          <RefreshCw size={13} />
-          {btnLabel}
-        </button>
-      )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.75rem' }}>
+        {isProcessing && (
+          <button className="cancel-btn" onClick={onCancel} style={{margin:0}}>Detener</button>
+        )}
+        {canTrigger && !isProcessing && (
+          <button 
+            className="reanalyze-btn" 
+            style={{ margin: 0 }} 
+            onClick={() => onTrigger(phase)}
+          >
+            <RefreshCw size={14} />
+            <span>{isDone ? labels[phase] : `Iniciar ${label}`}</span>
+          </button>
+        )}
+      </div>
     </div>
   )
 }
 
 function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger, onCancel, progressMsg, onDelete }) {
   const isDuplicate = status.status === 'duplicate'
-
   return (
     <div className="info-tab">
       {isDuplicate && (
@@ -1214,17 +1228,13 @@ function InfoTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onSto
           )}
         </div>
       )}
-
       {book.synopsis && <section><h3>Sinopsis</h3><p>{book.synopsis}</p></section>}
-      {!book.synopsis && (
-        <p className="empty-tab">La sinopsis aún se está cargando…</p>
-      )}
+      {!book.synopsis && <p className="empty-tab">La sinopsis aún se está cargando…</p>}
     </div>
   )
 }
 
-// ── SummaryTab ─────────────────────────────────────────────────────────────────
-function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, onStop, status, isProcessing, onTrigger, progressMsg }) {
+function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, status, isProcessing, onTrigger, progressMsg }) {
   return (
     <div className="prose-content">
       <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" canProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
@@ -1250,31 +1260,20 @@ function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, onPause, onResume, on
   )
 }
 
-
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, ttsQueue, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause, status, isProcessing, onTrigger, onCancel, progressMsg }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause, status, isProcessing, onTrigger, onCancel, progressMsg }) {
   const [summarizing, setSummarizing] = React.useState({})
-
   const handleSummarize = async (e, chapter) => {
     e.stopPropagation()
     setSummarizing(s => ({ ...s, [chapter.id]: true }))
     try {
       await chapterAPI.summarize(bookId, chapter.id)
       toast('Resumiendo capítulo...', { icon: '⏳' })
-      const poll = setInterval(async () => {
-        const { data } = await import('../utils/api').then(m => m.booksAPI.get(bookId))
+      let poll = setInterval(async () => {
+        const { data } = await booksAPI.get(bookId)
         const ch = data.chapters?.find(c => c.id === chapter.id)
-        if (ch?.summary_status === 'done') {
-          clearInterval(poll)
-          setSummarizing(s => ({ ...s, [chapter.id]: false }))
-          onChapterSummarized?.()
-          toast.success('Capítulo resumido')
-        }
+        if (ch?.summary_status === 'done') { clearInterval(poll); setSummarizing(s => ({ ...s, [chapter.id]: false })); onChapterSummarized?.(); toast.success('Capítulo resumido') }
       }, 3000)
-      setTimeout(() => clearInterval(poll), 120000)
-    } catch {
-      setSummarizing(s => ({ ...s, [chapter.id]: false }))
-      toast.error('Error al resumir el capítulo')
-    }
+    } catch { setSummarizing(s => ({ ...s, [chapter.id]: false })); toast.error('Error al resumir') }
   }
 
   return (
@@ -1286,95 +1285,23 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
             <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
             <span className="ch-title">{ch.title}</span>
             <div className="ch-meta">
-              {ch.summary_status === 'done'
-                ? <span className="badge badge-green">Resumido</span>
-                : ch.summary_status === 'quota_exceeded'
-                  ? <span className="badge badge-rust" title={ch.summary || 'Cuota agotada'}>⏰ Cuota agotada</span>
-                : ch.summary_status === 'skipped'
-                  ? <span className="badge badge-slate" title="Contenido bloqueado por filtros de seguridad">⚠ Omitido</span>
-                : ch.summary_status === 'processing'
-                  ? <span className="badge badge-gold">Procesando…</span>
-                : ch.summary_status === 'error'
-                  ? (
-                    <button
-                      className="summarize-ch-btn summarize-ch-btn--error"
-                      onClick={(e) => handleSummarize(e, ch)}
-                      disabled={summarizing[ch.id]}
-                      title="Error al resumir. Haz clic para reintentar"
-                    >
-                      {summarizing[ch.id] ? '…' : '⚠️ Reintentar'}
-                    </button>
-                  )
-                  : <button
-                      className="summarize-ch-btn"
-                      onClick={(e) => handleSummarize(e, ch)}
-                      disabled={summarizing[ch.id]}
-                    >
-                      {summarizing[ch.id] ? '…' : '+ Resumir'}
-                    </button>
-              }
+              {ch.summary_status === 'done' ? <span className="badge badge-green">Resumido</span> : <button className="summarize-ch-btn" onClick={(e) => handleSummarize(e, ch)} disabled={summarizing[ch.id]}>{summarizing[ch.id] ? '…' : '+ Resumir'}</button>}
               {ch.summary_status === 'done' && (
                 <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
-                  {ttsPlaying && ttsChapter === ch.id ? (
-                    <button className="ch-tts-btn pause" onClick={onPause} title="Pausar">
-                      <Pause size={12} />
-                    </button>
-                  ) : ttsChapterPaused && ttsChapter === ch.id ? (
-                    <button className="ch-tts-btn play" onClick={onResume} title="Continuar">
-                      <Play size={12} />
-                    </button>
-                  ) : (
-                    <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)} title="Reproducir solo este capítulo">
-                      <Play size={12} />
-                    </button>
-                  )}
-                  {(ttsChapter === ch.id && (ttsPlaying || ttsChapterPaused)) && (
-                    <button className="ch-tts-btn stop" onClick={onStop} title="Parar reproducción">
-                      <Square size={12} />
-                    </button>
-                  )}
-                  {!(ttsChapter === ch.id && (ttsPlaying || ttsChapterPaused)) && (
-                    <button className="ch-tts-btn play-from" onClick={() => onPlayFromChapter(ch)} title="Leer desde aquí hasta el final">
-                      <Volume2 size={12} />
-                    </button>
-                  )}
+                  {ttsChapter === ch.id && ttsPlaying ? <button className="ch-tts-btn pause" onClick={onPause}><Pause size={12} /></button> : <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)}><Play size={12} /></button>}
                 </div>
               )}
-              {ch.page_start && <span className="ch-pages">p. {ch.page_start}–{ch.page_end}</span>}
               {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </div>
           </button>
-          <AnimatePresence>
-            {expanded === ch.id && (
-              <motion.div className="chapter-body"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}>
-                <div className="chapter-body-inner">
-                  {ch.summary
-                    ? <p>{ch.summary}</p>
-                    : <p className="muted">Resumen no disponible para este capítulo</p>
-                  }
-                  {ch.key_events?.length > 0 ? (
-                    <div className="key-events">
-                      <strong>Eventos clave:</strong>
-                      <ul>{ch.key_events.map((e, i) => <li key={i}>{e}</li>)}</ul>
-                    </div>
-                  ) : ch.summary_status === 'done' && (
-                    <div className="key-events-missing">
-                      <button 
-                        className="btn-text-link" 
-                        onClick={(e) => handleSummarize(e, ch)}
-                        disabled={summarizing[ch.id]}
-                      >
-                        {summarizing[ch.id] ? '⏳ Generando eventos clave...' : '✨ Generar eventos clave para este capítulo'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <AnimatePresence>{expanded === ch.id && (
+            <motion.div className="chapter-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+              <div className="chapter-body-inner">
+                <p>{ch.summary || 'Resumen no disponible'}</p>
+                {ch.key_events?.length > 0 && <div className="key-events"><strong>Eventos clave:</strong><ul>{ch.key_events.map((e, i) => <li key={i}>{e}</li>)}</ul></div>}
+              </div>
+            </motion.div>
+          )}</AnimatePresence>
         </div>
       ))}
     </div>
@@ -1383,100 +1310,36 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
 
 function CharactersTab({ characters, ttsPlaying, ttsPaused, ttsCharacter, onPlay, onPlayFrom, onPause, onResume, onStop, status, isProcessing, onTrigger, progressMsg, bookId, onDone }) {
   const [analyzing, setAnalyzing] = React.useState({})
-  
   const handleReanalyze = async (char) => {
     setAnalyzing(s => ({ ...s, [char.id]: true }))
     try {
       await characterAPI.analyze(bookId, char.id)
       toast.success(`Analizando a ${char.name}...`)
-      // Polling simple para este personaje
-      const poll = setInterval(async () => {
-         const { data } = await booksAPI.get(bookId)
-         const c = data.characters?.find(x => x.id === char.id)
-         // Aquí dependemos de que el worker actualice algo, summuary o similar
-         // Por ahora, recargamos el global tras 10s
-      }, 5000)
-      setTimeout(() => { clearInterval(poll); setAnalyzing(s => ({ ...s, [char.id]: false })); onDone() }, 15000)
-    } catch {
-       setAnalyzing(s => ({ ...s, [char.id]: false }))
-       toast.error('Error al reanalizar')
-    }
+      setTimeout(() => { setAnalyzing(s => ({ ...s, [char.id]: false })); onDone() }, 10000)
+    } catch { setAnalyzing(s => ({ ...s, [char.id]: false })); toast.error('Error') }
   }
 
   return (
     <div className="characters-tab">
       <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" canProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
       <div className="characters-header">
-        <div className="characters-info">
-          <h2 style={{margin:0}}>Personajes</h2>
-          <span className="characters-count">{characters.length} encontrados</span>
-        </div>
+        <div className="characters-info"><h2>Personajes</h2><span className="characters-count">{characters.length} encontrados</span></div>
         <div className="characters-actions">
-          {ttsPlaying || ttsPaused ? (
-             <div className="tts-indicator">
-                {ttsPlaying ? <Loader size={12} className="spin" /> : <Pause size={12} />}
-                <span>{ttsCharacter}</span>
-                <button className="tts-control-btn stop" onClick={() => onStop()} title="Parar"><Square size={10} /></button>
-             </div>
-          ) : (
-            characters.length > 0 && <button className="reanalyze-chars-btn" onClick={() => onPlayFrom(characters[0])}><Play size={12} /> Leer todos</button>
-          )}
-          {!isProcessing && characters.length > 0 && (
-             <button className="reanalyze-chars-btn" onClick={() => onTrigger(3)}>Reanalizar todos</button>
-          )}
+           {!isProcessing && characters.length > 0 && <button className="reanalyze-btn" style={{marginBottom:0}} onClick={() => onTrigger(3)}><RefreshCw size={14} /><span>Reanalizar todos</span></button>}
         </div>
       </div>
-
       <div className="characters-grid">
         {characters.map(char => (
-          <div key={char.id} className={`char-card ${ttsCharacter === char.name ? 'active' : ''}`}>
-            <div className="char-avatar">
-               {char.name.charAt(0)}
-            </div>
+          <div key={char.id} className="char-card">
+            <div className="char-avatar">{char.name.charAt(0)}</div>
             <div className="char-content">
-              <div className="char-header-row">
-                <h3>{char.name}</h3>
-                <div className="char-btns">
-                   {ttsCharacter === char.name ? (
-                      ttsPlaying ? <button className="char-inline-btn" onClick={onPause}><Pause size={14} /></button>
-                                : <button className="char-inline-btn" onClick={onResume}><Play size={14} /></button>
-                   ) : (
-                      <button className="char-inline-btn" onClick={() => onPlay(char)} title="Escuchar ficha"><Play size={14} /></button>
-                   )}
-                   <button className="char-inline-btn" onClick={() => onPlayFrom(char, characters)} title="Leer desde aquí"><Volume2 size={14} /></button>
-                   <button className="char-inline-btn" onClick={() => handleReanalyze(char)} disabled={analyzing[char.id]} title="Reanalizar este personaje">
-                     <RefreshCw size={14} className={analyzing[char.id] ? 'spin' : ''} />
-                   </button>
-                </div>
-              </div>
-              <p className="char-role">{char.role}</p>
-              <p className="char-desc">{char.description}</p>
-              
+              <div className="char-header-row"><h3>{char.name}</h3><div className="char-btns"><button className="char-inline-btn" onClick={() => onPlay(char)}><Play size={14} /></button><button className="char-inline-btn" onClick={() => handleReanalyze(char)} disabled={analyzing[char.id]}><RefreshCw size={14} className={analyzing[char.id] ? 'spin' : ''}/></button></div></div>
+              <p className="char-role">{char.role}</p><p className="char-desc">{char.description}</p>
               <div className="char-details-grid">
-                {char.personality && (
-                  <div className="char-detail-box">
-                    <strong>Personalidad</strong>
-                    <p>{char.personality}</p>
-                  </div>
-                )}
-                {char.arc && (
-                  <div className="char-detail-box">
-                    <strong>Evolución</strong>
-                    <p>{char.arc}</p>
-                  </div>
-                )}
+                {char.personality && <div className="char-detail-box"><strong>Personalidad</strong><p>{char.personality}</p></div>}
+                {char.key_moments && char.key_moments.length > 0 && <div className="char-detail-box"><strong>Momentos clave</strong><ul className="char-list">{char.key_moments.map((m, i) => <li key={i}>{m}</li>)}</ul></div>}
+                {char.arc && <div className="char-detail-box"><strong>Evolución</strong><p>{char.arc}</p></div>}
               </div>
-
-              {char.relationships && Object.keys(char.relationships).length > 0 && (
-                <div className="char-relas">
-                  <strong>Relaciones:</strong>
-                  <div className="relas-tags">
-                    {Object.entries(char.relationships).map(([name, rel]) => (
-                      <span key={name} className="rela-tag"><b>{name}</b>: {rel}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         ))}
@@ -1487,21 +1350,8 @@ function CharactersTab({ characters, ttsPlaying, ttsPaused, ttsCharacter, onPlay
 
 function Box({ size, ...props }) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-      <path d="m3.3 7 8.7 5 8.7-5" />
-      <path d="M12 22V12" />
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" />
     </svg>
   )
 }
