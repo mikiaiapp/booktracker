@@ -1,207 +1,205 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Send, User as UserIcon, Brain, Mic, Megaphone, Trash2, X, Play, Pause, MessageSquare, ShieldAlert, Baby } from 'lucide-react';
-import axios from 'axios';
-import toast from 'react-hot-toast';
+import { 
+  Send, 
+  User, 
+  Bot, 
+  Volume2, 
+  VolumeX, 
+  Sparkles, 
+  MessageCircle,
+  Trash2,
+  RefreshCw,
+  BookOpen,
+  Mic
+} from 'lucide-react';
 import './LiteraryDialogue.css';
 
 const MODES = [
-  { id: 'default', label: 'Erudito', icon: Brain, color: '#6366f1', desc: 'Análisis académico y experto.' },
-  { id: 'author', label: 'Autor', icon: UserIcon, color: '#ec4899', desc: 'Habla directamente con el creador.' },
-  { id: 'critic', label: 'Crítico', icon: ShieldAlert, color: '#f59e0b', desc: 'Visión mordaz y analítica.' },
-  { id: 'child', label: 'Explicación 10 años', icon: Baby, color: '#10b981', desc: 'Simple, mágico y claro.' }
+  { id: 'erudite', label: 'Erudito', icon: Sparkles, color: '#6366f1', description: 'Contexto literario profundo' },
+  { id: 'author', label: 'Escritor', icon: BookOpen, color: '#ec4899', description: 'Te habla como el propio autor' },
+  { id: 'critic', label: 'Crítico', icon: MessageCircle, color: '#f59e0b', description: 'Análisis mordaz y detractor' },
+  { id: 'child', label: 'Para niños', icon: Mic, color: '#10b981', description: 'Explicación sencilla (10 años)' },
 ];
 
 export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState('default');
-  const [loading, setLoading] = useState(false);
-  const [speaking, setSpeaking] = useState(null); // ID del mensaje que se está leyendo
-  const scrollRef = useRef(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [mode, setMode] = useState('erudite');
+  const [isSpeaking, setIsSpeaking] = useState(null);
+  const chatEndRef = useRef(null);
 
+  // Cargar historial al inicio
   useEffect(() => {
-    fetchHistory();
+    loadHistory();
   }, [bookId]);
 
+  // Scroll automático al fondo
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, loading]);
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  const fetchHistory = async () => {
+  const loadHistory = async () => {
     try {
-      const token = localStorage.getItem('bt_token');
-      const resp = await axios.get(`http://${window.location.hostname}:8000/api/chat/${bookId}/history`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMessages(resp.data);
+      // Usar fetch nativo para evitar dependencias de axios
+      const response = await fetch(`/api/chat/${bookId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setMessages(data.messages || []);
+      }
     } catch (err) {
-      console.error('Error fetching chat history', err);
+      console.error("Error cargando historial:", err);
     }
   };
 
-  const handleSend = async (e) => {
+  const sendMessage = async (e, textOverride = null) => {
     if (e) e.preventDefault();
-    if (!input.trim() || loading) return;
+    const textToSend = textOverride || input;
+    if (!textToSend.trim() || isLoading) return;
 
-    const userMsg = input;
+    const userMsg = { role: 'user', content: textToSend, created_at: new Date().toISOString() };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setLoading(true);
-
-    // Optimistic update
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsLoading(true);
 
     try {
-      const token = localStorage.getItem('bt_token');
-      const resp = await axios.post(`http://${window.location.hostname}:8000/api/chat/${bookId}/send`, 
-        { message: userMsg, mode },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: resp.data.response }]);
-    } catch (err) {
-      toast.error('Error al conectar con la IA');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const clearHistory = async () => {
-    if (!window.confirm('¿Borrar toda la conversación sobre este libro?')) return;
-    try {
-      const token = localStorage.getItem('bt_token');
-      await axios.delete(`http://${window.location.hostname}:8000/api/chat/${bookId}/clear`, {
-        headers: { Authorization: `Bearer ${token}` }
+      const response = await fetch(`/api/chat/${bookId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: textToSend,
+          mode: mode
+        })
       });
-      setMessages([]);
-      toast.success('Conversación borrada');
+
+      if (!response.ok) throw new Error("Error en la respuesta de la IA");
+      
+      const data = await response.json();
+      setMessages(prev => [...prev, data.assistant_response]);
     } catch (err) {
-      toast.error('Error al borrar historial');
+      console.error("Error enviando mensaje:", err);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: "Lo siento, mi conexión con el servidor de inteligencia artificial ha tenido un problema. Por favor, asegúrate de tener configurada la API KEY de Gemini." 
+      }]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const speak = (text, msgId) => {
-    if (speaking === msgId) {
+  const clearChat = async () => {
+    if (!window.confirm("¿Vaciar todo el historial de este libro?")) return;
+    try {
+      await fetch(`/api/chat/${bookId}`, { method: 'DELETE' });
+      setMessages([]);
+    } catch (err) {
+      console.error("Error borrando chat:", err);
+    }
+  };
+
+  const toggleSpeech = (text, msgId) => {
+    if (isSpeaking === msgId) {
       window.speechSynthesis.cancel();
-      setSpeaking(null);
-      return;
+      setIsSpeaking(null);
+    } else {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'es-ES';
+      utterance.onend = () => setIsSpeaking(null);
+      window.speechSynthesis.speak(utterance);
+      setIsSpeaking(msgId);
     }
-    
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES';
-    utterance.rate = 1.0;
-    
-    utterance.onend = () => setSpeaking(null);
-    utterance.onerror = () => setSpeaking(null);
-    
-    setSpeaking(msgId);
-    window.speechSynthesis.speak(utterance);
   };
-
-  const currentModeInfo = MODES.find(m => m.id === mode);
 
   return (
     <div className="literary-dialogue">
+      {/* Header */}
       <div className="dialogue-header">
         <div className="header-info">
-          <MessageSquare className="header-icon" />
+          <Sparkles className="header-icon" size={20} />
           <div>
             <h3>Diálogo Literario</h3>
-            <p>Conversa con «{bookTitle}»</p>
+            <p>{bookTitle} — {authorName}</p>
           </div>
         </div>
+        
         <div className="mode-selector">
           {MODES.map(m => (
-            <button 
+            <button
               key={m.id}
               className={`mode-btn ${mode === m.id ? 'active' : ''}`}
               style={{ '--mode-color': m.color }}
               onClick={() => setMode(m.id)}
-              title={m.desc}
+              title={m.description}
             >
-              <m.icon size={18} />
+              <m.icon size={14} />
               <span>{m.label}</span>
             </button>
           ))}
         </div>
-        <button className="clear-btn" onClick={clearHistory} title="Borrar historial">
-          <Trash2 size={18} />
+
+        <button className="clear-btn" onClick={clearChat} title="Borrar historial">
+          <Trash2 size={16} />
         </button>
       </div>
 
-      <div className="chat-container" ref={scrollRef}>
-        <AnimatePresence>
-          {messages.length === 0 && !loading && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="welcome-box"
-            >
-              <Brain size={48} className="welcome-icon" />
-              <h4>¿Sobre qué quieres dialogar hoy?</h4>
-              <p>Pregúntame sobre la trama, los personajes o las motivaciones ocultas en este libro.</p>
-              <div className="suggested-prompts">
-                <button onClick={() => { setInput('¿Cuál es el tema principal de este libro?'); }}>¿Cuál es el tema principal?</button>
-                <button onClick={() => { setInput('Resúmeme el conflicto del capítulo 3'); }}>Conflicto del Cap. 3</button>
-                <button onClick={() => { setInput('¿Cómo describirías la evolución del protagonista?'); }}>Evolución del protagonista</button>
-              </div>
-            </motion.div>
-          )}
-
-          {messages.map((m, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, x: m.role === 'user' ? 20 : -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={`message-bubble ${m.role}`}
-            >
-              <div className="bubble-content">
-                {m.content}
-              </div>
-              {m.role === 'assistant' && (
+      {/* Chat Area */}
+      <div className="chat-container">
+        {messages.length === 0 && !isLoading ? (
+          <div className="welcome-box">
+            <Bot size={48} className="welcome-icon" />
+            <h3>¿Hablamos sobre el libro?</h3>
+            <p>Pregúntame sobre la trama, el estilo o los misterios de <strong>{bookTitle}</strong>.</p>
+            <div className="suggested-prompts">
+              <button onClick={() => sendMessage(null, "¿Por qué este libro es importante en su género?")}>
+                ¿Por qué es importante este libro?
+              </button>
+              <button onClick={() => sendMessage(null, "Hazme un análisis psicológico del protagonista")}>
+                Análisis del protagonista
+              </button>
+              <button onClick={() => sendMessage(null, "¿Cuál es el tema central que intenta transmitir?")}>
+                ¿Cuál es el tema central?
+              </button>
+            </div>
+          </div>
+        ) : (
+          messages.map((msg, i) => (
+            <div key={i} className={`message-bubble ${msg.role}`}>
+              {msg.content}
+              {msg.role === 'assistant' && (
                 <button 
-                  className={`voice-btn ${speaking === idx ? 'playing' : ''}`}
-                  onClick={() => speak(m.content, idx)}
+                  className={`voice-btn ${isSpeaking === i ? 'playing' : ''}`}
+                  onClick={() => toggleSpeech(msg.content, i)}
                 >
-                  {speaking === idx ? <Pause size={14} /> : <Play size={14} />}
+                  {isSpeaking === i ? <VolumeX size={14} /> : <Volume2 size={14} />}
                 </button>
               )}
-            </motion.div>
-          ))}
-
-          {loading && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="message-bubble assistant loading"
-            >
-              <div className="typing-indicator">
-                <span></span><span></span><span></span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+          ))
+        )}
+        {isLoading && (
+          <div className="message-bubble assistant loading">
+            <div className="typing-indicator">
+              <span></span><span></span><span></span>
+            </div>
+          </div>
+        )}
+        <div ref={chatEndRef} />
       </div>
 
-      <form className="chat-input-area" onSubmit={handleSend}>
-        <input 
-          type="text" 
-          placeholder={`Habla con el ${currentModeInfo.label.toLowerCase()}...`}
+      {/* Input Area */}
+      <form className="chat-input-area" onSubmit={sendMessage}>
+        <input
+          type="text"
+          placeholder={`Habla con el ${MODES.find(m => m.id === mode).label}...`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={loading}
+          disabled={isLoading}
         />
-        <button type="submit" disabled={!input.trim() || loading}>
-          {loading ? <Loader size={20} className="spin" /> : <Send size={20} />}
+        <button type="submit" disabled={!input.trim() || isLoading}>
+          {isLoading ? <RefreshCw className="loader-icon" size={18} /> : <Send size={18} />}
         </button>
       </form>
     </div>
   );
-}
-
-function Loader({ size, className }) {
-  return <div style={{ width: size, height: size }} className={`loader-icon ${className}`}></div>;
 }
