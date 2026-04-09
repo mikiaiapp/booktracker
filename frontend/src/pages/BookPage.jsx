@@ -1046,28 +1046,28 @@ function ProcessingPipeline({ status, isProcessing, onTrigger, onCancel, book = 
   ]
 
   return (
-    <div className=\"pipeline\">
+    <div className="pipeline">
       {steps.map((s, i) => (
         <div key={i} className={`pipeline-step ${s.done ? 'done' : ''}`}>
           {s.done
             ? <CheckCircle size={14} />
             : isProcessing && !s.done && i === steps.findIndex(x => !x.done)
-              ? <Loader size={14} className=\"spin\" />
-              : <div className=\"step-dot\" />
+              ? <Loader size={14} className="spin" />
+              : <div className="step-dot" />
           }
           <span>
-            {s.label}{s.sublabel && <span className=\"step-sublabel\"> ({s.sublabel})</span>}
+            {s.label}{s.sublabel && <span className="step-sublabel"> ({s.sublabel})</span>}
             {isProcessing && i === steps.findIndex(x => !x.done) && status?.model && (
-              <span className=\"pipeline-model-tag\"> [{status.model}]</span>
+              <span className="pipeline-model-tag"> [{status.model}]</span>
             )}
           </span>
           {s.canTrigger && !isProcessing && (
-            <button className=\"trigger-btn\" onClick={s.trigger}>
+            <button className="trigger-btn" onClick={s.trigger}>
               {s.done ? 'Repetir' : s.resumable ? 'Reanudar' : 'Iniciar'}
             </button>
           )}
           {isProcessing && i === steps.findIndex(x => !x.done) && (
-            <button className=\"cancel-btn\" onClick={onCancel} title=\"Cancelar proceso\">
+            <button className="cancel-btn" onClick={onCancel} title="Cancelar proceso">
               Cancelar
             </button>
           )}
