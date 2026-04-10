@@ -35,7 +35,7 @@ export default function Layout() {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand-premium">
-          <span className="brand-text">BookTracker</span>
+          <img src="/logo-premium.png" className="sidebar-logo-img" alt="BookTracker" />
         </div>
 
         <nav className="sidebar-nav">
