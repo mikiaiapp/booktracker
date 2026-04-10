@@ -233,28 +233,7 @@ async def repair_all_events(
 
 # ── Cancelación ────────────────────────────────────────────────
 
-@router.post("/{book_id}/cancel")
-async def cancel_analysis(
-    book_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    from app.workers.queue_manager import cancel as q_cancel
-    
-    # 1. Intentar cancelar en el gestor de colas (Redis + Celery)
-    res = q_cancel(current_user.id, book_id)
-    
-    # 2. Actualizar estado en la base de datos si el libro existe
-    result = await db.execute(select(Book).where(Book.id == book_id))
-    book = result.scalar_one_or_none()
-    if book:
-        # El estado final depende de si ya tenía algo hecho o no
-        if book.status in ("queued", "identifying", "analyzing_structure", "summarizing", "generating_podcast"):
-            book.status = "incomplete"
-            book.error_msg = "Proceso cancelado por el usuario"
-            await db.commit()
-            
-    return {"status": "ok", "result": res}
+# (Endpoint eliminado y movido al final para consolidación)
 
 
 # ── Status ────────────────────────────────────────────────────
