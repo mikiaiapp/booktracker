@@ -6,13 +6,14 @@ Database architecture:
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.models.base import Base
 from app.core.config import settings
+from typing import AsyncGenerator
+import os
 
 
 # ── Global DB engine ──────────────────────────────────────────────────────────
 def get_global_engine():
     db_path = settings.GLOBAL_DB_PATH
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    import os
     return create_async_engine(
         f"sqlite+aiosqlite:///{db_path}",
         echo=False,
@@ -63,14 +64,12 @@ _user_sessions: dict = {}
 
 
 def get_user_db_path(user_id: str) -> str:
-    import os
     return os.path.join(settings.DATABASE_DIR, f"user_{user_id}.db")
 
 
 async def get_user_engine(user_id: str):
     if user_id not in _user_engines:
         db_path = get_user_db_path(user_id)
-        import os
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         engine = create_async_engine(
             f"sqlite+aiosqlite:///{db_path}",
