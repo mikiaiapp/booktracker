@@ -146,7 +146,8 @@ async def verify_2fa(req: TFAVerifyRequest, db: AsyncSession = Depends(get_globa
     # Verify code
     if user.totp_enabled:
         totp = pyotp.TOTP(user.totp_secret)
-        if not totp.verify(req.code, valid_window=1):
+        # Aumentamos valid_window a 3 (desfase permitido de ~90 seg) por si hay desincronización horaria en Docker
+        if not totp.verify(req.code, valid_window=3):
             raise HTTPException(401, "Invalid TOTP code")
     elif user.email_otp_enabled:
         if not user.pending_otp or user.pending_otp != req.code:
