@@ -170,8 +170,8 @@
   object-fit: contain;
   background: transparent !important;
   opacity: 1;
-  mix-blend-mode: screen;
-  filter: brightness(1.2) contrast(1.1);
+  mix-blend-mode: lighten;
+  filter: brightness(1.1) contrast(1.2);
   transition: transform 0.4s ease;
   pointer-events: none;
 }
