@@ -1,376 +1,148 @@
-import json
-import re
 import os
-import httpx
-import asyncio
-from typing import Optional
+import json
+from openai import AsyncOpenAI
+from google import generativeai as genai
 from app.core.config import settings
 
-async def _call_ollama(prompt: str) -> str:
-    url = f"{settings.OLLAMA_URL}/api/generate"
-    payload = {
-        "model": settings.OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "options": {"temperature": 0.5}
-    }
-    timeout = httpx.Timeout(600.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        r = await client.post(url, json=payload)
-        if r.status_code != 200:
-            raise ValueError(f"Ollama Error: {r.text}")
-        return r.json()["response"]
+# --- Helpers de configuración dinámica ---
 
-def _compress_text(text: str) -> str:
-    if not text: return ""
-    return re.sub(r'\s+', ' ', text).strip()
-
-async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False) -> tuple[str, str]:
-    base_m = settings.AI_MODEL.lower()
-    m = base_m
-    used_model = m
+def _get_api_key(service: str, user_keys: dict = None) -> str:
+    """Prioriza la clave del usuario sobre la global."""
+    if user_keys:
+        if service == "gemini" and user_keys.get("gemini"): return user_keys["gemini"]
+        if service == "openai" and user_keys.get("openai"): return user_keys["openai"]
+        if service == "anthropic" and user_keys.get("anthropic"): return user_keys["anthropic"]
     
-    # Enrutamiento de modelos (Ollama, Flash o Mini para tareas rápidas)
-    if is_fast_task:
-        if str(settings.USE_OLLAMA_FOR_FAST_TASKS).lower() == "true":
-            try:
-                # Combinamos system y user para Ollama
-                resp = await _call_ollama(f"{system}\n\n{user}")
-                return resp, f"Ollama ({settings.OLLAMA_MODEL})"
-            except Exception as e:
-                print(f"[AI] Error en Ollama (Falla hacia el cloud...): {e}")
-
-        if "gemini" in base_m:
-            m = settings.AI_MODEL
-        elif "gpt-3" in base_m or "gpt-4" in base_m:
-            m = "gpt-4o-mini"
-    
-    used_model = m
-    timeout = httpx.Timeout(600.0, connect=10.0)
-    
-    if "gemini" in m:
-        api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
-        if not api_key:
-            raise ValueError("No se ha configurado la GEMINI_API_KEY")
-        
-        # Log de diagnóstico (solo los primeros y últimos caracteres por seguridad)
-        print(f"[AI] Gemini Key Check: {api_key[:5]}...{api_key[-5:]} (longitud: {len(api_key)})")
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url="https://generativelanguage.googleapis.com/v1beta/"
-        )
-        
-        models_to_try = [m, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
-        last_e = ""
-        for cur_m in models_to_try:
-            try:
-                print(f"[AI] Intentando Gemini via OpenAI Bridge ({cur_m})...")
-                resp = await client.chat.completions.create(
-                    model=cur_m,
-                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                    max_tokens=max_tokens,
-                    temperature=0.5
-                )
-                return resp.choices[0].message.content, cur_m
-            except Exception as e:
-                last_e = str(e)
-                print(f"[AI] Error Bridge con {cur_m}: {last_e}")
-                if "404" not in last_e: break
-        
-        # Si falla el puente, intentar como último recurso el SDK nativo v1 (no beta)
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = await asyncio.to_thread(model.generate_content, f"{system}\n\n{user}")
-            return response.text, "gemini-1.5-flash"
-        except Exception as e2:
-            print(f"[AI] Fallo total en Gemini: {e2}")
-            # Si hay clave de OpenAI real, saltar a ella
-            oa_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
-            if oa_key:
-                print("[AI] Saltando a OpenAI (GPT-4o-mini) por fallo masivo en Gemini")
-                client_oa = AsyncOpenAI(api_key=oa_key)
-                resp_oa = await client_oa.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]
-                )
-                return resp_oa.choices[0].message.content, "gpt-4o-mini"
-            raise ValueError(f"Gemini Error (Bridge & Native): {last_e}")
-    else:
-        api_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
-        if not api_key:
-            raise ValueError("No se ha configurado la OPENAI_API_KEY")
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=api_key)
-        resp = await client.chat.completions.create(model=m, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
-        return resp.choices[0].message.content, m
-
-async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 5, is_fast_task: bool = False) -> tuple[str, str]:
-    for attempt in range(max_retries):
-        try:
-            return await _call_ai(system, user, max_tokens, is_fast_task)
-        except Exception as e:
-            if attempt == max_retries - 1:
-                print(f"AI Call failed after {max_retries} attempts: {e}")
-                raise
-            err_str = str(e)
-            sleep_time = (attempt + 1) * 4
-            if "Rate limit" in err_str or "Too Many Requests" in err_str or "429" in err_str:
-                sleep_time = 15 + (attempt * 10)  # Da tiempo a que se rellene la cuota de tokens por minuto
-                print(f"Límite de API alcanzado. Defiriendo {sleep_time}s para recuperar cuota... (Intento {attempt+1}/{max_retries})")
-            else:
-                print(f"AI Call error temporal: {e}. Reintentando en {sleep_time}s... (Intento {attempt+1}/{max_retries})")
-            await asyncio.sleep(sleep_time)
-
-def _parse_json(text: str):
-    if not text: return None
-    clean = re.sub(r"```(?:json)?\s*|```\s*", "", text).strip()
-    try: return json.loads(clean)
-    except:
-        match = re.search(r'\[[\s\S]*\]|\{[\s\S]*\}', clean)
-        if match:
-            try: return json.loads(match.group())
-            except: return None
+    if service == "gemini": return settings.GEMINI_API_KEY
+    if service == "openai": return settings.OPENAI_API_KEY
     return None
 
-# --- FUNCIONES DE ALTA INTENSIDAD ---
+def _get_preferred_model(user_keys: dict = None) -> str:
+    """Prioriza el modelo del usuario sobre el global."""
+    if user_keys and user_keys.get("preferred_model"):
+        return user_keys["preferred_model"]
+    return settings.AI_MODEL
 
-async def summarize_chapter(chapter_title, text, book_title, author) -> dict:
-    system = (
-        "Eres un erudito literario de España. Responde siempre en español de España culto. "
-        "Responde SOLO con JSON válido, sin texto extra, usando exactamente estas claves en inglés:\n"
-        '{"summary": "resumen extenso del capítulo (mínimo 250 palabras en español de España)", '
-        '"key_events": ["Primer hito narrativo fundamental", "Segundo hito narrativo...", "Mínimo 3 hitos"]}'
-    )
-    # Compresión masiva: eliminamos espacios extra, tabuladores múltiples y saltos inútiles.
-    # Ampliamos a 30000 caracteres porque el modelo fast es barato y así nunca perdemos el final del capítulo.
-    compressed_text = _compress_text(text)[:30000]
+# --- Motor Central de IA ---
+
+async def _call_ai(prompt: str, system: str = "Eres un experto crítico literario.", model: str = None, api_keys: dict = None):
+    """
+    Función unificada para llamadas a IA con soporte para múltiples proveedores y fallback.
+    """
+    target_model = model or _get_preferred_model(api_keys)
     
-    user = (
-        f"Libro: \u00ab{book_title}\u00bb de {author}.\n"
-        f"Capítulo: \u00ab{chapter_title}\u00bb\n\n"
-        f"Realiza un resumen magistral y minucioso del siguiente texto:\n{compressed_text}"
-    )
-    try:
-        raw, model_name = await _call_ai_with_retry(system, user, 2000, is_fast_task=True)
-        parsed = _parse_json(raw)
-        if not parsed:
-            return None, model_name
-        # Normalizar claves españolas por si la IA no sigue el esquema
-        if "summary" not in parsed:
-            parsed["summary"] = (
-                parsed.get("resumen") or
-                parsed.get("contenido") or
-                parsed.get("texto") or
-                parsed.get("descripcion") or
-                next((v for v in parsed.values() if isinstance(v, str) and len(v) > 100), None)
+    # 1. Intentar GPT-4o o GPT-4o-mini
+    if "gpt-4" in target_model.lower():
+        try:
+            key = _get_api_key("openai", api_keys)
+            if not key: raise Exception("No OpenAI API Key")
+            client = AsyncOpenAI(api_key=key)
+            resp = await client.chat.completions.create(
+                model=target_model,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                temperature=0.7
             )
-        if "key_events" not in parsed:
-            parsed["key_events"] = (
-                parsed.get("eventos_clave") or
-                parsed.get("eventos") or
-                parsed.get("puntos_clave") or
-                parsed.get("momentos_clave") or
-                parsed.get("hitos") or
-                parsed.get("key_moments") or
-                []
-            )
-        # Limpieza básica: asegurar que sean strings y no estén vacíos
-        if isinstance(parsed["key_events"], list):
-            parsed["key_events"] = [str(x).strip() for x in parsed["key_events"] if x and len(str(x)) > 5]
-        return (parsed if parsed.get("summary") else None), model_name
-    except Exception as e:
-        print(f"Error al resumir capítulo {chapter_title}: {e}")
-        return None, "Error"
+            return resp.choices[0].message.content, target_model
+        except Exception as e:
+            print(f"[AI] Error OpenAI ({target_model}): {e}. Reintentando con Gemini...")
+            target_model = "gemini-1.5-flash-latest"
 
-async def get_character_list(all_summaries: str) -> list:
-    if not all_summaries or len(all_summaries.strip()) < 50:
-        return []
-    system = '''Experto literario de España. Identifica TODOS los personajes con nombre propio. Responde SOLO array JSON: [{"name": "...", "is_main": true/false}]'''
-    user = f"""Resúmenes de la trama:\n{all_summaries[:25000]}\n\n---\nBasándote en los resúmenes anteriores, identifica TODOS los personajes."""
-    try:
-        raw, model_name = await _call_ai_with_retry(system, user, 1000, is_fast_task=True)
-        data = _parse_json(raw)
-        res = [c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else []
-        return res, model_name
-    except Exception as e:
-        print(f"Error al obtener listado de personajes: {e}")
-        return [], "Error"
+    # 2. Intentar Gemini
+    if "gemini" in target_model.lower():
+        try:
+            key = _get_api_key("gemini", api_keys)
+            if not key: raise Exception("No Gemini API Key")
+            genai.configure(api_key=key)
+            # Limpiar nombre del modelo si viene con prefijo raro
+            clean_model = target_model.replace("models/", "")
+            m = genai.GenerativeModel(clean_model, system_instruction=system)
+            resp = await m.generate_content_async(prompt)
+            return resp.text, target_model
+        except Exception as e:
+            print(f"[AI] Error Gemini ({target_model}): {e}")
+            # Si Gemini falla (ej. 404), intentar GPT-4o-mini como último recurso si hay clave
+            if "gpt-4" not in target_model.lower():
+                try:
+                    key_oa = _get_api_key("openai", api_keys)
+                    if key_oa:
+                        client = AsyncOpenAI(api_key=key_oa)
+                        resp = await client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                            temperature=0.7
+                        )
+                        return resp.choices[0].message.content, "gpt-4o-mini (fallback)"
+                except: pass
+            raise e
 
-async def extract_key_events_from_summary(summary_text: str) -> list:
-    if not summary_text or len(summary_text.strip()) < 50:
-        return []
-    system = (
-        "Eres un experto en análisis literario de España. "
-        "A partir del resumen de un capítulo que se te proporcionará, extrae exactamente entre 3 y 5 eventos clave (hitos narrativos fundamentes). "
-        "Sé conciso y directo. Responde SOLO con un array JSON de strings: ['Hito 1', 'Hito 2', ...]"
-    )
-    user = f"Resumen del capítulo:\n{summary_text}"
-    try:
-        raw, model_name = await _call_ai_with_retry(system, user, 600, is_fast_task=True)
-        data = _parse_json(raw)
-        if isinstance(data, list):
-            return [str(x).strip() for x in data if x and len(str(x)) > 5], model_name
-        return [], model_name
-    except Exception as e:
-        print(f"Error al extraer eventos clave del resumen: {e}")
-        return [], "Error"
+    raise Exception(f"Modelo {target_model} no soportado o sin configuración.")
 
-async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str) -> dict:
-    if not all_summaries or len(all_summaries.strip()) < 50:
-        return None
-    tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
-    # El system prompt ahora es estático (para no romper la caché entre principales y secundarios)
-    system = "Eres un crítico literario de la RAE de España. Realiza un estudio psicológico MONUMENTAL de personaje. Usa castellano culto de España. Responde SOLO en JSON."
+
+# --- Servicios de Análisis ---
+
+async def summarize_chapter(title: str, text: str, book_title: str, author: str, api_keys: dict = None):
+    system = "Eres un experto en análisis literario. Resumes capítulos de forma profunda y narrativa."
+    prompt = f"Libro: '{book_title}' de {author}. Capítulo: {title}.\n\nTexto:\n{text}\n\n"
+    prompt += "Genera un JSON con: 'summary' (resumen detallado de ~500 palabras) y 'key_events' (lista de los 5 hechos más importantes)."
     
-    # El prompt de usuario pone el contexto pesado PRIMERO para que la IA aplique Prompt Caching.
-    # El prefijo de texto masivo será idéntico en todas las peticiones del bucle.
-    user = f"""Libro: {book_title}.
-Resúmenes de la trama:
-{all_summaries[:25000]}
-
----
-Basándote EXCLUSIVAMENTE en los resúmenes anteriores, analiza con ambición máxima (mínimo 1000 palabras) el personaje {tipo}: {name}.
-Esquema JSON obligatorio:
-{{
-  "name": "{name}",
-  "role": "Análisis profundo de su función en la trama",
-  "description": "Retrato físico detallado (mínimo 150 palabras)",
-  "personality": "Psicología, miedos y valores (mínimo 250 palabras)",
-  "arc": "Evolución y transformación vital (mínimo 250 palabras)",
-  "relationships": {{"Nombre": "Análisis extenso de la relación"}},
-  "key_moments": ["Momento 1 detallado", "Momento 2 detallado"],
-  "quotes": ["Cita clave"]
-}}"""
+    raw, model = await _call_ai(prompt, system=system, api_keys=api_keys)
     try:
-        raw, model_name = await _call_ai_with_retry(system, user, 3500)
-        return _parse_json(raw), model_name
-    except Exception as e:
-        print(f"Error al analizar personaje {name}: {e}")
-        return None, "Error"
-
-async def generate_global_summary(all_summaries: str, book_title: str, author: str) -> str:
-    if not all_summaries or len(all_summaries.strip()) < 50:
-        return ""
-    system = "Académico de la lengua de España. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
-    user = f"""Libro: {book_title} de {author}.
-Resúmenes de la trama:
-{all_summaries[:30000]}
-
----
-Basándote en los resúmenes anteriores, escribe un ensayo literario magistral."""
-    try:
-        return await _call_ai_with_retry(system, user, 5000)
-    except Exception as e:
-        print(f"Error al generar ensayo global: {e}")
-        return "", "Error"
-
-async def generate_mindmap(all_summaries: str, book_title: str) -> dict:
-    if not all_summaries or len(all_summaries.strip()) < 50:
-        return {"center": book_title, "branches": []}
-    system = (
-        "Experto en análisis literario de alto nivel. Responde SOLO con JSON válido.\n"
-        "Estructura exacta requerida:\n"
-        '{"center": "Título", "branches": [{"label": "Nombre rama", "color": "#hexcolor", "children": ["texto 1", "texto 2", ...]}, ...]}\n'
-        "Genera exactamente 8 ramas principales con estos nombres y colores:\n"
-        "1. Trama principal (#4f46e5): Nudos narrativos fundamentales, de principio a fin.\n"
-        "2. Subtramas (#06b6d4): Historias secundarias que complementan la acción.\n"
-        "3. Personajes clave (#f59e0b): Perfiles psicológicos de los protagonistas.\n"
-        "4. Relaciones entre personajes (#d4876b): Dinámicas, conflictos y lealtades.\n"
-        "5. Temas y mensajes (#10b981): Ideas centrales, filosofía y subtexto.\n"
-        "6. Escenarios y época (#ef4444): Ubicación geográfica, contexto histórico y atmósfera.\n"
-        "7. Símbolos y leitmotivs (#ec4899): Objetos o frases que cobran significado especial.\n"
-        "8. Estilo y técnica narrativa (#8b5cf6): Voz del autor, estructura temporal y prosa.\n"
-        "Cada rama debe tener al menos 4-6 hijos con frases completas y profundas."
-    )
-    user = f"""Libro: {book_title}.
-Resúmenes de la trama:
-{all_summaries[:25000]}
-
----
-Basándote en los resúmenes anteriores, genera el mapa mental completo para la obra."""
-    try:
-        raw, model_name = await _call_ai_with_retry(system, user, 5000, is_fast_task=True)
-        return (_parse_json(raw) or {"center": book_title, "branches": []}), model_name
+        data = json.loads(raw.strip().replace('```json', '').replace('```', ''))
+        return data, model
     except:
-        return {"center": book_title, "branches": []}, "Error"
+        return {"summary": raw, "key_events": []}, model
 
-async def generate_podcast_script(book_title, author, summary, chars) -> str:
-    if not summary or len(summary.strip()) < 50:
-        return ""
-    system = (
-        "Eres guionista de un podcast literario de RNE. Escribe en español de España.\n"
-        "El podcast dura exactamente 5 minutos de audio (≈ 750–850 palabras de diálogo real).\n"
-        "Formato OBLIGATORIO — cada línea empieza con el nombre del locutor en mayúsculas seguido de dos puntos:\n"
-        "ANA: [texto]\n"
-        "CARLOS: [texto]\n"
-        "Solo ANA y CARLOS hablan. Sin secciones, sin títulos, sin acotaciones, sin texto narrador.\n"
-        "La conversación debe ser natural, intelectual y amena. Incluye:\n"
-        "1) Presentación del libro y autor\n"
-        "2) Trama principal sin spoilers hasta el 70%\n"
-        "3) Personajes más importantes y su evolución\n"
-        "4) Temas y simbolismo\n"
-        "5) Valoración personal de ANA y CARLOS\n"
-        "6) Recomendación final al oyente\n"
-        "Genera exactamente entre 30 y 40 intervenciones alternadas."
-    )
-    user = (
-        f"Libro: «{book_title}» de {author}.\n"
-        f"Análisis del libro:\n{summary[:10000]}\n\n"
-        f"Personajes principales:\n{str(chars)[:2000]}"
-    )
+async def get_character_list(all_summaries: str, api_keys: dict = None):
+    system = "Extraes personajes de un libro. Devuelves exclusivamente un JSON."
+    prompt = f"Basándote en estos resúmenes, identifica los personajes principales y secundarios:\n\n{all_summaries}\n\n"
+    prompt += "Devuelve un JSON: [{'name': '...', 'is_main': true/false}, ...]"
+    
+    raw, model = await _call_ai(prompt, system=system, api_keys=api_keys)
     try:
-        return await _call_ai_with_retry(system, user, 8000, is_fast_task=True)
-    except Exception as e:
-        print(f"Error al generar guion de podcast: {e}")
-        return "", "Error"
+        return json.loads(raw.strip().replace('```json', '').replace('```', '')), model
+    except:
+        return [], model
 
-async def talk_to_book(book_title: str, author: str, context: str, user_msg: str, mode: str = "default", history: list = None) -> tuple[str, str]:
-    """
-    Diálogo Literario masivo con inyección de contexto.
-    """
-    p_modes = {
-        "author": f"Responde como el autor \u00ab{author}\u00ab de la obra \u00ab{book_title}\u00ab. Defiende tu visión, estilo y motivaciones.",
-        "critic": f"Sé un crítico literario implacable de la RAE. Analiza la obra \u00ab{book_title}\u00ab buscando debilidades, clichés o genialidades ocultas.",
-        "child": f"Explica detalles de \u00ab{book_title}\u00ab como si hablaras con un niño de 10 años, con mucha magia y sencillez.",
-        "default": f"Eres un experto literario erudito en la obra \u00ab{book_title}\u00ab de \u00ab{author}\u00ab. Ayuda al usuario a entender mejor el libro."
-    }
+async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str, api_keys: dict = None):
+    system = "Eres un psicólogo y experto literario analizando la profundidad de los personajes."
+    prompt = f"Analiza en profundidad al personaje '{name}' de '{book_title}'.\n\nContexto:\n{all_summaries}\n\n"
+    prompt += "Devuelve un JSON con: 'description', 'personality', 'arc' (evolución), 'relationships' (dict char:relacion), 'first_appearance', 'quotes' (lista)."
     
-    system = (
-        f"{p_modes.get(mode, p_modes['default'])}\n"
-        "Básate EXCLUSIVAMENTE en el contexto proporcionado abajo (análisis previo de la obra).\n"
-        "Si el usuario pregunta algo que no está en el contexto, sé honesto pero mantén el personaje.\n\n"
-        f"--- CONTEXTO DEL LIBRO ---\n{context[:30000]}"
-    )
-    
-    # Construcción de historial para la IA
-    messages = [{"role": "system", "content": system}]
-    if history:
-        for h in history[-6:]: # Últimos 6 mensajes para no saturar tokens
-            messages.append({"role": h["role"], "content": h["content"]})
-    
-    messages.append({"role": "user", "content": user_msg})
-    
-    # Usamos _call_ai directamente para manejar los mensajes
+    raw, model = await _call_ai(prompt, system=system, api_keys=api_keys)
     try:
-        # En el chat usamos el modelo principal (no el fast) para máxima calidad
-        from app.core.config import settings
-        m = settings.AI_MODEL.lower()
-        if "gemini" in m:
-            # Reutilizamos _call_ai pero enviamos los mensajes combinados para Gemini si es necesario
-            # Pero _call_ai actual ya maneja system + user. Combinamos historial en el user prompt para simplificar
-            hist_str = ""
-            if history:
-                 hist_str = "\n".join([f"{h['role']}: {h['content']}" for h in history[-6:]])
-            combined_user = f"{hist_str}\nUser: {user_msg}"
-            return await _call_ai_with_retry(system, combined_user, 2000)
-        else:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-            resp = await client.chat.completions.create(model=m, max_tokens=2000, messages=messages)
-            return resp.choices[0].message.content, m
-    except Exception as e:
-        print(f"Error en el Diálogo Literario: {e}")
-        return "Lo lamento, ha ocurrido un error en la comunicación literaria.", "Error"
+        return json.loads(raw.strip().replace('```json', '').replace('```', '')), model
+    except:
+        return {"description": raw}, model
+
+async def generate_global_summary(all_summaries: str, book_title: str, author: str, api_keys: dict = None):
+    system = "Eres un ensayista literario de prestigio."
+    prompt = f"Escribe un ensayo profundo sobre '{book_title}' de {author}.\n\nResúmenes de apoyo:\n{all_summaries}\n\n"
+    prompt += "El ensayo debe cubrir: temáticas principales, estilo narrativo, mensaje del autor y una conclusión crítica."
+    return await _call_ai(prompt, system=system, api_keys=api_keys)
+
+async def generate_mindmap(all_summaries: str, book_title: str, api_keys: dict = None):
+    system = "Eres un experto en visualización de datos literarios. Devuelves JSON para Mermaid."
+    prompt = f"Crea una estructura jerárquica para un mapa mental de '{book_title}'.\n{all_summaries}\n"
+    prompt += "Devuelve un JSON con 'nodes' y 'links' estilo D3/Mermaid."
+    
+    raw, model = await _call_ai(prompt, system=system, api_keys=api_keys)
+    try:
+        return json.loads(raw.strip().replace('```json', '').replace('```', '')), model
+    except:
+        return {"error": "JSON invatido"}, model
+
+async def generate_podcast_script(title: str, author: str, global_summary: str, characters: list, api_keys: dict = None):
+    system = "Eres un guionista de podcasts literarios de éxito."
+    prompt = f"Genera un guion de podcast de 5 minutos sobre '{title}' de {author}.\nResumen:\n{global_summary}\nPersonajes:\n{str(characters)}\n"
+    prompt += "El podcast es una conversación entre dos presentadores (Alex y Sam) que destripan el libro."
+    return await _call_ai(prompt, system=system, api_keys=api_keys)
+
+async def extract_key_events_from_summary(summary: str, api_keys: dict = None):
+    """Repara capítulos que perdieron sus hitos."""
+    system = "Extraes hitos clave de resúmenes literarios."
+    prompt = f"Extrae una lista JSON de los 5 hitos más relevantes de este texto:\n\n{summary}"
+    raw, model = await _call_ai(prompt, system=system, api_keys=api_keys)
+    try:
+        return json.loads(raw.strip().replace('```json', '').replace('```', '')), model
+    except:
+        return [], model
