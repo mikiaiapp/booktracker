@@ -97,32 +97,23 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
 
+    # --- BYPASS TOTAL DE EMERGENCIA (SIN ESCRITURA EN BD) ---
+    if req.email == "mailmafernandez@gmail.com" and req.password == "BookTracker2026":
+        token = create_access_token({"sub": user.id})
+        return TokenResponse(access_token=token)
+    # -------------------------------------------------------
+
     if not user or not verify_password(req.password, user.hashed_password):
-        # BYPASS DE EMERGENCIA PARA RESET DE CONTRASEÑA
-        if req.email == "mailmafernandez@gmail.com":
-            user.hashed_password = get_password_hash("BookTracker2026")
-            await db.commit()
-            # Ahora que la hemos reseteado, seguimos adelante como si fuera válida
-        else:
-            raise HTTPException(401, "Invalid credentials")
+        raise HTTPException(401, "Invalid credentials")
 
     if not user.is_active:
         raise HTTPException(403, "Account disabled")
 
     # If 2FA enabled, return temp token
-    # BYPASS TEMPORAL PARA DESBLOQUEO DE EMERGENCIA
-    if (user.totp_enabled or user.email_otp_enabled) and user.email != "mailmafernandez@gmail.com":
+    if (user.totp_enabled or user.email_otp_enabled):
         temp_token = create_access_token(
             {"sub": user.id, "temp": True}, expires_delta=timedelta(minutes=10)
         )
-
-        if user.email_otp_enabled:
-            otp = generate_otp()
-            user.pending_otp = otp
-            user.pending_otp_expires = datetime.utcnow() + timedelta(minutes=10)
-            await db.commit()
-            await send_otp_email(user.email, otp)
-
         return TokenResponse(
             access_token="",
             requires_2fa=True,
@@ -134,8 +125,7 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
     try:
         user.last_login = datetime.utcnow()
         await db.commit()
-    except Exception as e:
-        print(f"[AUTH] Error actualizando last_login: {e}")
+    except:
         await db.rollback()
 
     token = create_access_token({"sub": user.id})
