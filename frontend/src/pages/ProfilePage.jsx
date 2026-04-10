@@ -1,107 +1,112 @@
 import React, { useState } from 'react'
-import { motion } from 'framer-motion'
-import { 
-  RiUserLine, 
-  RiMailLine, 
-  RiShieldFlashLine, 
-  RiLogoutCircleLine, 
-  RiPaletteLine,
-  RiDatabase2Line,
-  RiArrowRightSLine,
-  RiKey2Line
-} from 'react-icons/ri'
-import { useAuthStore } from '../store/authStore'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { useAuthStore } from '../store/authStore'
+import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle, LogOut, Brain, ChevronRight } from 'lucide-react'
+import { api } from '../utils/api'
 import './ProfilePage.css'
 
 export default function ProfilePage() {
-  const { user, logout } = useAuthStore()
+  const user = useAuthStore(s => s.user)
+  const init = useAuthStore(s => s.init)
+  const logout = useAuthStore(s => s.logout)
   const navigate = useNavigate()
-  
-  const formatDate = (dateString) => {
-    if (!dateString) return ''
-    return new Date(dateString).toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
+
+  const [pwForm, setPwForm] = useState({ current: '', new: '', confirm: '' })
+  const [showPw, setShowPw] = useState(false)
+  const [pwLoading, setPwLoading] = useState(false)
+
+  const [qr, setQr] = useState(null)
+  const [totpCode, setTotpCode] = useState('')
+  const [tfaLoading, setTfaLoading] = useState(false)
+  const [tfaEnabled, setTfaEnabled] = useState(!!user?.totp_enabled)
+  const [disablePassword, setDisablePassword] = useState('')
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  const handleChangePassword = async () => {
+    if (pwForm.new !== pwForm.confirm) {
+      toast.error('Las contraseñas no coinciden')
+      return
+    }
+    setPwLoading(true)
+    try {
+      await api.post('/auth/change-password', {
+        current_password: pwForm.current,
+        new_password: pwForm.new,
+      })
+      toast.success('Contraseña actualizada')
+      setPwForm({ current: '', new: '', confirm: '' })
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error al cambiar contraseña')
+    } finally {
+      setPwLoading(false)
+    }
+  }
+
+  const handleSetup2FA = async () => {
+    setTfaLoading(true)
+    try {
+      const { data } = await api.post('/auth/setup-2fa')
+      setQr(data.qr)
+    } catch {
+      toast.error('Error al generar QR')
+    } finally {
+      setTfaLoading(false)
+    }
   }
 
   return (
-    <div className="profile-container">
-      <header className="profile-header">
-        <div className="profile-hero">
-          <motion.div 
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="profile-avatar"
-            style={{ backgroundColor: user?.avatar_color || '#6366f1' }}
-          >
-            {user?.username?.charAt(0).toUpperCase()}
-          </motion.div>
-          <div className="profile-title">
-            <h1>{user?.username}</h1>
-            <p>Miembro desde {formatDate(user?.created_at)}</p>
-          </div>
-        </div>
-      </header>
+    <div className="profile-page">
+      <div className="profile-header">
+        <button className="back-btn" onClick={() => navigate('/')}>
+          <ArrowLeft size={16} /> Biblioteca
+        </button>
+        <h1>Mi perfil</h1>
+      </div>
 
       <div className="profile-grid">
-        <section className="profile-card info-card">
-          <h2><RiUserLine /> Información de Cuenta</h2>
-          <div className="info-list">
-            <div className="info-item">
-              <RiMailLine className="icon" />
-              <div className="details">
-                <span className="label">Correo Electrónico</span>
-                <span className="value">{user?.email}</span>
-              </div>
+        <div className="profile-card">
+          <div className="profile-avatar">
+            {user?.username?.[0]?.toUpperCase()}
+          </div>
+          <div className="profile-info">
+            <h2>{user?.username}</h2>
+            <p>{user?.email}</p>
+          </div>
+          <button className="profile-logout-btn" onClick={handleLogout}>
+            <LogOut size={16} />
+            <span>Cerrar sesión</span>
+          </button>
+        </div>
+
+        <div className="profile-section ai-settings-card" onClick={() => navigate('/profile/api')}>
+          <div className="section-header">
+            <Brain size={16} className="text-primary" />
+            <h3>Configuración de IA</h3>
+            <span className="badge-new">NUEVO</span>
+          </div>
+          <div className="ai-card-content">
+            <p>Configura tus propias claves de Gemini y OpenAI para análisis ilimitados.</p>
+            <div className="ai-card-footer">
+              <span>Gestionar API Keys</span>
+              <ChevronRight size={16} />
             </div>
-            <div className="info-item">
-              <RiShieldFlashLine className="icon" />
-              <div className="details">
-                <span className="label">Seguridad 2FA</span>
-                <span className="value">{user?.totp_enabled ? 'Activado' : 'Desactivado'}</span>
-              </div>
-            </div>
           </div>
-        </section>
+        </div>
 
-        {/* Nueva Tarjeta de API Settings */}
-        <motion.section 
-          whileHover={{ y: -5 }}
-          onClick={() => navigate('/profile/api')}
-          className="profile-card api-card"
-        >
-          <div className="card-header">
-            <h2><RiKey2Line /> Configuración de IA</h2>
-            <RiArrowRightSLine className="arrow" />
+        <div className="profile-section">
+          <div className="section-header">
+            <Key size={16} />
+            <h3>Seguridad</h3>
           </div>
-          <p className="card-desc">Personaliza tus claves de Gemini, OpenAI y Anthropic para un análisis de libros privado.</p>
-          <div className="api-status">
-            <span className={`status-pill ${user?.has_gemini ? 'active' : ''}`}>Gemini</span>
-            <span className={`status-pill ${user?.has_openai ? 'active' : ''}`}>OpenAI</span>
-            <span className={`status-pill ${user?.preferred_model ? 'active' : ''}`}>Auto-Model</span>
-          </div>
-        </motion.section>
-
-        <section className="profile-card preferences-card">
-          <h2><RiPaletteLine /> Apariencia</h2>
-          <p>Personaliza tu experiencia visual en BookTracker.</p>
-          <div className="pref-action">
-            <button className="btn-secondary">Editar Perfil</button>
-          </div>
-        </section>
-
-        <section className="profile-card system-card">
-          <h2><RiDatabase2Line /> Datos y Privacidad</h2>
-          <p>Controla tus datos literarios y configuraciones del sistema.</p>
-          <div className="pref-action">
-            <button className="btn-danger" onClick={logout}>
-              <RiLogoutCircleLine /> Cerrar Sesión
-            </button>
-          </div>
-        </section>
+          <button className="profile-btn primary" onClick={() => navigate('/profile')}>
+             Ajustes de Seguridad
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -1,31 +1,19 @@
 import React, { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  RiKey2Fill, 
-  RiOpenaiFill, 
-  RiGoogleFill, 
-  RiRobot2Fill,
-  RiSave2Fill,
-  RiInformationLine,
-  RiArrowLeftFill,
-  RiLockPasswordFill,
-  RiFlashlightFill
-} from 'react-icons/ri'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../utils/api'
 import toast from 'react-hot-toast'
+import { ArrowLeft, Cpu, Save, ExternalLink, Key, Zap, Info } from 'lucide-react'
+import { api } from '../utils/api'
 import './APISettingsPage.css'
 
 export default function APISettingsPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  
   const [settings, setSettings] = useState({
     gemini_api_key: '',
     openai_api_key: '',
     anthropic_api_key: '',
-    preferred_model: 'gemini-1.5-flash-latest'
+    preferred_model: 'gemini-1.5-flash'
   })
 
   useEffect(() => {
@@ -38,13 +26,9 @@ export default function APISettingsPage() {
       setSettings(prev => ({
         ...prev,
         ...data,
-        // Si el backend devuelve keys enmascaradas (ej. "AIza...RIa"), las dejamos vacías
-        // o las tratamos como placeholders para no sobreescribir con basura
-        gemini_api_key: data.gemini_api_key?.includes('...') ? '' : data.gemini_api_key,
-        openai_api_key: data.openai_api_key?.includes('...') ? '' : data.openai_api_key,
       }))
     } catch (err) {
-      toast.error('Error al cargar ajustes')
+      toast.error('Error al cargar configuración')
     } finally {
       setLoading(false)
     }
@@ -54,15 +38,14 @@ export default function APISettingsPage() {
     e.preventDefault()
     setSaving(true)
     try {
-      // Filtrar campos vacíos para no borrar lo que ya está guardado (si son placeholders)
-      const payload = { ...settings }
-      if (!payload.gemini_api_key) delete payload.gemini_api_key
-      if (!payload.openai_api_key) delete payload.openai_api_key
-      if (!payload.anthropic_api_key) delete payload.anthropic_api_key
-      
-      await api.put('/users/settings', payload)
+      const toSend = { ...settings }
+      if (settings.gemini_api_key?.includes('...')) delete toSend.gemini_api_key
+      if (settings.openai_api_key?.includes('...')) delete toSend.openai_api_key
+      if (settings.anthropic_api_key?.includes('...')) delete toSend.anthropic_api_key
+
+      await api.put('/users/settings', toSend)
       toast.success('Configuración guardada correctamente')
-      navigate('/profile')
+      fetchSettings()
     } catch (err) {
       toast.error('Error al guardar configuración')
     } finally {
@@ -70,122 +53,107 @@ export default function APISettingsPage() {
     }
   }
 
-  if (loading) return (
-    <div className="api-settings-loading">
-      <motion.div 
-        animate={{ rotate: 360 }} 
-        transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-        className="loader-spinner"
-      />
-    </div>
-  )
+  if (loading) {
+    return <div className="api-settings-page loading">Cargando configuración...</div>
+  }
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="api-settings-container"
-    >
-      <header className="api-settings-header">
+    <div className="api-settings-page">
+      <div className="api-header">
         <button className="back-btn" onClick={() => navigate('/profile')}>
-          <RiArrowLeftFill />
+          <ArrowLeft size={16} /> Perfil
         </button>
-        <div className="header-text">
-          <h1>Configuración de IA</h1>
-          <p>Gestiona tus propias llaves de API para un análisis privado y personalizado</p>
-        </div>
-      </header>
-
-      <section className="api-info-card">
-        <RiInformationLine className="info-icon" />
-        <div className="info-conent">
-          <h3>¿Cómo funciona?</h3>
-          <p>
-            Al introducir tus propias llaves, BookTracker utilizará tu cuota personal para los análisis. 
-            Esto te permite usar modelos más potentes (como GPT-4o) y garantiza que tus datos se procesen 
-            aisladamente. Las llaves se enmascaran una vez guardadas por seguridad.
-          </p>
-        </div>
-      </section>
-
-      <form className="api-form" onSubmit={handleSave}>
-        
-        {/* Google Gemini */}
-        <div className="form-group">
-          <label>
-            <RiGoogleFill className="brand-icon gemini" />
-            Google Gemini API Key
-          </label>
-          <div className="input-wrapper">
-            <RiKey2Fill className="field-icon" />
-            <input 
-              type="password"
-              placeholder="AIzaSy..."
-              value={settings.gemini_api_key}
-              onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
-            />
-          </div>
-          <span className="helper">Obtén tu clave en <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer">Google AI Studio</a></span>
-        </div>
-
-        {/* OpenAI */}
-        <div className="form-group">
-          <label>
-            <RiOpenaiFill className="brand-icon openai" />
-            OpenAI API Key
-          </label>
-          <div className="input-wrapper">
-            <RiKey2Fill className="field-icon" />
-            <input 
-              type="password"
-              placeholder="sk-..."
-              value={settings.openai_api_key}
-              onChange={e => setSettings({...settings, openai_api_key: e.target.value})}
-            />
-          </div>
-          <span className="helper">Obtén tu clave en el <a href="https://platform.openai.com/" target="_blank" rel="noreferrer">Dashboard de OpenAI</a></span>
-        </div>
-
-        {/* Modelo Preferido */}
-        <div className="form-group">
-          <label>
-            <RiFlashlightFill className="brand-icon preferred" />
-            Modelo de IA Preferido
-          </label>
-          <div className="input-wrapper">
-            <RiRobot2Fill className="field-icon" />
-            <select 
-              value={settings.preferred_model}
-              onChange={e => setSettings({...settings, preferred_model: e.target.value})}
-            >
-              <optgroup label="Google Gemini (Rápido y Gratuito)">
-                <option value="gemini-1.5-flash-latest">Gemini 1.5 Flash (Recomendado)</option>
-                <option value="gemini-1.5-pro-latest">Gemini 1.5 Pro (Más lento, más inteligente)</option>
-              </optgroup>
-              <optgroup label="OpenAI (Preciso)">
-                <option value="gpt-4o-mini">GPT-4o Mini (Económico)</option>
-                <option value="gpt-4o">GPT-4o (Máxima Calidad)</option>
-              </optgroup>
-            </select>
+        <div className="title-area">
+          <Cpu className="title-icon" />
+          <div>
+            <h1>Configuración de Inteligencia Artificial</h1>
+            <p className="subtitle">Gestiona tus propias claves de API para un análisis personalizado y sin límites.</p>
           </div>
         </div>
+      </div>
 
-        <motion.button 
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          type="submit" 
-          className="save-btn"
-          disabled={saving}
-        >
-          {saving ? 'Guardando...' : <><RiSave2Fill /> Guardar Configuración</>}
-        </motion.button>
+      <div className="api-container">
+        <form onSubmit={handleSave} className="api-form">
+          <div className="settings-section">
+            <div className="section-info">
+              <Zap size={18} className="text-primary" />
+              <h3>Modelo Preferido</h3>
+            </div>
+            <p className="section-desc">Selecciona qué cerebro quieres que lidere el análisis de tus libros.</p>
+            <div className="model-selector">
+              {[
+                { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Rápido, económico y eficiente.', color: '#4f46e5' },
+                { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Máxima capacidad analítica y razonamiento.', color: '#8b5cf6' },
+                { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Equilibrio perfecto entre coste y calidad.', color: '#10b981' },
+                { id: 'gpt-4o', name: 'GPT-4o', desc: 'El estándar de oro en inteligencia general.', color: '#059669' }
+              ].map(model => (
+                <label key={model.id} className={`model-card ${settings.preferred_model === model.id ? 'active' : ''}`}>
+                  <input 
+                    type="radio" 
+                    name="preferred_model" 
+                    value={model.id} 
+                    checked={settings.preferred_model === model.id}
+                    onChange={e => setSettings({...settings, preferred_model: e.target.value})}
+                  />
+                  <div className="model-name">{model.name}</div>
+                  <div className="model-desc">{model.desc}</div>
+                </label>
+              ))}
+            </div>
+          </div>
 
-      </form>
+          <div className="settings-section">
+            <div className="section-info">
+              <Key size={18} className="text-secondary" />
+              <h3>Claves de API</h3>
+            </div>
+            <p className="section-desc">Tus claves se cifran en la base de datos y se usan exclusivamente para tus procesos.</p>
+            <div className="api-inputs-grid">
+              <div className="form-field">
+                <div className="field-label-row">
+                  <label>Google Gemini API Key</label>
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="external-link">
+                    Consigue tu clave gratis <ExternalLink size={12} />
+                  </a>
+                </div>
+                <input 
+                  type="password" 
+                  value={settings.gemini_api_key || ''} 
+                  onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
+                  placeholder="Introduce tu clave de Google AI Studio"
+                  className={settings.gemini_api_key?.includes('...') ? 'masked' : ''}
+                />
+              </div>
+              <div className="form-field">
+                <div className="field-label-row">
+                  <label>OpenAI API Key</label>
+                  <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="external-link">
+                    Gestionar en OpenAI <ExternalLink size={12} />
+                  </a>
+                </div>
+                <input 
+                  type="password" 
+                  value={settings.openai_api_key || ''} 
+                  onChange={e => setSettings({...settings, openai_api_key: e.target.value})}
+                  placeholder="sk-..."
+                  className={settings.openai_api_key?.includes('...') ? 'masked' : ''}
+                />
+              </div>
+            </div>
+          </div>
 
-      <footer className="api-security-notice">
-        <RiLockPasswordFill />
-        <span>Tus credenciales se cifran y nunca se comparten con otros usuarios.</span>
-      </footer>
-    </motion.div>
+          <div className="info-banner">
+            <Info size={16} />
+            <p>Si dejas los campos vacíos, el sistema usará las claves por defecto de BookTracker (si están disponibles).</p>
+          </div>
+
+          <div className="form-actions">
+            <button type="submit" className="save-btn" disabled={saving}>
+              {saving ? 'Guardando...' : <><Save size={18} /> Guardar Privacidad</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
