@@ -65,7 +65,7 @@ def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, fo
             if not book: 
                 print(f"[WORKER] ERROR: Libro {book_id} no encontrado en la DB")
                 return
-            update_progress(user_id, book_id, "phase1", 10, "Identificando libro...")
+            update_progress(user_id, book_id, "phase1", 10, "Identificando libro...", model=settings.AI_MODEL)
             print(f"[WORKER] Llamando a identify_book para {book.title}")
             meta = await identify_book(book.file_path, book.file_type, book.title, os.path.join(settings.COVERS_DIR, user_id), book_id)
             for k, v in meta.items():
@@ -104,7 +104,7 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase2", 5, "Analizando estructura...")
+            update_progress(user_id, book_id, "phase2", 5, "Analizando estructura...", model=settings.AI_MODEL)
             struct = await parse_book_structure(book.file_path, book.file_type)
             await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
             for i, chap in enumerate(struct.get("chapters", [])):
@@ -143,7 +143,7 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase3", 5, "Analizando personajes...")
+            update_progress(user_id, book_id, "phase3", 5, "Iniciando análisis de personajes...", model=settings.AI_MODEL)
             all_summaries = await _get_summaries_text(db, book_id)
             await db.execute(delete(Character).where(Character.book_id == book_id))
             await db.commit()
@@ -192,7 +192,7 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase4", 5, "Generando resumen global...")
+            update_progress(user_id, book_id, "phase4", 5, "Generando resumen global...", model=settings.AI_MODEL)
             
             if chain and book.global_summary and len(book.global_summary.strip()) > 10:
                 if not book.mindmap_data:
@@ -202,7 +202,7 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
                 return
 
             all_summaries = await _get_summaries_text(db, book_id)
-            update_progress(user_id, book_id, "phase4", 85, "Redactando ensayo...")
+            update_progress(user_id, book_id, "phase4", 85, "Redactando ensayo...", model=settings.AI_MODEL)
             res_global, m_global = await generate_global_summary(all_summaries, book.title, book.author)
             update_progress(user_id, book_id, "phase4", 95, f"Resumen finalizado [{m_global}]", model=m_global)
             book.global_summary = res_global
@@ -224,7 +224,7 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase5", 5, "Generando mapa mental...")
+            update_progress(user_id, book_id, "phase5", 5, "Generando mapa mental...", model=settings.AI_MODEL)
             
             if chain and book.mindmap_data and len(str(book.mindmap_data)) > 50:
                 if not book.podcast_audio_path:
@@ -234,7 +234,7 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
                 return
 
             all_summaries = await _get_summaries_text(db, book_id)
-            update_progress(user_id, book_id, "phase5", 90, "Estructurando mapa...")
+            update_progress(user_id, book_id, "phase2", 90, "Estructura finalizada", model=settings.AI_MODEL)
             res_map, m_map = await generate_mindmap(all_summaries, book.title)
             update_progress(user_id, book_id, "phase5", 100, f"Mapa finalizado [{m_map}]", model=m_map)
             book.mindmap_data = res_map
@@ -256,12 +256,12 @@ def process_book_phase6(self, user_id: str, book_id: str):
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            update_progress(user_id, book_id, "phase6", 5, "Generando podcast...")
+            update_progress(user_id, book_id, "phase6", 5, "Generando podcast...", model=settings.AI_MODEL)
             
             if not (book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script):
                 char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
                 chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
-                update_progress(user_id, book_id, "phase6", 50, "Redactando guion del podcast...")
+                update_progress(user_id, book_id, "phase6", 5, "Generando guion del podcast...", model=settings.AI_MODEL)
                 script, m_script = await generate_podcast_script(book.title, book.author, book.global_summary, chars)
                 update_progress(user_id, book_id, "phase6", 95, f"Sincronizando audio [{m_script}]", model=m_script)
                 book.podcast_script = script
