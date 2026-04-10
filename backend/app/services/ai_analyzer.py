@@ -49,35 +49,44 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     timeout = httpx.Timeout(600.0, connect=10.0)
     
     if "gemini" in m:
-        # Priorizar settings pero limpiar posibles cadenas vacías de env vars
         api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip()
         if not api_key:
             raise ValueError("No se ha configurado la GEMINI_API_KEY")
             
-        # Fallback de modelos para evitar 404 de Google
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        # Fallback de modelos usando el SDK oficial
         models_to_try = [m]
         if "flash" in m: models_to_try.append("gemini-1.5-pro")
         models_to_try.append("gemini-pro")
         
-        last_error = ""
+        last_err = ""
         for cur_m in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{cur_m}:generateContent?key={api_key}"
-            payload = {"contents": [{"parts": [{"text": f"{system}\n\n{user}"}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.5}}
-            print(f"[AI] Intentando Gemini ({cur_m})...")
-            
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                r = await client.post(url, json=payload)
-                if r.status_code == 200:
-                    data = r.json()
-                    if not data.get("candidates") or not data["candidates"][0].get("content"):
-                        return "La IA bloqueó la respuesta por seguridad.", cur_m
-                    return data["candidates"][0]["content"]["parts"][0]["text"], cur_m
+            try:
+                print(f"[AI] Llamando a Gemini SDK ({cur_m})...")
+                model = genai.GenerativeModel(cur_m)
+                # Google SDK usa hilos para bloqueos, usaremos la versión asíncrona si es posible
+                # pero google-generativeai usa un cliente asíncrono interno.
+                response = await asyncio.to_thread(
+                    model.generate_content,
+                    f"{system}\n\n{user}",
+                    generation_config=genai.types.GenerationConfig(
+                        max_output_tokens=max_tokens,
+                        temperature=0.5
+                    )
+                )
                 
-                last_error = r.text
-                print(f"[AI] Error {cur_m} ({r.status_code}): {last_error}")
-                if r.status_code != 404: break
+                if not response.text:
+                    return "La respuesta de IA está vacía o bloqueada.", cur_m
+                
+                return response.text, cur_m
+            except Exception as e:
+                last_err = str(e)
+                print(f"[AI] Error SDK con {cur_m}: {last_err}")
+                if "404" not in last_err: break
         
-        raise ValueError(f"Gemini API Error: {last_error}")
+        raise ValueError(f"Gemini SDK Error: {last_err}")
     else:
         api_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
         if not api_key:
