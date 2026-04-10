@@ -11,6 +11,7 @@ import {
   RefreshCw,
   BookOpen,
   Mic
+} from 'lucide-react';
 import { chatAPI } from '../utils/api';
 import toast from 'react-hot-toast';
 import './LiteraryDialogue.css';
