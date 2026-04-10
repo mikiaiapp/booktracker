@@ -166,17 +166,14 @@
 }
 
 .sidebar-logo-footer-large {
-  height: 80px;
+  height: 120px;
   width: auto;
   object-fit: contain;
   background: transparent !important;
-  opacity: 0.7;
-  transition: opacity 0.3s;
+  opacity: 1;
+  filter: drop-shadow(0 0 12px rgba(201, 169, 110, 0.4)) brightness(1.1);
+  transition: transform 0.4s ease;
   pointer-events: none;
-}
-
-.sidebar:hover .sidebar-logo-footer-large {
-  opacity: 0.95;
 }
 
 .sidebar-branding-v2 {
