@@ -67,6 +67,9 @@ async def init_global_db():
 
 
 async def get_global_db() -> AsyncGenerator[AsyncSession, None]:
+    global _global_session_factory
+    if _global_session_factory is None:
+        await init_global_db()
     async with _global_session_factory() as session:
         yield session
 
