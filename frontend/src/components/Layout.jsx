@@ -35,7 +35,7 @@ export default function Layout() {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-brand-premium">
-          <img src="/logo-premium.png" className="sidebar-logo-img" alt="BookTracker" />
+          <span className="brand-text">BookTracker</span>
         </div>
 
         <nav className="sidebar-nav">
@@ -58,7 +58,7 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-branding-v3">
-          <img src="/logo-dark.png" alt="Logo Premium" className="sidebar-logo-footer-large" style={{ background: 'transparent' }} />
+          <img src="/logo-premium.png" alt="Logo Premium" className="sidebar-logo-footer-large" />
         </div>
 
         <div className="sidebar-footer">
