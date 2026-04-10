@@ -26,6 +26,8 @@ export default function APISettingsPage() {
       setSettings(prev => ({
         ...prev,
         ...data,
+        // Si el backend devuelve keys enmascaradas, las mantenemos como placeholder visual
+        // Pero al editar, el usuario deberá meter la nueva o dejar vacío
       }))
     } catch (err) {
       toast.error('Error al cargar configuración')
@@ -38,6 +40,7 @@ export default function APISettingsPage() {
     e.preventDefault()
     setSaving(true)
     try {
+      // Solo enviamos lo que el usuario haya escrito (si es enmascarado, no lo enviamos para no sobreescribir con basura)
       const toSend = { ...settings }
       if (settings.gemini_api_key?.includes('...')) delete toSend.gemini_api_key
       if (settings.openai_api_key?.includes('...')) delete toSend.openai_api_key
@@ -74,6 +77,7 @@ export default function APISettingsPage() {
 
       <div className="api-container">
         <form onSubmit={handleSave} className="api-form">
+          
           <div className="settings-section">
             <div className="section-info">
               <Zap size={18} className="text-primary" />
@@ -108,6 +112,7 @@ export default function APISettingsPage() {
               <h3>Claves de API</h3>
             </div>
             <p className="section-desc">Tus claves se cifran en la base de datos y se usan exclusivamente para tus procesos.</p>
+            
             <div className="api-inputs-grid">
               <div className="form-field">
                 <div className="field-label-row">
@@ -124,6 +129,7 @@ export default function APISettingsPage() {
                   className={settings.gemini_api_key?.includes('...') ? 'masked' : ''}
                 />
               </div>
+
               <div className="form-field">
                 <div className="field-label-row">
                   <label>OpenAI API Key</label>
@@ -139,6 +145,18 @@ export default function APISettingsPage() {
                   className={settings.openai_api_key?.includes('...') ? 'masked' : ''}
                 />
               </div>
+
+              <div className="form-field">
+                <div className="field-label-row">
+                  <label>Anthropic API Key (Llegará pronto)</label>
+                </div>
+                <input 
+                  type="password" 
+                  value={settings.anthropic_api_key || ''} 
+                  disabled
+                  placeholder="Soporte para Claude en camino..."
+                />
+              </div>
             </div>
           </div>
 
@@ -152,6 +170,7 @@ export default function APISettingsPage() {
               {saving ? 'Guardando...' : <><Save size={18} /> Guardar Privacidad</>}
             </button>
           </div>
+
         </form>
       </div>
     </div>

@@ -138,6 +138,6 @@ export const queueAPI = {
 // Chat Literario
 export const chatAPI = {
   getHistory: (bookId) => api.get(`/chat/${bookId}/history`),
-  sendMessage: (bookId, message, mode) => api.post(`/chat/${bookId}/send`, { message, mode }),
+  sendMessage: (bookId, message, mode, model) => api.post(`/chat/${bookId}/send`, { message, mode, model }),
   clearHistory: (bookId) => api.delete(`/chat/${bookId}/clear`),
 }

@@ -22,6 +22,14 @@ const MODES = [
   { id: 'child', label: 'Para niños', icon: Mic, color: '#10b981', description: 'Explicación sencilla (10 años)' },
 ];
 
+const AI_MODELS = [
+  { id: 'auto', label: 'Auto (Recomendado)', color: '#6366f1' },
+  { id: 'gemini-1.5-flash', label: 'Gemini Flash', color: '#4f46e5' },
+  { id: 'gemini-1.5-pro', label: 'Gemini Pro', color: '#8b5cf6' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini', color: '#10b981' },
+  { id: 'gpt-4o', label: 'GPT-4o', color: '#059669' },
+];
+
 export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -30,6 +38,8 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
   const [isSpeaking, setIsSpeaking] = useState(null);
   const [isRecording, setIsRecording] = useState(false);
   const [activeModel, setActiveModel] = useState(null);
+  const [selectedModel, setSelectedModel] = useState('auto');
+  const [isFallback, setIsFallback] = useState(false);
   const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
 
@@ -68,7 +78,8 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
     setIsLoading(true);
 
     try {
-      const { data } = await chatAPI.sendMessage(bookId, textToSend, mode);
+      setIsFallback(false);
+      const { data } = await chatAPI.sendMessage(bookId, textToSend, mode, selectedModel);
       
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -76,11 +87,16 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
         model: data.model
       }]);
       setActiveModel(data.model);
+      
+      // Detectar si el backend usó un fallback
+      if (selectedModel !== 'auto' && data.model !== selectedModel) {
+        setIsFallback(true);
+      }
     } catch (err) {
       console.error("Error enviando mensaje:", err);
       setMessages(prev => [...prev, { 
         role: 'assistant', 
-        content: "Lo siento, mi conexión con el servidor de inteligencia artificial ha tenido un problema. Por favor, asegúrate de tener configurada la API KEY de Gemini." 
+        content: "Lo siento, ha ocurrido un error en la comunicación literaria. Intenta seleccionar otro modelo (ChatGPT o Gemini) en el selector superior." 
       }]);
     } finally {
       setIsLoading(false);
@@ -156,12 +172,23 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
           </div>
         </div>
 
-        {activeModel && (
-          <div className="active-model-indicator">
-            <div className="model-pulse"></div>
-            <span>IA: {activeModel}</span>
-          </div>
-        )}
+        <div className="model-selector-container">
+          <select 
+            value={selectedModel} 
+            onChange={(e) => setSelectedModel(e.target.value)}
+            className={`ai-model-select ${isFallback ? 'fallback-active' : ''}`}
+            disabled={isLoading}
+          >
+            {AI_MODELS.map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+          {activeModel && !isLoading && (
+            <div className={`active-model-badge ${isFallback ? 'fallback' : ''}`}>
+              {isFallback ? 'Plan B: ' : ''}{activeModel}
+            </div>
+          )}
+        </div>
         
         <div className="mode-selector">
           {MODES.map(m => (

@@ -14,6 +14,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     message: str
     mode: str = "default"
+    model: Optional[str] = "auto"
 
 class MessageSchema(BaseModel):
     role: str
@@ -58,7 +59,12 @@ async def send_chat_message(book_id: str, req: ChatRequest, user: User = Depends
 
         # 5. Llamar a la IA
         from app.services.ai_analyzer import talk_to_book
-        ai_resp, used_m = await talk_to_book(book.title, book.author, context, req.message, req.mode, history)
+        api_keys = {
+            "gemini": user.gemini_api_key,
+            "openai": user.openai_api_key,
+            "preferred_model": req.model if req.model != "auto" else user.preferred_model
+        }
+        ai_resp, used_m = await talk_to_book(book.title, book.author, context, req.message, req.mode, history, api_keys=api_keys)
 
         # 6. Guardar respuesta IA
         ai_msg = ChatMessage(book_id=book_id, role="assistant", content=ai_resp, mode=req.mode, model=used_m)

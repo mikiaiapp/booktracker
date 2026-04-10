@@ -13,7 +13,6 @@ import os
 # ── Global DB engine ──────────────────────────────────────────────────────────
 def get_global_engine():
     db_path = settings.GLOBAL_DB_PATH
-    import os
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     return create_async_engine(
         f"sqlite+aiosqlite:///{db_path}",
@@ -80,15 +79,12 @@ _user_sessions: dict = {}
 
 
 def get_user_db_path(user_id: str) -> str:
-    import os
     return os.path.join(settings.DATABASE_DIR, f"user_{user_id}.db")
 
 
 async def get_user_engine(user_id: str):
     if user_id not in _user_engines:
         db_path = get_user_db_path(user_id)
-        import os
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
         engine = create_async_engine(
             f"sqlite+aiosqlite:///{db_path}",
             echo=False,

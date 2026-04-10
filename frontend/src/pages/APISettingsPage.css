@@ -15,7 +15,7 @@
 .api-header .back-btn {
   background: none;
   border: none;
-  color: var(--slate);
+  color: var(--ink-light);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -27,7 +27,7 @@
 }
 
 .api-header .back-btn:hover {
-  color: var(--gold);
+  color: var(--primary);
 }
 
 .title-area {
@@ -39,18 +39,19 @@
 .title-icon {
   width: 48px;
   height: 48px;
-  color: var(--gold);
-  background: var(--paper-dark);
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.1);
   padding: 10px;
   border-radius: 12px;
 }
 
 .api-header h1 {
-  font-size: 2.25rem;
-  font-family: var(--font-display);
-  font-weight: 400;
-  margin: 0.25rem 0;
-  color: var(--ink);
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0.5rem 0;
+  background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
@@ -67,7 +68,7 @@
 }
 
 .api-form {
-  padding: 1.5rem;
+  padding: 2.5rem;
 }
 
 .settings-section {
@@ -83,14 +84,12 @@
 
 .section-info h3 {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.35rem;
-  font-weight: 400;
-  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 700;
 }
 
 .section-desc {
-  color: var(--slate);
+  color: #94a3b8;
   font-size: 0.9rem;
   margin-bottom: 1.5rem;
 }
@@ -98,8 +97,8 @@
 /* Model Selector */
 .model-selector {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
 }
 
 .model-card {
@@ -163,7 +162,7 @@
 
 .external-link {
   font-size: 0.75rem;
-  color: var(--gold-dark);
+  color: #6366f1;
   text-decoration: none;
   display: flex;
   align-items: center;
@@ -178,36 +177,34 @@
 .api-form input[type="text"] {
   width: 100%;
   padding: 0.8rem 1rem;
-  border: 1.5px solid var(--paper-dark);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--paper);
-  font-family: var(--font-body);
-  color: var(--ink);
-  transition: border-color 0.2s, background 0.2s;
+  background: var(--paper-light);
+  font-family: monospace;
+  transition: border-color 0.2s;
 }
 
 .api-form input:focus {
   outline: none;
-  border-color: var(--gold);
-  background: var(--white);
+  border-color: var(--primary);
+  background: white;
 }
 
 .api-form input.masked {
-  color: var(--slate);
+  color: var(--ink-light);
   letter-spacing: 2px;
 }
 
 .info-banner {
-  background: rgba(201, 169, 110, 0.08);
+  background: rgba(99, 102, 241, 0.05);
   border-radius: 8px;
   padding: 1rem;
   display: flex;
   gap: 0.75rem;
   align-items: center;
-  margin-bottom: 2.5rem;
-  color: var(--gold-dark);
+  margin-bottom: 2rem;
+  color: var(--primary);
   font-size: 0.9rem;
-  border: 1px solid rgba(201, 169, 110, 0.2);
 }
 
 .info-banner p { margin: 0; }
@@ -221,20 +218,19 @@
   background: var(--ink);
   color: var(--paper);
   border: none;
-  padding: 0.85rem 2rem;
-  border-radius: var(--radius);
+  padding: 1rem 2rem;
+  border-radius: 8px;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 0.75rem;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: all 0.2s;
 }
 
 .save-btn:hover:not(:disabled) {
-  background: #1a1a1a;
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 .save-btn:disabled {
@@ -248,8 +244,7 @@
 }
 
 @media (max-width: 768px) {
-  .api-settings-page { padding: 1.5rem 1rem; }
-  .api-form { padding: 1rem 0; }
+  .api-settings-page { padding: 1rem; }
+  .api-form { padding: 1.5rem; }
   .model-selector { grid-template-columns: 1fr; }
-  .api-header h1 { font-size: 1.75rem; }
 }
