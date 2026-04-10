@@ -4,23 +4,15 @@ Database architecture:
 - Per-user DB: books, chapters, characters, analysis ({user_id}.db)
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, Float, JSON
-from sqlalchemy import func
-from typing import AsyncGenerator
-import os
-
+from app.models.base import Base
 from app.core.config import settings
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 # ── Global DB engine ──────────────────────────────────────────────────────────
 def get_global_engine():
     db_path = settings.GLOBAL_DB_PATH
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    import os
     return create_async_engine(
         f"sqlite+aiosqlite:///{db_path}",
         echo=False,
@@ -37,17 +29,16 @@ async def init_global_db():
     _global_engine = get_global_engine()
     _global_session_factory = async_sessionmaker(_global_engine, expire_on_commit=False)
     
-    # Importar User para que esté en Base.metadata
+    # Importar User para registrarlo en metadata
     from app.models.user import User
     
     async with _global_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migraciones manuales para SQLite (User table)
+        
         from sqlalchemy import text
-        # Lista de todas las columnas que podrían faltar en versiones antiguas
         cols = [
             ("gemini_api_key", "TEXT"),
-            ("openai_api_key", "TEXT"),
+            ("openai_api_key", "TEXT"), 
             ("anthropic_api_key", "TEXT"),
             ("preferred_model", "TEXT"),
             ("avatar_color", "TEXT")
@@ -55,8 +46,10 @@ async def init_global_db():
         for col_name, col_type in cols:
             try: 
                 await conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                if col_name == "avatar_color":
+                    await conn.execute(text("UPDATE users SET avatar_color = '#6366f1' WHERE avatar_color IS NULL"))
             except: 
-                pass # Ya existe
+                pass
 
 
 async def get_global_db() -> AsyncGenerator[AsyncSession, None]:
@@ -70,12 +63,15 @@ _user_sessions: dict = {}
 
 
 def get_user_db_path(user_id: str) -> str:
+    import os
     return os.path.join(settings.DATABASE_DIR, f"user_{user_id}.db")
 
 
 async def get_user_engine(user_id: str):
     if user_id not in _user_engines:
         db_path = get_user_db_path(user_id)
+        import os
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
         engine = create_async_engine(
             f"sqlite+aiosqlite:///{db_path}",
             echo=False,
