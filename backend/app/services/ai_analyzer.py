@@ -49,11 +49,12 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     timeout = httpx.Timeout(600.0, connect=10.0)
     
     if "gemini" in m:
-        api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip()
+        api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
         if not api_key:
             raise ValueError("No se ha configurado la GEMINI_API_KEY")
         
-        # Intentar via puente de compatibilidad OpenAI (suele ser más robusto con los 404)
+        # Log de diagnóstico (solo los primeros y últimos caracteres por seguridad)
+        print(f"[AI] Gemini Key Check: {api_key[:5]}...{api_key[-5:]} (longitud: {len(api_key)})")
         from openai import AsyncOpenAI
         client = AsyncOpenAI(
             api_key=api_key,
@@ -87,7 +88,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         except Exception as e2:
             print(f"[AI] Fallo total en Gemini: {e2}")
             # Si hay clave de OpenAI real, saltar a ella
-            oa_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
+            oa_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
             if oa_key:
                 print("[AI] Saltando a OpenAI (GPT-4o-mini) por fallo masivo en Gemini")
                 client_oa = AsyncOpenAI(api_key=oa_key)
