@@ -1,0 +1,12 @@
+/* CSS de Emergencia para comprobar carga */
+body {
+  border: 10px solid red !important;
+}
+
+.layout {
+  background: #fff !important;
+}
+
+.sidebar {
+  border-right: 5px solid blue !important;
+}
