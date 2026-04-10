@@ -380,6 +380,12 @@ export default function LibraryPage() {
     .filter(b => filter === 'all' || b.read_status === filter)
     .filter(b => {
       if (analysisFilter === 'all') return true
+      if (analysisFilter === 'analyzed') {
+        return ['complete', 'analyzed', 'structured'].includes(b.status) || (b.status === 'incomplete' && b.global_summary);
+      }
+      if (analysisFilter === 'incomplete') {
+        return b.status === 'incomplete' && !b.global_summary;
+      }
       const group = ANALYSIS_GROUPS[analysisFilter]
       if (group) return group.statuses.includes(b.status)
       return true
@@ -449,7 +455,15 @@ export default function LibraryPage() {
 
           {/* Filtros dinámicos basados en los libros actuales */}
           {Object.entries(ANALYSIS_GROUPS).map(([key, group]) => {
-            const count = allBooks.filter(b => group.statuses.includes(b.status)).length
+            const count = allBooks.filter(b => {
+              if (key === 'analyzed') {
+                return group.statuses.includes(b.status) || (b.status === 'incomplete' && b.global_summary)
+              }
+              if (key === 'incomplete') {
+                return b.status === 'incomplete' && !b.global_summary
+              }
+              return group.statuses.includes(b.status)
+            }).length
             if (count === 0) return null
             return (
               <button
@@ -508,11 +522,11 @@ export default function LibraryPage() {
                     title="Cambiar portada"
                   >✏</button>
                   <div className="cover-status">
-                    {['complete', 'analyzed', 'structured'].includes(book.status) ? (
+                    {(['complete', 'analyzed', 'structured'].includes(book.status) || (book.status === 'incomplete' && book.global_summary)) ? (
                       <span className="cover-badge analyzed">✦ Analizado</span>
                     ) : book.status === 'queued' ? (
                       <span className="cover-badge queued">En cola</span>
-                    ) : book.status === 'shell' || book.status === 'shell_error' ? (
+                    ) : (book.status === 'shell' || book.status === 'shell_error') ? (
                       <span className="cover-badge shell">Solo ficha</span>
                     ) : book.status === 'incomplete' ? (
                       <span className="cover-badge processing" style={{background: 'var(--rust)', color: 'white'}}>A medias</span>
