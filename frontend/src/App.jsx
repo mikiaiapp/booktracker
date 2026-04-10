@@ -20,14 +20,10 @@ function PrivateRoute({ children }) {
 export default function App() {
   const init = useAuthStore(s => s.init)
   const token = useAuthStore(s => s.token)
-  const checkAuth = useAuthStore(s => s.checkAuth)
   
-  useEffect(() => { init() }, [])
-  useEffect(() => {
-    checkAuth()
-  }, [checkAuth])
+  useEffect(() => { init() }, [init])
 
-  // Disparar reparación de eventos clave una sola vez tras la actualización
+  // Disparar reparacin de eventos clave una sola vez tras la actualizacin
   useEffect(() => {
     if (token && !localStorage.getItem('repair_v2')) {
       const triggerRepair = async () => {
@@ -36,7 +32,7 @@ export default function App() {
           await analysisAPI.repairAllEvents()
           localStorage.setItem('repair_v2', 'true')
         } catch (e) {
-          console.error('Error al iniciar reparación de hitos:', e)
+          console.error('Error al iniciar reparacin de hitos:', e)
         }
       }
       triggerRepair()
@@ -44,9 +40,7 @@ export default function App() {
   }, [token])
 
   return (
-    <>
-      <div style={{background: 'red', color: 'white', padding: '10px', textAlign: 'center'}}>DEPLOYMENT SYNC VERIFIED V2.0.5</div>
-      <BrowserRouter>
+    <BrowserRouter>
       <Toaster
         position="top-right"
         toastOptions={{
@@ -70,7 +64,6 @@ export default function App() {
           <Route path="book/:id" element={<BookPage />} />
         </Route>
       </Routes>
-      </BrowserRouter>
-    </>
+    </BrowserRouter>
   )
 }
