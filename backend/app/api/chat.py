@@ -4,7 +4,7 @@ from sqlalchemy import select, delete
 from app.core.database import get_user_db
 from app.models.book import Book, Chapter, Character, ChatMessage
 from app.models.user import User
-from app.services.ai_analyzer import talk_to_book
+# from app.services.ai_analyzer import talk_to_book (movido a local para evitar circularidad)
 from app.core.security import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
@@ -57,6 +57,7 @@ async def send_chat_message(book_id: str, req: ChatRequest, user: User = Depends
         history.reverse()
 
         # 5. Llamar a la IA
+        from app.services.ai_analyzer import talk_to_book
         ai_resp, used_m = await talk_to_book(book.title, book.author, context, req.message, req.mode, history)
 
         # 6. Guardar respuesta IA
