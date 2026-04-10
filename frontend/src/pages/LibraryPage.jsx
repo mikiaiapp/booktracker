@@ -525,18 +525,9 @@ export default function LibraryPage() {
                   {(book.status === 'shell' || book.status === 'shell_error') && (
                     <div className="shell-overlay" />
                   )}
-                </div>
-                <div className="book-info">
-                  <h3 className="book-title">{book.title}</h3>
-                  {book.author && <p className="book-author">{book.author}</p>}
-                  <div className="book-meta">
-                    {book.rating && (
-                      <span className="book-rating">
-                        <Star size={12} fill="currentColor" />
-                        {book.rating.toFixed(1)}
-                      </span>
-                    )}
-                    <span className={`read-dot ${book.read_status}`} title={READ_LABELS[book.read_status]} />
+                  {/* Etiqueta de ledo/leyendo discreta sobre la imagen si se desea, o nada para limpieza total */}
+                  <div className="read-status-overlay">
+                    <span className={`read-dot ${book.read_status}`} />
                   </div>
                 </div>
               </Link>

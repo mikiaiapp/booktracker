@@ -30,6 +30,15 @@
       .brand-text { font-size: 1.25rem; font-weight: 800; letter-spacing: 2px; color: var(--paper); text-transform: uppercase; display: block; }
       .sidebar-logo-footer-large { width: 120px; height: auto; display: block; margin: 2rem auto; opacity: 0.9; transition: transform 0.3s; }
       .sidebar-logo-footer-large:hover { transform: scale(1.05); }
+      .sidebar-footer { padding: 1.5rem 1rem; border-top: 1px solid rgba(255,255,255,0.08); margin-top: auto; }
+      .user-badge { display: flex; align-items: center; gap: 0.75rem; font-family: 'DM Sans', sans-serif; }
+      .user-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(255,255,255,0.05); }
+      .user-info { display: flex; flex-direction: column; min-width: 0; }
+      .user-name { font-size: 0.85rem; font-weight: 700; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .user-email { font-size: 0.75rem; color: var(--mist); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .logout-btn { background: none; border: none; color: var(--mist); padding: 0.5rem; transition: color 0.2s; cursor: pointer; display: flex; align-items: center; }
+      .logout-btn:hover { color: #e74c3c; }
+      .read-status-overlay { position: absolute; bottom: 8px; right: 8px; z-index: 10; background: rgba(13,13,13,0.6); padding: 4px; border-radius: 50%; line-height: 0; backdrop-filter: blur(4px); }
       .hero-cover { width: 220px; flex-shrink: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 2rem; }
       .hero-poster { width: 100%; height: auto; display: block; }
       @media (max-width: 768px) {
