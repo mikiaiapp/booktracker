@@ -24,3 +24,9 @@ class User(Base):
     created_at = Column(DateTime, server_default=func.now())
     last_login = Column(DateTime, nullable=True)
     avatar_color = Column(String, default="#6366f1")
+
+    # API Keys & Settings
+    gemini_api_key = Column(Text, nullable=True)
+    openai_api_key = Column(Text, nullable=True)
+    anthropic_api_key = Column(Text, nullable=True)
+    preferred_model = Column(String, nullable=True)

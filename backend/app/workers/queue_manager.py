@@ -228,7 +228,7 @@ def _launch(uid: str, book_id: str, phases: list, title: str = "", force: bool =
         "1":       lambda: process_book_phase1.delay(uid, book_id, chain=True, force=force),
         "2":       lambda: process_book_phase2.delay(uid, book_id, chain=True, force=force),
         "3":       lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force),
-        "3b":      lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force), // Alias
+        "3b":      lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force), # Alias
         "4":       lambda: process_book_phase4.delay(uid, book_id, chain=True, force=force),
         "podcast": lambda: process_book_phase6.delay(uid, book_id, force=force),
         "repair":  lambda: process_book_repair_events.delay(uid, book_id),
