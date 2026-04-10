@@ -41,9 +41,9 @@ const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
 const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
 
 const ANALYSIS_GROUPS = {
-  analyzed:   { label: 'Analizados', statuses: ['complete', 'analyzed'] },
+  analyzed:   { label: 'Analizados', statuses: ['complete', 'analyzed', 'structured'] },
   incomplete: { label: 'A medias',   statuses: ['incomplete'] },
-  processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'analyzing', 'summarizing', 'generating_podcast', 'uploaded', 'structured', 'queued'] },
+  processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'analyzing', 'summarizing', 'generating_podcast', 'uploaded', 'queued'] },
   identified: { label: 'Identificados', statuses: ['identified'] },
   pending:    { label: 'Pendientes',  statuses: ['duplicate', 'error'] },
 }
@@ -508,7 +508,7 @@ export default function LibraryPage() {
                     title="Cambiar portada"
                   >✏</button>
                   <div className="cover-status">
-                    {book.status === 'complete' ? (
+                    {['complete', 'analyzed', 'structured'].includes(book.status) ? (
                       <span className="cover-badge analyzed">✦ Analizado</span>
                     ) : book.status === 'queued' ? (
                       <span className="cover-badge queued">En cola</span>
