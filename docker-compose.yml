@@ -80,6 +80,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - CACHE_BUST=v2.0.7
     container_name: booktracker-ui
     restart: unless-stopped
     depends_on:
