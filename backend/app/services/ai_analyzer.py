@@ -41,7 +41,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 print(f"[AI] Error en Ollama (Falla hacia el cloud...): {e}")
 
         if "gemini" in base_m:
-            m = "gemini-1.5-flash"
+            m = settings.AI_MODEL
         elif "gpt-3" in base_m or "gpt-4" in base_m:
             m = "gpt-4o-mini"
     
