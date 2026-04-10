@@ -1,265 +1,107 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import toast from 'react-hot-toast'
+import { motion } from 'framer-motion'
+import { 
+  RiUserLine, 
+  RiMailLine, 
+  RiShieldFlashLine, 
+  RiLogoutCircleLine, 
+  RiPaletteLine,
+  RiDatabase2Line,
+  RiArrowRightSLine,
+  RiKey2Line
+} from 'react-icons/ri'
 import { useAuthStore } from '../store/authStore'
-import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle, LogOut } from 'lucide-react'
-import { api } from '../utils/api'
+import { useNavigate } from 'react-router-dom'
 import './ProfilePage.css'
 
 export default function ProfilePage() {
-  const user = useAuthStore(s => s.user)
-  const init = useAuthStore(s => s.init)
-  const logout = useAuthStore(s => s.logout)
+  const { user, logout } = useAuthStore()
   const navigate = useNavigate()
-
-  // Change password
-  const [pwForm, setPwForm] = useState({ current: '', new: '', confirm: '' })
-  const [showPw, setShowPw] = useState(false)
-  const [pwLoading, setPwLoading] = useState(false)
-
-  // 2FA setup
-  const [qr, setQr] = useState(null)
-  const [totpCode, setTotpCode] = useState('')
-  const [tfaLoading, setTfaLoading] = useState(false)
-  const [tfaEnabled, setTfaEnabled] = useState(!!user?.totp_enabled)
-  const [disablePassword, setDisablePassword] = useState('')
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
-
-  const handleChangePassword = async () => {
-    if (pwForm.new !== pwForm.confirm) {
-      toast.error('Las contraseñas no coinciden')
-      return
-    }
-    if (pwForm.new.length < 8) {
-      toast.error('Mínimo 8 caracteres')
-      return
-    }
-    setPwLoading(true)
-    try {
-      await api.post('/auth/change-password', {
-        current_password: pwForm.current,
-        new_password: pwForm.new,
-      })
-      toast.success('Contraseña actualizada')
-      setPwForm({ current: '', new: '', confirm: '' })
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error al cambiar contraseña')
-    } finally {
-      setPwLoading(false)
-    }
-  }
-
-  const handleSetup2FA = async () => {
-    setTfaLoading(true)
-    try {
-      const { data } = await api.post('/auth/setup-2fa')
-      setQr(data.qr)
-      setTotpCode('')
-    } catch {
-      toast.error('Error al generar QR')
-    } finally {
-      setTfaLoading(false)
-    }
-  }
-
-  const handleVerify2FA = async () => {
-    if (!totpCode || totpCode.length !== 6) {
-      toast.error('Introduce el código de 6 dígitos')
-      return
-    }
-    setTfaLoading(true)
-    try {
-      await api.post('/auth/verify-setup-2fa', { code: totpCode })
-      toast.success('2FA activado correctamente')
-      setTfaEnabled(true)
-      setQr(null)
-      setTotpCode('')
-      await init()
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Código incorrecto')
-    } finally {
-      setTfaLoading(false)
-    }
-  }
-
-  const handleDisable2FA = async () => {
-    if (!disablePassword) {
-      toast.error('Introduce tu contraseña para desactivar el 2FA')
-      return
-    }
-    setTfaLoading(true)
-    try {
-      await api.post('/auth/disable-2fa', { password: disablePassword })
-      toast.success('2FA desactivado')
-      setTfaEnabled(false)
-      setDisablePassword('')
-      await init()
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Contraseña incorrecta')
-    } finally {
-      setTfaLoading(false)
-    }
+  
+  const formatDate = (dateString) => {
+    if (!dateString) return ''
+    return new Date(dateString).toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
   }
 
   return (
-    <div className="profile-page">
-      <div className="profile-header">
-        <button className="back-btn" onClick={() => navigate('/')}>
-          <ArrowLeft size={16} /> Biblioteca
-        </button>
-        <h1>Mi perfil</h1>
-      </div>
+    <div className="profile-container">
+      <header className="profile-header">
+        <div className="profile-hero">
+          <motion.div 
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="profile-avatar"
+            style={{ backgroundColor: user?.avatar_color || '#6366f1' }}
+          >
+            {user?.username?.charAt(0).toUpperCase()}
+          </motion.div>
+          <div className="profile-title">
+            <h1>{user?.username}</h1>
+            <p>Miembro desde {formatDate(user?.created_at)}</p>
+          </div>
+        </div>
+      </header>
 
       <div className="profile-grid">
-        {/* Info usuario + logout */}
-        <div className="profile-card">
-          <div className="profile-avatar">
-            {user?.username?.[0]?.toUpperCase()}
-          </div>
-          <div className="profile-info">
-            <h2>{user?.username}</h2>
-            <p>{user?.email}</p>
-          </div>
-          <button
-            className="profile-logout-btn"
-            onClick={handleLogout}
-            title="Cerrar sesión"
-          >
-            <LogOut size={16} />
-            <span>Cerrar sesión</span>
-          </button>
-        </div>
-
-        {/* Cambiar contraseña */}
-        <div className="profile-section">
-          <div className="section-header">
-            <Key size={16} />
-            <h3>Cambiar contraseña</h3>
-          </div>
-          <div className="profile-form">
-            <div className="form-field">
-              <label>Contraseña actual</label>
-              <div className="input-wrap">
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={pwForm.current}
-                  onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))}
-                  placeholder="••••••••"
-                />
-                <button className="eye-btn" onClick={() => setShowPw(s => !s)}>
-                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+        <section className="profile-card info-card">
+          <h2><RiUserLine /> Información de Cuenta</h2>
+          <div className="info-list">
+            <div className="info-item">
+              <RiMailLine className="icon" />
+              <div className="details">
+                <span className="label">Correo Electrónico</span>
+                <span className="value">{user?.email}</span>
               </div>
             </div>
-            <div className="form-field">
-              <label>Nueva contraseña</label>
-              <input
-                type={showPw ? 'text' : 'password'}
-                value={pwForm.new}
-                onChange={e => setPwForm(f => ({ ...f, new: e.target.value }))}
-                placeholder="Mínimo 8 caracteres"
-              />
+            <div className="info-item">
+              <RiShieldFlashLine className="icon" />
+              <div className="details">
+                <span className="label">Seguridad 2FA</span>
+                <span className="value">{user?.totp_enabled ? 'Activado' : 'Desactivado'}</span>
+              </div>
             </div>
-            <div className="form-field">
-              <label>Confirmar nueva contraseña</label>
-              <input
-                type={showPw ? 'text' : 'password'}
-                value={pwForm.confirm}
-                onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
-                placeholder="Repite la contraseña"
-              />
-            </div>
-            <button
-              className="profile-btn primary"
-              onClick={handleChangePassword}
-              disabled={pwLoading || !pwForm.current || !pwForm.new || !pwForm.confirm}
-            >
-              {pwLoading ? 'Guardando…' : 'Cambiar contraseña'}
+          </div>
+        </section>
+
+        {/* Nueva Tarjeta de API Settings */}
+        <motion.section 
+          whileHover={{ y: -5 }}
+          onClick={() => navigate('/profile/api')}
+          className="profile-card api-card"
+        >
+          <div className="card-header">
+            <h2><RiKey2Line /> Configuración de IA</h2>
+            <RiArrowRightSLine className="arrow" />
+          </div>
+          <p className="card-desc">Personaliza tus claves de Gemini, OpenAI y Anthropic para un análisis de libros privado.</p>
+          <div className="api-status">
+            <span className={`status-pill ${user?.has_gemini ? 'active' : ''}`}>Gemini</span>
+            <span className={`status-pill ${user?.has_openai ? 'active' : ''}`}>OpenAI</span>
+            <span className={`status-pill ${user?.preferred_model ? 'active' : ''}`}>Auto-Model</span>
+          </div>
+        </motion.section>
+
+        <section className="profile-card preferences-card">
+          <h2><RiPaletteLine /> Apariencia</h2>
+          <p>Personaliza tu experiencia visual en BookTracker.</p>
+          <div className="pref-action">
+            <button className="btn-secondary">Editar Perfil</button>
+          </div>
+        </section>
+
+        <section className="profile-card system-card">
+          <h2><RiDatabase2Line /> Datos y Privacidad</h2>
+          <p>Controla tus datos literarios y configuraciones del sistema.</p>
+          <div className="pref-action">
+            <button className="btn-danger" onClick={logout}>
+              <RiLogoutCircleLine /> Cerrar Sesión
             </button>
           </div>
-        </div>
-
-        {/* 2FA */}
-        <div className="profile-section">
-          <div className="section-header">
-            <Shield size={16} />
-            <h3>Doble factor de autenticación (2FA)</h3>
-          </div>
-
-          {tfaEnabled ? (
-            <div className="tfa-active">
-              <div className="tfa-status enabled">
-                <CheckCircle size={16} /> 2FA activado
-              </div>
-              <p className="tfa-desc">Tu cuenta está protegida con autenticación de dos factores.</p>
-              <div className="form-field">
-                <label>Contraseña para desactivar</label>
-                <input
-                  type="password"
-                  value={disablePassword}
-                  onChange={e => setDisablePassword(e.target.value)}
-                  placeholder="Introduce tu contraseña"
-                />
-              </div>
-              <button
-                className="profile-btn danger"
-                onClick={handleDisable2FA}
-                disabled={tfaLoading || !disablePassword}
-              >
-                <ShieldOff size={14} /> {tfaLoading ? 'Desactivando…' : 'Desactivar 2FA'}
-              </button>
-            </div>
-          ) : (
-            <div className="tfa-setup">
-              <div className="tfa-status disabled">
-                2FA desactivado
-              </div>
-              <p className="tfa-desc">
-                Activa el 2FA para proteger tu cuenta con Google Authenticator u otra app TOTP.
-              </p>
-
-              {!qr ? (
-                <button
-                  className="profile-btn primary"
-                  onClick={handleSetup2FA}
-                  disabled={tfaLoading}
-                >
-                  <Shield size={14} /> {tfaLoading ? 'Generando…' : 'Activar 2FA'}
-                </button>
-              ) : (
-                <div className="tfa-qr-section">
-                  <p className="tfa-instructions">
-                    1. Abre <strong>Google Authenticator</strong> o similar<br />
-                    2. Escanea el código QR<br />
-                    3. Introduce el código de 6 dígitos
-                  </p>
-                  <img src={qr} alt="QR 2FA" className="tfa-qr" />
-                  <div className="tfa-verify">
-                    <input
-                      type="text"
-                      value={totpCode}
-                      onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="000000"
-                      className="tfa-code-input"
-                      maxLength={6}
-                    />
-                    <button
-                      className="profile-btn primary"
-                      onClick={handleVerify2FA}
-                      disabled={tfaLoading || totpCode.length !== 6}
-                    >
-                      {tfaLoading ? 'Verificando…' : 'Verificar y activar'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        </section>
       </div>
     </div>
   )
