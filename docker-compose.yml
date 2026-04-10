@@ -16,6 +16,7 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-api
     restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     volumes:
       - /volume1/docker/booktracker/data:/app/data
       - /volume1/docker/booktracker/data/databases:/app/databases
@@ -44,6 +45,7 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-worker
     restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
     volumes:
       - /volume1/docker/booktracker/data:/app/data
       - /volume1/docker/booktracker/data/databases:/app/databases

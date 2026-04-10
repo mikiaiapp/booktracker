@@ -830,8 +830,23 @@ async def clear_analysis_queue(current_user: User = Depends(get_current_user)):
     cancel_all(current_user.id)
     return {"status": "cleared"}
 
+@router.post("/{book_id}/cancel")
 @router.delete("/queue/{book_id}")
-async def cancel_queue_item(book_id: str, current_user: User = Depends(get_current_user)):
+async def cancel_queue_item(book_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # 1. Cancelar en el Queue Manager
     from app.workers.queue_manager import cancel
-    cancel(current_user.id, book_id)
-    return {"status": "cancelled"}
+    res = cancel(current_user.id, book_id)
+    
+    # 2. Asegurar limpieza en Base de Datos
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if book:
+        print(f"[API] Cancelando análisis de {book.title} ({book_id})")
+        if book.status in ["queued", "identifying", "analyzing_structure", "summarizing", "generating_podcast"]:
+            # Retroceder al estado lógico anterior
+            book.status = "incomplete" if book.phase2_done else "identified"
+            book.task_id = None
+            book.error_msg = "Proceso cancelado por el usuario"
+            await db.commit()
+            
+    return {"status": "cancelled", "manager_res": res}
