@@ -20,8 +20,12 @@ function PrivateRoute({ children }) {
 export default function App() {
   const init = useAuthStore(s => s.init)
   const token = useAuthStore(s => s.token)
+  const checkAuth = useAuthStore(s => s.checkAuth)
   
   useEffect(() => { init() }, [])
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
 
   // Disparar reparación de eventos clave una sola vez tras la actualización
   useEffect(() => {
@@ -40,7 +44,9 @@ export default function App() {
   }, [token])
 
   return (
-    <BrowserRouter>
+    <>
+      <div style={{background: 'red', color: 'white', padding: '10px', textAlign: 'center'}}>DEPLOYMENT SYNC VERIFIED V2.0.5</div>
+      <BrowserRouter>
       <Toaster
         position="top-right"
         toastOptions={{
@@ -64,6 +70,7 @@ export default function App() {
           <Route path="book/:id" element={<BookPage />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+    </>
   )
 }
