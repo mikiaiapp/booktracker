@@ -54,7 +54,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         if not api_key:
             raise ValueError("No se ha configurado la GEMINI_API_KEY")
             
-        url = f"https://generativelanguage.googleapis.com/v1/models/{m}:generateContent?key={api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
         payload = {"contents": [{"parts": [{"text": f"{system}\n\n{user}"}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.5}}
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(url, json=payload)
