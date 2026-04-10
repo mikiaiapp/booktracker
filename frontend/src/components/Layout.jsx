@@ -34,7 +34,7 @@ export default function Layout() {
   return (
     <div className="layout">
       <aside className="sidebar">
-        <div className="sidebar-brand-v3">
+        <div className="sidebar-brand-premium">
           <span className="brand-text">BookTracker</span>
         </div>
 

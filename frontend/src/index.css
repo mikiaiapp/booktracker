@@ -22,6 +22,15 @@
   --shadow: 0 2px 12px rgba(13,13,13,0.08);
   --shadow-lg: 0 8px 40px rgba(13,13,13,0.14);
   --transition: 0.2s ease;
+
+  /* Clay & Neutral Palette */
+  --clay-100: #f3f4f6;
+  --clay-200: #e5e7eb;
+  --clay-300: #d1d5db;
+  --clay-400: #9ca3af;
+  --clay-500: #6b7280;
+  --clay-600: #4b5563;
+  --mode-color: var(--gold);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

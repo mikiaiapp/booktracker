@@ -7,5 +7,14 @@ export default defineConfig({
     proxy: {
       '/api': 'http://backend:8000'
     }
+  },
+  build: {
+    cssCodeSplit: false,
+    chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        manualChunks: undefined // Simplificar chunks para el NAS
+      }
+    }
   }
 })

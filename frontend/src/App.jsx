@@ -11,6 +11,7 @@ import AuthorsPage from './pages/AuthorsPage'
 import ProfilePage from './pages/ProfilePage'
 import APISettingsPage from './pages/APISettingsPage'
 import Layout from './components/Layout'
+import { analysisAPI } from './utils/api'
 
 function PrivateRoute({ children }) {
   const token = useAuthStore(s => s.token)
@@ -25,14 +26,13 @@ export default function App() {
 
   // Disparar reparacin de eventos clave una sola vez tras la actualizacin
   useEffect(() => {
-    if (token && !localStorage.getItem('repair_v2')) {
+    if (token && !localStorage.getItem('repair_v3')) {
       const triggerRepair = async () => {
         try {
-          const { analysisAPI } = await import('./utils/api')
-          await analysisAPI.repairAllEvents()
-          localStorage.setItem('repair_v2', 'true')
+          analysisAPI.repairAllEvents()
+          localStorage.setItem('repair_v3', 'true')
         } catch (e) {
-          console.error('Error al iniciar reparacin de hitos:', e)
+          console.error('Error:', e)
         }
       }
       triggerRepair()
