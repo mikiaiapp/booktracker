@@ -173,13 +173,13 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
     # Autopoblar desde env si están vacíos (primera vez) con protección extra
     changed = False
     try:
-        if not current_user.gemini_api_key and settings.GEMINI_API_KEY:
+        if (not current_user.gemini_api_key or current_user.gemini_api_key == "") and settings.GEMINI_API_KEY:
             current_user.gemini_api_key = settings.GEMINI_API_KEY
             changed = True
-        if not current_user.openai_api_key and settings.OPENAI_API_KEY:
+        if (not current_user.openai_api_key or current_user.openai_api_key == "") and settings.OPENAI_API_KEY:
             current_user.openai_api_key = settings.OPENAI_API_KEY
             changed = True
-        if not current_user.anthropic_api_key and settings.ANTHROPIC_API_KEY:
+        if (not current_user.anthropic_api_key or current_user.anthropic_api_key == "") and settings.ANTHROPIC_API_KEY:
             current_user.anthropic_api_key = settings.ANTHROPIC_API_KEY
             changed = True
             
