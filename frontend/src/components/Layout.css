@@ -159,7 +159,7 @@
 }
 
 .sidebar-branding-v3 {
-  padding: 2rem 1rem;
+  padding: 5rem 1rem 0.5rem; /* Más espacio arriba para bajarlo */
   display: flex;
   justify-content: center;
 }
