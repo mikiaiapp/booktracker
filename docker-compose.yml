@@ -16,7 +16,7 @@ services:
       dockerfile: Dockerfile
     container_name: booktracker-api
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     volumes:
       - /volume1/docker/booktracker/data:/data
       - /volume1/docker/booktracker/data/databases:/data/databases
