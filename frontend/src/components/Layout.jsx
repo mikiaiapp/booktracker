@@ -40,16 +40,20 @@ export default function Layout() {
 
         <nav className="sidebar-nav">
           <NavLink to="/" end className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
-            <span>📚 Libros</span>
+            <Library size={18} strokeWidth={1.5} />
+            <span>Biblioteca</span>
           </NavLink>
           <NavLink to="/authors" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
-            <span>✍️ Autores</span>
+            <Users size={18} strokeWidth={1.5} />
+            <span>Autores</span>
           </NavLink>
           <NavLink to="/upload" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
-            <span>📤 Subir</span>
+            <Upload size={18} strokeWidth={1.5} />
+            <span>Subir libro</span>
           </NavLink>
           <NavLink to="/profile" className={({isActive}) => `nav-item nav-item-profile ${isActive ? 'active' : ''}`}>
-            <span>⚙️ Ajustes</span>
+            <UserCircle size={18} strokeWidth={1.5} />
+            <span>Ajustes</span>
           </NavLink>
         </nav>
 
