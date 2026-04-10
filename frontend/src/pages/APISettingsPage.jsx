@@ -61,118 +61,89 @@ export default function APISettingsPage() {
   }
 
   return (
-    <div className="api-settings-page">
-      <div className="api-header">
-        <button className="back-btn" onClick={() => navigate('/profile')}>
-          <ArrowLeft size={16} /> Perfil
+    <div className="premium-page">
+      <div className="premium-header">
+        <button className="back-link" onClick={() => navigate('/profile')}>
+          <ArrowLeft size={16} /> Volver a Perfil
         </button>
-        <div className="title-area">
-          <Cpu className="title-icon" />
-          <div>
-            <h1>Configuración de Inteligencia Artificial</h1>
-            <p className="subtitle">Gestiona tus propias claves de API para un análisis personalizado y sin límites.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <Cpu size={32} color="var(--gold)" />
+          <h1>Configuración de IA</h1>
+        </div>
+        <p style={{ color: 'var(--mist)' }}>Gestiona tus propias claves de API para un análisis personalizado y sin límites.</p>
+      </div>
+
+      <form onSubmit={handleSave} style={{ maxWidth: '800px' }}>
+        <div className="premium-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <Zap size={20} color="var(--gold)" />
+            <h3 style={{ margin: 0 }}>Modelo Preferido</h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            {[
+              { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Rápido y eficiente.' },
+              { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Máxima potencia.' },
+              { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Equilibrado.' },
+              { id: 'gpt-4o', name: 'GPT-4o', desc: 'Referencia.' }
+            ].map(model => (
+              <label key={model.id} style={{ 
+                padding: '1rem', border: '1.5px solid var(--paper-dark)', borderRadius: '8px', 
+                cursor: 'pointer', background: settings.preferred_model === model.id ? 'var(--faf7f2)' : 'white',
+                borderColor: settings.preferred_model === model.id ? 'var(--gold)' : 'var(--paper-dark)',
+                display: 'block'
+              }}>
+                <input 
+                  type="radio" name="preferred_model" value={model.id} 
+                  checked={settings.preferred_model === model.id}
+                  onChange={e => setSettings({...settings, preferred_model: e.target.value})}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ fontWeight: 'bold', fontSize: '1rem' }}>{model.name}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--mist)' }}>{model.desc}</div>
+              </label>
+            ))}
           </div>
         </div>
-      </div>
 
-      <div className="api-container">
-        <form onSubmit={handleSave} className="api-form">
-          
-          <div className="settings-section">
-            <div className="section-info">
-              <Zap size={18} className="text-primary" />
-              <h3>Modelo Preferido</h3>
-            </div>
-            <p className="section-desc">Selecciona qué cerebro quieres que lidere el análisis de tus libros.</p>
-            <div className="model-selector">
-              {[
-                { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Rápido, económico y eficiente.', color: '#4f46e5' },
-                { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Máxima capacidad analítica y razonamiento.', color: '#8b5cf6' },
-                { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Equilibrio perfecto entre coste y calidad.', color: '#10b981' },
-                { id: 'gpt-4o', name: 'GPT-4o', desc: 'El estándar de oro en inteligencia general.', color: '#059669' }
-              ].map(model => (
-                <label key={model.id} className={`model-card ${settings.preferred_model === model.id ? 'active' : ''}`}>
-                  <input 
-                    type="radio" 
-                    name="preferred_model" 
-                    value={model.id} 
-                    checked={settings.preferred_model === model.id}
-                    onChange={e => setSettings({...settings, preferred_model: e.target.value})}
-                  />
-                  <div className="model-name">{model.name}</div>
-                  <div className="model-desc">{model.desc}</div>
-                </label>
-              ))}
-            </div>
+        <div className="premium-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <Key size={20} color="var(--gold)" />
+            <h3 style={{ margin: 0 }}>Claves de API</h3>
           </div>
-
-          <div className="settings-section">
-            <div className="section-info">
-              <Key size={18} className="text-secondary" />
-              <h3>Claves de API</h3>
-            </div>
-            <p className="section-desc">Tus claves se cifran en la base de datos y se usan exclusivamente para tus procesos.</p>
-            
-            <div className="api-inputs-grid">
-              <div className="form-field">
-                <div className="field-label-row">
-                  <label>Google Gemini API Key</label>
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="external-link">
-                    Consigue tu clave gratis <ExternalLink size={12} />
-                  </a>
-                </div>
-                <input 
-                  type="password" 
-                  value={settings.gemini_api_key || ''} 
-                  onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
-                  placeholder="Introduce tu clave de Google AI Studio"
-                  className={settings.gemini_api_key?.includes('...') ? 'masked' : ''}
-                />
+          <div style={{ display: 'grid', gap: '1.5rem' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <label className="premium-label">Google Gemini Key</label>
+                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>Obtener clave gratis ↗</a>
               </div>
-
-              <div className="form-field">
-                <div className="field-label-row">
-                  <label>OpenAI API Key</label>
-                  <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="external-link">
-                    Gestionar en OpenAI <ExternalLink size={12} />
-                  </a>
-                </div>
-                <input 
-                  type="password" 
-                  value={settings.openai_api_key || ''} 
-                  onChange={e => setSettings({...settings, openai_api_key: e.target.value})}
-                  placeholder="sk-..."
-                  className={settings.openai_api_key?.includes('...') ? 'masked' : ''}
-                />
+              <input 
+                type="password" className="premium-input" 
+                value={settings.gemini_api_key || ''} 
+                onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
+                placeholder="Introduce tu clave de Google AI Studio"
+              />
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                <label className="premium-label">OpenAI Key</label>
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>Gestionar OpenAI ↗</a>
               </div>
-
-              <div className="form-field">
-                <div className="field-label-row">
-                  <label>Anthropic API Key (Llegará pronto)</label>
-                </div>
-                <input 
-                  type="password" 
-                  value={settings.anthropic_api_key || ''} 
-                  disabled
-                  placeholder="Soporte para Claude en camino..."
-                />
-              </div>
+              <input 
+                type="password" className="premium-input" 
+                value={settings.openai_api_key || ''} 
+                onChange={e => setSettings({...settings, openai_api_key: e.target.value})}
+                placeholder="sk-..."
+              />
             </div>
           </div>
+        </div>
 
-          <div className="info-banner">
-            <Info size={16} />
-            <p>Si dejas los campos vacíos, el sistema usará las claves por defecto de BookTracker (si están disponibles).</p>
-          </div>
-
-          <div className="form-actions">
-            <button type="submit" className="save-btn" disabled={saving}>
-              {saving ? 'Guardando...' : <><Save size={18} /> Guardar Privacidad</>}
-            </button>
-          </div>
-
-        </form>
-      </div>
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+          <button type="submit" className="premium-btn primary" disabled={saving}>
+            <Save size={18} /> {saving ? 'Guardando...' : 'Guardar Configuración'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

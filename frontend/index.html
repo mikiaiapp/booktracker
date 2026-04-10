@@ -41,6 +41,29 @@
       .read-status-overlay { position: absolute; bottom: 8px; right: 8px; z-index: 10; background: rgba(13,13,13,0.6); padding: 4px; border-radius: 50%; line-height: 0; backdrop-filter: blur(4px); }
       .hero-cover { width: 220px; flex-shrink: 0; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 2rem; }
       .hero-poster { width: 100%; height: auto; display: block; }
+
+      /* Premium Pages System */
+      .premium-page { padding: 3rem; max-width: 1200px; margin: 0 auto; min-height: 100vh; background: var(--cream); color: var(--ink); font-family: 'DM Sans', sans-serif; }
+      .premium-header { margin-bottom: 2.5rem; }
+      .premium-header h1 { font-family: var(--font-display); font-size: 2.5rem; margin: 0.5rem 0; color: var(--ink); }
+      .premium-card { background: white; border: 1.5px solid var(--paper-dark); border-radius: 12px; padding: 2rem; box-shadow: var(--shadow); margin-bottom: 1.5rem; transition: transform 0.2s, border-color 0.2s; }
+      .premium-card:hover { border-color: var(--gold); }
+      .premium-input { 
+        width: 100%; padding: 0.85rem 1rem; border: 1.5px solid var(--paper-dark); border-radius: 8px; 
+        font-family: inherit; font-size: 0.95rem; background: var(--faf7f2); color: var(--ink); transition: all 0.2s;
+      }
+      .premium-input:focus { outline: none; border-color: var(--gold); background: white; box-shadow: 0 0 0 3px rgba(201,169,110,0.1); }
+      .premium-label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--mist); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
+      .premium-btn { 
+        padding: 0.85rem 1.5rem; border-radius: 8px; border: none; font-weight: 700; cursor: pointer; 
+        display: inline-flex; align-items: center; gap: 0.6rem; transition: all 0.2s; font-family: inherit;
+      }
+      .premium-btn.primary { background: var(--gold); color: white; }
+      .premium-btn.primary:hover { background: #b8985e; transform: translateY(-1px); }
+      .premium-btn.secondary { background: var(--ink); color: white; }
+      .back-link { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--mist); text-decoration: none; font-size: 0.9rem; font-weight: 500; margin-bottom: 1rem; transition: color 0.2s; }
+      .back-link:hover { color: var(--ink); }
+      
       @media (max-width: 768px) {
         .sidebar { width: 100%; height: auto; bottom: 0; top: auto; flex-direction: row; position: fixed; }
         .main-content { margin-left: 0; margin-bottom: 70px; }

@@ -106,176 +106,122 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="profile-page">
-      <div className="profile-header">
-        <button className="back-btn" onClick={() => navigate('/')}>
-          <ArrowLeft size={16} /> Biblioteca
+    <div className="premium-page">
+      <div className="premium-header">
+        <button className="back-link" onClick={() => navigate('/')}>
+          <ArrowLeft size={16} /> Volver a Biblioteca
         </button>
-        <h1>Mi perfil</h1>
+        <h1>Mi Perfil</h1>
       </div>
 
       <div className="profile-grid">
-        {/* Sidebar con Info usuario + IA */}
         <div className="profile-sidebar">
-          <div className="profile-card">
-            <div className="profile-avatar-wrap">
-              <div className="profile-avatar" style={{ backgroundColor: user?.avatar_color }}>
+          <div className="premium-card" style={{ textAlign: 'center' }}>
+            <div className="profile-avatar-wrap" style={{ display: 'inline-block', marginBottom: '1rem' }}>
+              <div className="user-avatar" style={{ width: 80, height: 80, fontSize: '2rem', background: user?.avatar_color }}>
                 {user?.username?.[0]?.toUpperCase()}
               </div>
-              <div className="avatar-shadow"></div>
             </div>
             <div className="profile-info">
-              <h2>{user?.username || 'Usuario'}</h2>
-              <p>{user?.email}</p>
+              <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.5rem', marginBottom: '0.25rem' }}>{user?.username}</h2>
+              <p style={{ color: 'var(--mist)', fontSize: '0.9rem' }}>{user?.email}</p>
             </div>
-            <button
-              className="profile-logout-btn"
-              onClick={handleLogout}
-              title="Cerrar sesión"
-            >
-              <LogOut size={16} />
-              <span>Cerrar sesión</span>
+            <button className="premium-btn secondary" style={{ marginTop: '1.5rem', width: '100%', justifyContent: 'center' }} onClick={handleLogout}>
+              <LogOut size={16} /> Cerrar sesión
             </button>
           </div>
 
-          <div className="profile-section ai-settings-card" onClick={() => navigate('/profile/api')}>
-            <div className="section-header">
-              <Brain size={18} />
-              <h3>Configuración de IA</h3>
-              <span className="badge-new">NUEVO</span>
+          <div className="premium-card ai-settings-card" onClick={() => navigate('/profile/api')} style={{ cursor: 'pointer' }}>
+            <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+              <Brain size={18} color="var(--gold)" />
+              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Configuración de IA</h3>
             </div>
-            <div className="ai-card-content">
-              <p>Configura tus propias claves de Gemini y OpenAI para análisis ilimitados.</p>
-              <div className="ai-card-footer">
-                <span>Gestionar API Keys</span>
-                <ChevronRight size={16} />
-              </div>
+            <p style={{ fontSize: '0.9rem', color: 'var(--mist)', lineHeight: '1.5' }}>Gestiona tus propias llaves de Gemini o OpenAI para potenciar tus análisis.</p>
+            <div style={{ marginTop: '1rem', color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
+              Gestionar API Keys →
             </div>
           </div>
         </div>
 
-        {/* Content con Seguridad y 2FA */}
         <div className="profile-content">
-          {/* Cambiar contraseña */}
-          <div className="profile-section">
-            <div className="section-header">
-              <Key size={18} />
-              <h3>Seguridad</h3>
+          <div className="premium-card">
+            <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <Key size={18} color="var(--gold)" />
+              <h3 style={{ margin: 0 }}>Seguridad de cuenta</h3>
             </div>
-            <div className="profile-form">
-              <div className="form-field">
-                <label>Contraseña actual</label>
-                <div className="input-wrap">
-                  <input
-                    type={showPw ? 'text' : 'password'}
-                    value={pwForm.current}
-                    onChange={e => setPwForm(f => ({ ...f, current: e.target.value }))}
-                    placeholder="••••••••"
+            
+            <div style={{ display: 'grid', gap: '1.25rem' }}>
+              <div>
+                <label className="premium-label">Contraseña actual</label>
+                <input 
+                  type="password" className="premium-input" 
+                  value={pwForm.current} onChange={e => setPwForm(f=>({...f, current: e.target.value}))} 
+                  placeholder="••••••••"
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label className="premium-label">Nueva contraseña</label>
+                  <input 
+                    type="password" className="premium-input" 
+                    value={pwForm.new} onChange={e => setPwForm(f=>({...f, new: e.target.value}))} 
+                    placeholder="Mínimo 8 caracteres"
                   />
-                  <button className="eye-btn" onClick={() => setShowPw(s => !s)}>
-                    {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
+                </div>
+                <div>
+                  <label className="premium-label">Confirmar nueva</label>
+                  <input 
+                    type="password" className="premium-input" 
+                    value={pwForm.confirm} onChange={e => setPwForm(f=>({...f, confirm: e.target.value}))} 
+                    placeholder="Repite contraseña"
+                  />
                 </div>
               </div>
-              <div className="form-field">
-                <label>Nueva contraseña</label>
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={pwForm.new}
-                  onChange={e => setPwForm(f => ({ ...f, new: e.target.value }))}
-                  placeholder="Mínimo 8 caracteres"
-                />
-              </div>
-              <div className="form-field">
-                <label>Confirmar nueva contraseña</label>
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={pwForm.confirm}
-                  onChange={e => setPwForm(f => ({ ...f, confirm: e.target.value }))}
-                  placeholder="Repite la contraseña"
-                />
-              </div>
-              <button
-                className="profile-btn primary"
-                onClick={handleChangePassword}
-                disabled={pwLoading || !pwForm.current || !pwForm.new || !pwForm.confirm}
+              <button 
+                className="premium-btn primary" onClick={handleChangePassword}
+                disabled={pwLoading || !pwForm.current || !pwForm.new}
               >
-                {pwLoading ? 'Guardando…' : 'Cambiar contraseña'}
+                {pwLoading ? 'Guardando...' : 'Actualizar contraseña'}
               </button>
             </div>
           </div>
 
-          {/* 2FA */}
-          <div className="profile-section">
-            <div className="section-header">
-              <Shield size={18} />
-              <h3>Autenticación de Dos Factores</h3>
+          <div className="premium-card">
+            <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <Shield size={18} color="var(--gold)" />
+              <h3 style={{ margin: 0 }}>Autenticación de Dos Factores</h3>
             </div>
-
+            
             {tfaEnabled ? (
-              <div className="tfa-active">
-                <div className="tfa-status enabled">
-                  <CheckCircle size={16} /> Protegido con 2FA
+              <div style={{ background: 'var(--faf7f2)', padding: '1.5rem', borderRadius: '8px', borderLeft: '4px solid #2ecc71' }}>
+                <div style={{ fontWeight: 'bold', color: '#27ae60', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <CheckCircle size={16} /> Tu cuenta está protegida
                 </div>
-                <p className="tfa-desc">Tu biblioteca está blindada contra accesos no autorizados.</p>
-                <div className="form-field">
-                  <label>Contraseña para desactivar</label>
-                  <input
-                    type="password"
-                    value={disablePassword}
-                    onChange={e => setDisablePassword(e.target.value)}
-                    placeholder="Contraseña de cuenta"
-                    style={{maxWidth: '300px'}}
-                  />
+                <p style={{ color: 'var(--mist)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>El 2FA está activo. Necesitarás tu código de seguridad para entrar.</p>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label className="premium-label">Contraseña para desactivar</label>
+                  <input type="password" className="premium-input" value={disablePassword} onChange={e=>setDisablePassword(e.target.value)} placeholder="Confirma tu contraseña" />
                 </div>
-                <button
-                  className="profile-btn danger"
-                  onClick={handleDisable2FA}
-                  disabled={tfaLoading || !disablePassword}
-                >
-                  <ShieldOff size={14} /> {tfaLoading ? 'Desactivando…' : 'Desactivar Seguridad Extra'}
+                <button className="premium-btn" style={{ background: '#f8d7da', color: '#721c24' }} onClick={handleDisable2FA} disabled={tfaLoading}>
+                  Desactivar 2FA
                 </button>
               </div>
             ) : (
-              <div className="tfa-setup">
-                <div className="tfa-status disabled">
-                  Protección básica activa
-                </div>
-                <p className="tfa-desc">
-                  Eleva la seguridad de tus datos literarios activando el 2FA con Google Authenticator.
-                </p>
-
+              <div>
+                <p style={{ color: 'var(--mist)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>Añade una capa extra de seguridad usando Google Authenticator o similar.</p>
                 {!qr ? (
-                  <button
-                    className="profile-btn primary"
-                    onClick={handleSetup2FA}
-                    disabled={tfaLoading}
-                  >
-                    <Shield size={14} /> {tfaLoading ? 'Iniciando…' : 'Activar 2FA'}
+                  <button className="premium-btn secondary" onClick={handleSetup2FA} disabled={tfaLoading}>
+                    Configurar 2FA
                   </button>
                 ) : (
-                  <div className="tfa-qr-section">
-                    <p className="tfa-instructions">
-                      Escanea el QR con tu aplicación TOTP e introduce el código.
-                    </p>
-                    <img src={qr} alt="QR 2FA" className="tfa-qr" />
-                    <div className="tfa-verify">
-                      <input
-                        type="text"
-                        value={totpCode}
-                        onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        placeholder="000 top"
-                        className="tfa-code-input"
-                        maxLength={6}
-                      />
-                      <button
-                        className="profile-btn primary"
-                        onClick={handleVerify2FA}
-                        disabled={tfaLoading || totpCode.length !== 6}
-                      >
-                        {tfaLoading ? 'Verificando…' : 'Configurar Cuenta'}
-                      </button>
-                    </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <img src={qr} alt="2FA QR" style={{ border: '1px solid var(--paper-dark)', padding: '0.5rem', background: 'white', borderRadius: '8px', marginBottom: '1rem' }} />
+                    <input 
+                      type="text" className="premium-input" style={{ width: '150px', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '4px' }}
+                      value={totpCode} onChange={e=>setTotpCode(e.target.value.replace(/\D/g,'').slice(0,6))}
+                      placeholder="000000"
+                    />
+                    <button className="premium-btn primary" style={{ marginLeft: '1rem' }} onClick={handleVerify2FA}>Verificar</button>
                   </div>
                 )}
               </div>
