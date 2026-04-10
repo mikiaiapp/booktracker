@@ -3,6 +3,7 @@
   max-width: 1000px;
   margin: 0 auto;
   min-height: 100vh;
+  background-color: #080808 !important; /* Forzado */
   color: #fff;
   animation: fadeIn 0.4s ease-out;
 }
@@ -42,11 +43,10 @@
 }
 
 .api-container {
-  background: rgba(255, 255, 255, 0.03);
+  background: #111111; /* Sólido */
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
   padding: 2rem;
-  backdrop-filter: blur(10px);
 }
 
 .settings-section {
@@ -80,7 +80,7 @@
 }
 
 .model-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: #181818; /* Más claro que el fondo pero sólido */
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   padding: 1.25rem;

@@ -164,7 +164,29 @@ async def verify_2fa(req: TFAVerifyRequest, db: AsyncSession = Depends(get_globa
 
 # ── Me ────────────────────────────────────────────────────────────────────────
 @router.get("/me")
-async def me(current_user: User = Depends(get_current_user)):
+async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_global_db)):
+    # Autopoblar desde env si están vacíos (primera vez)
+    changed = False
+    
+    # Intentar Gemini
+    if not current_user.gemini_api_key and settings.GEMINI_API_KEY:
+        current_user.gemini_api_key = settings.GEMINI_API_KEY
+        changed = True
+        
+    # Intentar OpenAI (CHATGPT para el usuario)
+    if not current_user.openai_api_key and settings.OPENAI_API_KEY:
+        current_user.openai_api_key = settings.OPENAI_API_KEY
+        changed = True
+        
+    # Intentar Anthropic
+    if not current_user.anthropic_api_key and settings.ANTHROPIC_API_KEY:
+        current_user.anthropic_api_key = settings.ANTHROPIC_API_KEY
+        changed = True
+        
+    if changed:
+        await db.commit()
+        await db.refresh(current_user)
+
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -172,6 +194,12 @@ async def me(current_user: User = Depends(get_current_user)):
         "totp_enabled": current_user.totp_enabled,
         "email_otp_enabled": current_user.email_otp_enabled,
         "avatar_color": current_user.avatar_color,
+        "api_settings": {
+            "gemini_api_key": current_user.gemini_api_key,
+            "openai_api_key": current_user.openai_api_key,
+            "anthropic_api_key": current_user.anthropic_api_key,
+            "preferred_model": current_user.preferred_model
+        }
     }
 
 
