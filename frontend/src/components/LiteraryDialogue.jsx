@@ -11,8 +11,8 @@ import {
   RefreshCw,
   BookOpen,
   Mic
-} from 'lucide-react';
 import { chatAPI } from '../utils/api';
+import toast from 'react-hot-toast';
 import './LiteraryDialogue.css';
 
 const MODES = [
@@ -157,7 +157,7 @@ export default function LiteraryDialogue({ bookId, bookTitle, authorName }) {
     recognition.onend = () => setIsRecording(false);
 
     recognition.start();
-    recognition.current = recognition;
+    recognitionRef.current = recognition;
   };
 
   return (
