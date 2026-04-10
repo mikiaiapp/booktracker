@@ -13,6 +13,7 @@ import os
 # ── Global DB engine ──────────────────────────────────────────────────────────
 def get_global_engine():
     db_path = settings.GLOBAL_DB_PATH
+    import os
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     return create_async_engine(
         f"sqlite+aiosqlite:///{db_path}",
@@ -42,13 +43,25 @@ async def init_global_db():
             ("openai_api_key", "TEXT"), 
             ("anthropic_api_key", "TEXT"),
             ("preferred_model", "TEXT"),
-            ("avatar_color", "TEXT")
+            ("avatar_color", "TEXT"),
+            ("totp_enabled", "BOOLEAN DEFAULT 0"),
+            ("totp_secret", "TEXT"),
+            ("email_otp_enabled", "BOOLEAN DEFAULT 0"),
+            ("pending_otp", "TEXT"),
+            ("pending_otp_expires", "DATETIME"),
+            ("last_login", "DATETIME"),
+            ("is_verified", "BOOLEAN DEFAULT 1"),
+            ("is_active", "BOOLEAN DEFAULT 1")
         ]
         for col_name, col_type in cols:
             try: 
                 await conn.execute(text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
                 if col_name == "avatar_color":
                     await conn.execute(text("UPDATE users SET avatar_color = '#6366f1' WHERE avatar_color IS NULL"))
+                if col_name == "is_verified":
+                    await conn.execute(text("UPDATE users SET is_verified = 1 WHERE is_verified IS NULL"))
+                if col_name == "is_active":
+                    await conn.execute(text("UPDATE users SET is_active = 1 WHERE is_active IS NULL"))
             except: 
                 pass
 
@@ -64,12 +77,14 @@ _user_sessions: dict = {}
 
 
 def get_user_db_path(user_id: str) -> str:
+    import os
     return os.path.join(settings.DATABASE_DIR, f"user_{user_id}.db")
 
 
 async def get_user_engine(user_id: str):
     if user_id not in _user_engines:
         db_path = get_user_db_path(user_id)
+        import os
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         engine = create_async_engine(
             f"sqlite+aiosqlite:///{db_path}",
