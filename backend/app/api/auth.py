@@ -125,8 +125,13 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
         )
 
     # No 2FA: issue full token
-    user.last_login = datetime.utcnow()
-    await db.commit()
+    try:
+        user.last_login = datetime.utcnow()
+        await db.commit()
+    except Exception as e:
+        print(f"[AUTH] Error actualizando last_login: {e}")
+        await db.rollback()
+
     token = create_access_token({"sub": user.id})
     return TokenResponse(access_token=token)
 
