@@ -97,7 +97,7 @@ def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, fo
 
 # --- FASE 2: ESTRUCTURA Y RESUMENES ---
 @celery_app.task(name="process_book_phase2", bind=True)
-def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True):
+def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True, force: bool = False):
     from app.services.book_parser import parse_book_structure
     from app.workers.queue_manager import update_progress, on_done
     async def _p2():
@@ -129,15 +129,15 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True):
             book.status = "structured"
             await db.commit()
             
-            if not book.phase3_done:
-                process_book_phase3.delay(user_id, book_id, chain=True)
+            if not book.phase3_done or force:
+                process_book_phase3.delay(user_id, book_id, chain=True, force=force)
             else:
                 on_done(user_id, book_id)
     return run_async(_p2())
 
 # --- FASE 3: PERSONAJES ---
 @celery_app.task(name="process_book_phase3", bind=True)
-def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False):
+def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p3():
         async for db in get_user_db(user_id):
@@ -173,12 +173,12 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False):
             book.phase3_done = True
             await db.commit()
             
-            next_is_empty = not book.global_summary or len(book.global_summary.strip()) < 10
+            next_is_empty = not book.global_summary or len(book.global_summary.strip()) < 10 or force
             if next_is_empty:
-                process_book_phase4.delay(user_id, book_id, chain=True)
+                process_book_phase4.delay(user_id, book_id, chain=True, force=force)
             else:
-                if not book.mindmap_data or len(str(book.mindmap_data)) < 50:
-                    process_book_phase5.delay(user_id, book_id, chain=True)
+                if not book.mindmap_data or len(str(book.mindmap_data)) < 50 or force:
+                    process_book_phase5.delay(user_id, book_id, chain=True, force=force)
                 else:
                     await _finalize_book_status(db, book)
                     on_done(user_id, book_id)
@@ -186,7 +186,7 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False):
 
 # --- FASE 4: RESUMEN GLOBAL ---
 @celery_app.task(name="process_book_phase4", bind=True)
-def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
+def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p4():
         async for db in get_user_db(user_id):
@@ -194,9 +194,9 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
             if not book: return
             update_progress(user_id, book_id, "phase4", 5, "Generando resumen global...", model=settings.AI_MODEL)
             
-            if chain and book.global_summary and len(book.global_summary.strip()) > 10:
-                if not book.mindmap_data:
-                    process_book_phase5.delay(user_id, book_id, chain=True)
+            if chain and not force and book.global_summary and len(book.global_summary.strip()) > 10:
+                if not book.mindmap_data or force:
+                    process_book_phase5.delay(user_id, book_id, chain=True, force=force)
                 else:
                     on_done(user_id, book_id)
                 return
@@ -209,8 +209,8 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
             book.has_global_summary = True
             await db.commit()
             
-            if not book.mindmap_data or len(str(book.mindmap_data)) < 50:
-                process_book_phase5.delay(user_id, book_id, chain=True)
+            if not book.mindmap_data or len(str(book.mindmap_data)) < 50 or force:
+                process_book_phase5.delay(user_id, book_id, chain=True, force=force)
             else:
                 await _finalize_book_status(db, book)
                 on_done(user_id, book_id)
@@ -218,7 +218,7 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False):
 
 # --- FASE 5: MAPA MENTAL ---
 @celery_app.task(name="process_book_phase5", bind=True)
-def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
+def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p5():
         async for db in get_user_db(user_id):
@@ -226,9 +226,9 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
             if not book: return
             update_progress(user_id, book_id, "phase5", 5, "Generando mapa mental...", model=settings.AI_MODEL)
             
-            if chain and book.mindmap_data and len(str(book.mindmap_data)) > 50:
-                if not book.podcast_audio_path:
-                    process_book_phase6.delay(user_id, book_id)
+            if chain and not force and book.mindmap_data and len(str(book.mindmap_data)) > 50:
+                if not book.podcast_audio_path or force:
+                    process_book_phase6.delay(user_id, book_id, force=force)
                 else:
                     on_done(user_id, book_id)
                 return
@@ -250,7 +250,7 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False):
 
 # --- FASE 6: PODCAST ---
 @celery_app.task(name="process_book_phase6", bind=True)
-def process_book_phase6(self, user_id: str, book_id: str):
+def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p6():
         async for db in get_user_db(user_id):
@@ -258,7 +258,7 @@ def process_book_phase6(self, user_id: str, book_id: str):
             if not book: return
             update_progress(user_id, book_id, "phase6", 5, "Generando podcast...", model=settings.AI_MODEL)
             
-            if not (book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script):
+            if force or not (book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script):
                 char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(10))
                 chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
                 update_progress(user_id, book_id, "phase6", 5, "Generando guion del podcast...", model=settings.AI_MODEL)

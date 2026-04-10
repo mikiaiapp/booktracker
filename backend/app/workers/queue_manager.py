@@ -226,11 +226,11 @@ def _launch(uid: str, book_id: str, phases: list, title: str = "", force: bool =
     first = phases[0] if phases else "1"
     dispatch = {
         "1":       lambda: process_book_phase1.delay(uid, book_id, chain=True, force=force),
-        "2":       lambda: process_book_phase2.delay(uid, book_id, chain=True),
-        "3":       lambda: process_book_phase3.delay(uid, book_id, chain=True),
-        "3b":      lambda: process_book_phase3.delay(uid, book_id, chain=True), # Alias para compatibilidad
-        "4":       lambda: process_book_phase4.delay(uid, book_id, chain=True),
-        "podcast": lambda: process_book_phase6.delay(uid, book_id),
+        "2":       lambda: process_book_phase2.delay(uid, book_id, chain=True, force=force),
+        "3":       lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force),
+        "3b":      lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force), // Alias
+        "4":       lambda: process_book_phase4.delay(uid, book_id, chain=True, force=force),
+        "podcast": lambda: process_book_phase6.delay(uid, book_id, force=force),
         "repair":  lambda: process_book_repair_events.delay(uid, book_id),
     }
     fn = dispatch.get(first)

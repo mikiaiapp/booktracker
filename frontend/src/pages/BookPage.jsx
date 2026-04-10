@@ -1194,7 +1194,7 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
           <button 
             className="reanalyze-btn" 
             style={{ margin: 0 }} 
-            onClick={() => onTrigger(phase)}
+            onClick={() => onTrigger(phase, isDone)}
           >
             <RefreshCw size={14} />
             <span>{isDone ? labels[phase] : `Iniciar ${label}`}</span>

@@ -43,39 +43,14 @@ async def trigger_phase1(
         await db.commit()
         return {"status": "enqueued", "force": True}
     else:
-        # Comportamiento anterior para repetición manual simple (sin cadena por defecto)
-        from app.workers.tasks import process_book_phase1
-        task = process_book_phase1.delay(current_user.id, book_id, False, False)
-        book.task_id   = task.id
-        book.status    = "identifying"
+        q_enqueue(current_user.id, book_id, book.title, phases=["1"], force=False)
+        book.status = "queued"
         book.phase1_done = False
         book.error_msg = None
         await db.commit()
-        return {"task_id": task.id}
+        return {"status": "enqueued", "force": False}
 
 
-# ── Fase 2 ────────────────────────────────────────────────────
-
-@router.post("/{book_id}/phase2")
-async def trigger_phase2(
-    book_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(select(Book).where(Book.id == book_id))
-    book = result.scalar_one_or_none()
-    if not book:
-        raise HTTPException(404, "Book not found")
-    if not book.phase1_done and not (book.title and book.author):
-        raise HTTPException(400, "Phase 1 not complete")
-
-    from app.workers.tasks import process_book_phase2
-    task = process_book_phase2.delay(current_user.id, book_id, False)
-    book.task_id   = task.id
-    book.status    = "analyzing_structure"
-    book.error_msg = None
-    await db.commit()
-    return {"task_id": task.id}
 
 
 # ── Fase 3: resúmenes de capítulos ───────────────────────────
@@ -121,6 +96,7 @@ async def trigger_phase3(
 @router.post("/{book_id}/phase4")
 async def trigger_phase4(
     book_id: str,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -128,27 +104,14 @@ async def trigger_phase4(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    # Verificar si Fase 2 está realmente hecha (capítulos presentes)
-    ch_res = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
-    has_chapters = len(ch_res.scalars().all()) > 0
     
-    # Fase 3 se considera hecha si hay personajes
-    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
-    has_chars = len(char_res.scalars().all()) > 0
-
-    if not book.phase2_done and not has_chapters:
-        raise HTTPException(400, "Phase 2 (Capítulos) not complete")
-    # Para el resumen global necesitamos capítulos resumidos (Fase 2)
-    # No obligamos necesariamente a Personajes (Fase 3) si el usuario quiere saltar,
-    # pero aquí validamos que al menos la estructura básica esté.
-
-    from app.workers.tasks import process_book_phase4
-    task = process_book_phase4.delay(current_user.id, book_id, chain=True)
-    book.task_id   = task.id
-    book.status    = "summarizing"
+    from app.workers.queue_manager import enqueue as q_enqueue
+    q_enqueue(current_user.id, book_id, book.title, phases=["4"], force=force)
+    
+    book.status = "queued"
     book.error_msg = None
     await db.commit()
-    return {"task_id": task.id}
+    return {"status": "enqueued", "book_id": book_id}
 
 
 # Endpoint legacy "phase3b" — redirige a phase4
@@ -200,6 +163,7 @@ async def summarize_single_chapter(
 @router.post("/{book_id}/phase5")
 async def trigger_phase5(
     book_id: str,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -207,19 +171,14 @@ async def trigger_phase5(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    # Inteligencia para desbloquear si ya hay personajes (Fase 3) aunque el flag esté a False
-    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
-    has_chars = len(char_res.scalars().all()) > 0
-    if not book.phase3_done and not has_chars:
-        raise HTTPException(400, "Phase 3 (Personajes) not complete")
 
-    from app.workers.tasks import process_book_phase5
-    task = process_book_phase5.delay(current_user.id, book_id, chain=True)
-    book.task_id   = task.id
-    book.status    = "summarizing"
+    from app.workers.queue_manager import enqueue as q_enqueue
+    q_enqueue(current_user.id, book_id, book.title, phases=["5"], force=force)
+    
+    book.status = "queued"
     book.error_msg = None
     await db.commit()
-    return {"task_id": task.id}
+    return {"status": "enqueued", "book_id": book_id}
 
 
 # ── Fase 6: Podcast ───────────────────────────────────────────
@@ -227,6 +186,7 @@ async def trigger_phase5(
 @router.post("/{book_id}/podcast")
 async def trigger_podcast(
     book_id: str,
+    force: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -234,15 +194,12 @@ async def trigger_podcast(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    # Inteligencia para desbloquear si ya hay personajes (Fase 3) aunque el flag esté a False
-    char_res = await db.execute(select(Character).where(Character.book_id == book_id))
-    has_chars = len(char_res.scalars().all()) > 0
-    if not book.phase3_done and not has_chars:
-        raise HTTPException(400, "Phase 3 (Personajes) not complete")
 
     from app.workers.queue_manager import enqueue as q_enqueue
-    q_enqueue(current_user.id, book_id, book.title, phases=["podcast"])
-    book.status  = "generating_podcast"
+    q_enqueue(current_user.id, book_id, book.title, phases=["podcast"], force=force)
+    
+    book.status = "queued"
+    book.error_msg = None
     await db.commit()
     return {"status": "enqueued", "book_id": book_id}
 
