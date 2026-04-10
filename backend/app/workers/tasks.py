@@ -57,11 +57,16 @@ def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, fo
     from app.services.book_identifier import identify_book
     from app.workers.queue_manager import update_progress, on_done
     async def _p1():
+        print(f"[WORKER] Iniciando Fase 1 para libro {book_id} (usuario {user_id})")
         async for db in get_user_db(user_id):
+            print(f"[WORKER] DB conectada para {book_id}")
             res = await db.execute(select(Book).where(Book.id == book_id))
             book = res.scalar_one_or_none()
-            if not book: return
+            if not book: 
+                print(f"[WORKER] ERROR: Libro {book_id} no encontrado en la DB")
+                return
             update_progress(user_id, book_id, "phase1", 10, "Identificando libro...")
+            print(f"[WORKER] Llamando a identify_book para {book.title}")
             meta = await identify_book(book.file_path, book.file_type, book.title, os.path.join(settings.COVERS_DIR, user_id), book_id)
             for k, v in meta.items():
                 if hasattr(book, k) and v: setattr(book, k, v)

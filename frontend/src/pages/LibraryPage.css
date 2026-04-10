@@ -689,6 +689,19 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.queue-item-model {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: var(--paper-dark, #f0ede8);
+  color: var(--slate, #666);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 .queue-item-msg {
   font-size: 0.76rem;

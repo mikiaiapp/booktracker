@@ -236,7 +236,10 @@ function QueuePanel({ onClose, books }) {
                         <X size={12} />
                       </button>
                     </div>
-                    <div className="queue-item-title">{title}</div>
+                    <div className="queue-item-title">
+                      {title}
+                      {info.model && <span className="queue-item-model">{info.model}</span>}
+                    </div>
                     <MiniProgress pct={pct} phase={phase} />
                     <div className="queue-item-msg">{msg}</div>
                   </div>
@@ -259,7 +262,10 @@ function QueuePanel({ onClose, books }) {
                         <X size={12} />
                       </button>
                     </div>
-                    <div className="queue-item-title">{book.title}</div>
+                    <div className="queue-item-title">
+                      {book.title}
+                      {info.model && <span className="queue-item-model">{info.model}</span>}
+                    </div>
                     {info.phase && <MiniProgress pct={pct} phase={phase} />}
                     <div className="queue-item-msg">{msg}</div>
                   </div>
