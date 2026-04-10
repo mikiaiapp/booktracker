@@ -168,7 +168,26 @@ async def verify_2fa(req: TFAVerifyRequest, db: AsyncSession = Depends(get_globa
 # ── Me ────────────────────────────────────────────────────────────────────────
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_global_db)):
-    # Devolvemos el usuario de forma limpia sin intentar escrituras automáticas por ahora
+    # Autopoblar desde env si están vacíos (primera vez) con protección extra
+    changed = False
+    try:
+        if not current_user.gemini_api_key and settings.GEMINI_API_KEY:
+            current_user.gemini_api_key = settings.GEMINI_API_KEY
+            changed = True
+        if not current_user.openai_api_key and settings.OPENAI_API_KEY:
+            current_user.openai_api_key = settings.OPENAI_API_KEY
+            changed = True
+        if not current_user.anthropic_api_key and settings.ANTHROPIC_API_KEY:
+            current_user.anthropic_api_key = settings.ANTHROPIC_API_KEY
+            changed = True
+            
+        if changed:
+            await db.commit()
+            await db.refresh(current_user)
+    except Exception as e:
+        print(f"[AUTH] Error en auto-migración de claves: {e}")
+        await db.rollback()
+
     return {
         "id": current_user.id,
         "email": current_user.email,
