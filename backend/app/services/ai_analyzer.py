@@ -54,22 +54,30 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         if not api_key:
             raise ValueError("No se ha configurado la GEMINI_API_KEY")
             
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_key}"
-        payload = {"contents": [{"parts": [{"text": f"{system}\n\n{user}"}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.5}}
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(url, json=payload)
-            if r.status_code != 200: 
-                err_body = r.text
-                print(f"[AI] ERROR GEMINI ({r.status_code}): {err_body}")
-                raise ValueError(f"Gemini API Error: {err_body}")
+        # Fallback de modelos para evitar 404 de Google
+        models_to_try = [m]
+        if "flash" in m: models_to_try.append("gemini-1.5-pro")
+        models_to_try.append("gemini-pro")
+        
+        last_error = ""
+        for cur_m in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{cur_m}:generateContent?key={api_key}"
+            payload = {"contents": [{"parts": [{"text": f"{system}\n\n{user}"}]}], "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.5}}
+            print(f"[AI] Intentando Gemini ({cur_m})...")
             
-            data = r.json()
-            if not data.get("candidates") or not data["candidates"][0].get("content"):
-                # A veces Gemini bloquea contenido sensible y devuelve candidates vacíos
-                print(f"[AI] Gemini bloqueó la respuesta o devolvió vacío: {data}")
-                return "Lo siento, la IA ha bloqueado esta respuesta por motivos de seguridad o ha devuelto un resultado vacío.", m
-
-            return data["candidates"][0]["content"]["parts"][0]["text"], m
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                r = await client.post(url, json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    if not data.get("candidates") or not data["candidates"][0].get("content"):
+                        return "La IA bloqueó la respuesta por seguridad.", cur_m
+                    return data["candidates"][0]["content"]["parts"][0]["text"], cur_m
+                
+                last_error = r.text
+                print(f"[AI] Error {cur_m} ({r.status_code}): {last_error}")
+                if r.status_code != 404: break
+        
+        raise ValueError(f"Gemini API Error: {last_error}")
     else:
         api_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
         if not api_key:
