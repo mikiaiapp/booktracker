@@ -52,41 +52,51 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         api_key = (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip()
         if not api_key:
             raise ValueError("No se ha configurado la GEMINI_API_KEY")
-            
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
         
-        # Fallback de modelos usando el SDK oficial
-        models_to_try = [m]
-        if "flash" in m: models_to_try.append("gemini-1.5-pro")
-        models_to_try.append("gemini-pro")
+        # Intentar via puente de compatibilidad OpenAI (suele ser más robusto con los 404)
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/"
+        )
         
-        last_err = ""
+        models_to_try = [m, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        last_e = ""
         for cur_m in models_to_try:
             try:
-                print(f"[AI] Llamando a Gemini SDK ({cur_m})...")
-                model = genai.GenerativeModel(cur_m)
-                # Google SDK usa hilos para bloqueos, usaremos la versión asíncrona si es posible
-                # pero google-generativeai usa un cliente asíncrono interno.
-                response = await asyncio.to_thread(
-                    model.generate_content,
-                    f"{system}\n\n{user}",
-                    generation_config=genai.types.GenerationConfig(
-                        max_output_tokens=max_tokens,
-                        temperature=0.5
-                    )
+                print(f"[AI] Intentando Gemini via OpenAI Bridge ({cur_m})...")
+                resp = await client.chat.completions.create(
+                    model=cur_m,
+                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    max_tokens=max_tokens,
+                    temperature=0.5
                 )
-                
-                if not response.text:
-                    return "La respuesta de IA está vacía o bloqueada.", cur_m
-                
-                return response.text, cur_m
+                return resp.choices[0].message.content, cur_m
             except Exception as e:
-                last_err = str(e)
-                print(f"[AI] Error SDK con {cur_m}: {last_err}")
-                if "404" not in last_err: break
+                last_e = str(e)
+                print(f"[AI] Error Bridge con {cur_m}: {last_e}")
+                if "404" not in last_e: break
         
-        raise ValueError(f"Gemini SDK Error: {last_err}")
+        # Si falla el puente, intentar como último recurso el SDK nativo v1 (no beta)
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = await asyncio.to_thread(model.generate_content, f"{system}\n\n{user}")
+            return response.text, "gemini-1.5-flash"
+        except Exception as e2:
+            print(f"[AI] Fallo total en Gemini: {e2}")
+            # Si hay clave de OpenAI real, saltar a ella
+            oa_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
+            if oa_key:
+                print("[AI] Saltando a OpenAI (GPT-4o-mini) por fallo masivo en Gemini")
+                client_oa = AsyncOpenAI(api_key=oa_key)
+                resp_oa = await client_oa.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]
+                )
+                return resp_oa.choices[0].message.content, "gpt-4o-mini"
+            raise ValueError(f"Gemini Error (Bridge & Native): {last_e}")
     else:
         api_key = (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip()
         if not api_key:
