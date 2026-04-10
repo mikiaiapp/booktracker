@@ -58,7 +58,7 @@ export default function Layout() {
         </nav>
 
         <div className="sidebar-branding-v3">
-          <img src="/logo-premium.png" alt="Logo Premium" className="sidebar-logo-footer-large" />
+          <img src="/logo-dark.png" alt="Logo BookTracker" className="sidebar-logo-footer-large" />
         </div>
 
         <div className="sidebar-footer">
