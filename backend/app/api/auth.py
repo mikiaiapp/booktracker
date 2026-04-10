@@ -97,12 +97,6 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
 
-    # --- BYPASS TOTAL DE EMERGENCIA (SIN ESCRITURA EN BD) ---
-    if req.email == "mailmafernandez@gmail.com" and req.password == "BookTracker2026":
-        token = create_access_token({"sub": user.id})
-        return TokenResponse(access_token=token)
-    # -------------------------------------------------------
-
     if not user or not verify_password(req.password, user.hashed_password):
         raise HTTPException(401, "Invalid credentials")
 
@@ -114,6 +108,14 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
         temp_token = create_access_token(
             {"sub": user.id, "temp": True}, expires_delta=timedelta(minutes=10)
         )
+
+        if user.email_otp_enabled:
+            otp = generate_otp()
+            user.pending_otp = otp
+            user.pending_otp_expires = datetime.utcnow() + timedelta(minutes=10)
+            await db.commit()
+            await send_otp_email(user.email, otp)
+
         return TokenResponse(
             access_token="",
             requires_2fa=True,
