@@ -28,17 +28,16 @@ def _compress_text(text: str) -> str:
 async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
     api_keys = api_keys or {}
     
-    # Prioridad de modelos a intentar (Escalado de costes sugerido por el usuario)
-    # 1. Gemini 2.5 Flash Lite (Gratuito - Tareas rápidas/masivas)
-    # 2. Gemini 2.5 Flash (Gratuito - Análisis de calidad)
-    # 3. GPT-4o Mini (Pago - Muy económico, fallback seguro)
-    # 4. GPT-4o (Pago - Premium - Último recurso)
+    # Prioridad de modelos a intentar (Escalado de costes optimizado)
+    # 1. Gemini 2.5 Flash / Lite  (Gratuito - Google AI Studio)
+    # 2. Groq Llama / Mixtral      (Gratuito - Groq Cloud)
+    # 3. GPT-4o Mini               (Pago - OpenAI, muy económico)
+    # 4. GPT-4o                    (Último recurso - OpenAI premium)
     
-    # Determinamos el orden base según si es una tarea rápida o compleja
     if is_fast_task:
-        fallbacks = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gpt-4o-mini", "gpt-4o"]
+        fallbacks = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o-mini", "gpt-4o"]
     else:
-        fallbacks = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gpt-4o", "gpt-4o-mini"]
+        fallbacks = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o", "gpt-4o-mini"]
     
     # El modelo preferido por el usuario siempre va primero,
     # PERO solo si no estamos saltando fallbacks (como en los tests específicos)
@@ -57,11 +56,9 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         try:
             print(f"[AI] Intentando con modelo: {m}")
             if "gemini" in m:
-                # API Key: Usuario -> .env -> System
+                # --- GEMINI (Google AI Studio) ---
                 api_key = api_keys.get("gemini") or (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
-                if not api_key: continue # Probar siguiente si no hay llave
-                
-                # Intentamos Bridge OpenAI primero (más estable para streaming/mensajes si se escala después)
+                if not api_key: continue
                 try:
                     from openai import AsyncOpenAI
                     client = AsyncOpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
@@ -73,19 +70,30 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                     )
                     return resp.choices[0].message.content, m
                 except Exception as be:
-                    # Si falla el bridge, intentamos nativo
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(m if "gemini" in m else "gemini-2.5-flash")
-                    # El prompt combinado para genai nativo
+                    mdl = genai.GenerativeModel(m if "gemini" in m else "gemini-2.5-flash")
                     prompt = f"{system}\n\n{user}"
-                    response = await asyncio.to_thread(model.generate_content, prompt)
+                    response = await asyncio.to_thread(mdl.generate_content, prompt)
                     return response.text, m
+
+            elif m in ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "llama3-70b-8192", "llama3-8b-8192"]:
+                # --- GROQ (OpenAI-compatible, gratuito) ---
+                api_key = api_keys.get("groq") or (getattr(settings, 'GROQ_API_KEY', None) or os.environ.get("GROQ_API_KEY") or "").strip()
+                if not api_key: continue
+                from openai import AsyncOpenAI
+                client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+                resp = await client.chat.completions.create(
+                    model=m,
+                    max_tokens=max_tokens,
+                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]
+                )
+                return resp.choices[0].message.content, m
+
             else:
-                # OpenAI
+                # --- OPENAI (pago, último recurso) ---
                 api_key = api_keys.get("openai") or (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
                 if not api_key: continue
-                
                 from openai import AsyncOpenAI
                 client = AsyncOpenAI(api_key=api_key)
                 resp = await client.chat.completions.create(
@@ -376,6 +384,9 @@ async def test_api_key(provider: str, api_key: str, model: Optional[str] = None)
     elif provider == "openai":
         keys["openai"] = api_key
         keys["preferred_model"] = "gpt-4o-mini"
+    elif provider == "groq":
+        keys["groq"] = api_key
+        keys["preferred_model"] = "llama-3.3-70b-versatile"
     
     try:
         # Usamos _call_ai directamente, saltando fallbacks para probar la llave específica

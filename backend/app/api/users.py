@@ -14,10 +14,11 @@ class UserSettingsUpdate(BaseModel):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
     preferred_model: Optional[str] = None
 
 class TestAPIRequest(BaseModel):
-    provider: str # gemini | openai
+    provider: str  # gemini | openai | groq
     api_key: Optional[str] = None
     model: Optional[str] = None
 
@@ -36,6 +37,7 @@ async def get_profile(current_user: User = Depends(get_current_user)):
         "has_gemini": bool(current_user.gemini_api_key),
         "has_openai": bool(current_user.openai_api_key),
         "has_anthropic": bool(current_user.anthropic_api_key),
+        "has_groq": bool(getattr(current_user, 'groq_api_key', None)),
     }
 
 @router.get("/settings")
@@ -45,10 +47,12 @@ async def get_settings(current_user: User = Depends(get_current_user)):
         "gemini_api_key": mask(current_user.gemini_api_key),
         "openai_api_key": mask(current_user.openai_api_key),
         "anthropic_api_key": mask(current_user.anthropic_api_key),
+        "groq_api_key": mask(getattr(current_user, 'groq_api_key', None)),
         "preferred_model": current_user.preferred_model,
         "has_gemini": bool(current_user.gemini_api_key),
         "has_openai": bool(current_user.openai_api_key),
         "has_anthropic": bool(current_user.anthropic_api_key),
+        "has_groq": bool(getattr(current_user, 'groq_api_key', None)),
     }
 
 @router.put("/settings")
@@ -63,6 +67,12 @@ async def update_settings(
         current_user.openai_api_key = settings_data.openai_api_key
     if settings_data.anthropic_api_key is not None:
         current_user.anthropic_api_key = settings_data.anthropic_api_key
+    if settings_data.groq_api_key is not None:
+        # Guardamos de forma segura incluso si la columna aún no existe en la DB (graceful)
+        try:
+            current_user.groq_api_key = settings_data.groq_api_key
+        except Exception:
+            pass
     if settings_data.preferred_model is not None:
         current_user.preferred_model = settings_data.preferred_model
     
@@ -77,13 +87,14 @@ async def test_api_endpoint(
 ):
     key_to_test = data.api_key
     
-    # Si no nos pasan la llave (porque el usuario no quiere revelarla de nuevo al server si ya está guardada), 
-    # usamos la que tenemos en DB
+    # Si no nos pasan la llave (enmascarada), usamos la de DB
     if not key_to_test or "..." in key_to_test:
         if data.provider == "gemini":
             key_to_test = current_user.gemini_api_key
         elif data.provider == "openai":
             key_to_test = current_user.openai_api_key
+        elif data.provider == "groq":
+            key_to_test = getattr(current_user, 'groq_api_key', None)
     
     if not key_to_test:
         raise HTTPException(status_code=400, detail="No hay clave de API para probar")
@@ -91,12 +102,13 @@ async def test_api_endpoint(
     try:
         success = await test_api_key(data.provider, key_to_test, data.model)
         if success:
-            return {"status": "success", "message": f"Conexión con {data.provider.title()} establecida correctamente"}
+            return {"status": "success", "message": f"Conexión con {data.provider.title()} establecida correctamente ✓"}
         else:
             return {"status": "error", "message": "Respuesta inesperada de la IA"}
     except Exception as e:
         error_msg = str(e)
-        # Limpiar mensajes de error largos o técnicos para el usuario
-        if "API key not found" in error_msg: error_msg = "Clave de API no válida"
-        if "quota" in error_msg.lower(): error_msg = "Has excedido tu cuota de API"
+        if "API key not found" in error_msg or "invalid_api_key" in error_msg: 
+            error_msg = "Clave de API no válida o revocada"
+        if "quota" in error_msg.lower(): 
+            error_msg = "Has excedido tu cuota de API"
         raise HTTPException(status_code=400, detail=error_msg)

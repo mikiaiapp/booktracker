@@ -26,6 +26,7 @@ async def _get_user_api_keys(user_id: str) -> dict:
                     "gemini": user.gemini_api_key,
                     "openai": user.openai_api_key,
                     "anthropic": user.anthropic_api_key,
+                    "groq": getattr(user, 'groq_api_key', None),
                     "preferred_model": user.preferred_model
                 }
     except Exception as e:

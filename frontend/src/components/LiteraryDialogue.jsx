@@ -27,6 +27,8 @@ const AI_MODELS = [
   { id: 'auto', label: 'Auto (Recomendado)', color: '#6366f1' },
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash ✦ Gratis', color: '#4f46e5' },
   { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite ✦ Gratis', color: '#8b5cf6' },
+  { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Groq) ✦ Gratis', color: '#06b6d4' },
+  { id: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B (Groq) ✦ Gratis', color: '#0891b2' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini', color: '#10b981' },
   { id: 'gpt-4o', label: 'GPT-4o', color: '#059669' },
 ];

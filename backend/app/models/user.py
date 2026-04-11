@@ -29,4 +29,5 @@ class User(Base):
     gemini_api_key = Column(Text, nullable=True)
     openai_api_key = Column(Text, nullable=True)
     anthropic_api_key = Column(Text, nullable=True)
+    groq_api_key = Column(Text, nullable=True)
     preferred_model = Column(String, nullable=True)

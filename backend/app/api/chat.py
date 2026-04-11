@@ -62,6 +62,7 @@ async def send_chat_message(book_id: str, req: ChatRequest, user: User = Depends
         api_keys = {
             "gemini": user.gemini_api_key,
             "openai": user.openai_api_key,
+            "groq": getattr(user, 'groq_api_key', None),
             "preferred_model": req.model if req.model != "auto" else user.preferred_model
         }
         ai_resp, used_m = await talk_to_book(book.title, book.author, context, req.message, req.mode, history, api_keys=api_keys)
