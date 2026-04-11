@@ -25,7 +25,7 @@ def _compress_text(text: str) -> str:
     if not text: return ""
     return re.sub(r'\s+', ' ', text).strip()
 
-async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None) -> tuple[str, str]:
+async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
     api_keys = api_keys or {}
     
     # Prioridad de modelos a intentar
@@ -40,7 +40,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     else:
         fallbacks = ["gpt-4o-mini", "gemini-1.5-flash", "gpt-4o", "gemini-1.5-pro"]
         
-    models_to_try = [preferred] + [m for m in fallbacks if m != preferred]
+    models_to_try = [preferred] + ([m for m in fallbacks if m != preferred] if not skip_fallback else [])
     
     last_error = ""
     
@@ -361,16 +361,14 @@ async def test_api_key(provider: str, api_key: str, model: Optional[str] = None)
     keys = {}
     if provider == "gemini":
         keys["gemini"] = api_key
-        # Si no pasan modelo, usamos el flash que es más rápido y barato para test
-        keys["preferred_model"] = model or "gemini-1.5-flash"
+        keys["preferred_model"] = "gemini-1.5-flash"
     elif provider == "openai":
         keys["openai"] = api_key
-        keys["preferred_model"] = model or "gpt-4o-mini"
+        keys["preferred_model"] = "gpt-4o-mini"
     
     try:
-        # Usamos _call_ai directamente (sin retries largos para el test)
-        # para que el usuario reciba feedback rápido si falla
-        resp, _ = await _call_ai(system, user, max_tokens=10, api_keys=keys)
+        # Usamos _call_ai directamente, saltando fallbacks para probar la llave específica
+        resp, used_model = await _call_ai(system, user, max_tokens=10, api_keys=keys, skip_fallback=True)
         return "OK" in resp.upper() or len(resp) > 0
     except Exception as e:
         print(f"API Test failed for {provider}: {e}")
