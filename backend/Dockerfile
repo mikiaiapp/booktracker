@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout=120 -r requirements.txt
 
-# Copiar código fuente
+# Copiar código fuente (ARG invalida cache cuando cambia)
+ARG CACHE_BUST=1
 COPY . .
 
 EXPOSE 8000

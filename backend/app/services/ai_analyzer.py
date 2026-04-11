@@ -80,7 +80,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                     mdl = genai.GenerativeModel(m if "gemini" in m else "gemini-2.5-flash")
                     prompt = f"{system}\n\n{user}"
                     response = await asyncio.to_thread(mdl.generate_content, prompt)
-                    return response.text, m
+                    return (response.text or ""), m
 
             elif m in ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "llama3-70b-8192", "llama3-8b-8192"]:
                 # --- GROQ (OpenAI-compatible, gratuito) ---
