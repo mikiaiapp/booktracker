@@ -41,6 +41,7 @@ async def init_global_db():
             ("gemini_api_key", "TEXT"),
             ("openai_api_key", "TEXT"), 
             ("anthropic_api_key", "TEXT"),
+            ("groq_api_key", "TEXT"),
             ("preferred_model", "TEXT"),
             ("avatar_color", "TEXT"),
             ("totp_enabled", "BOOLEAN DEFAULT 0"),
