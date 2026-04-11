@@ -68,7 +68,12 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         max_tokens=max_tokens,
                         temperature=0.5
                     )
-                    return resp.choices[0].message.content, m
+                    content = resp.choices[0].message.content
+                    # Gemini bridge puede devolver None en content (respuesta válida pero vacía)
+                    if content is None:
+                        # Intentar campo alternativo o aceptar como respuesta válida
+                        content = getattr(resp.choices[0].message, 'reasoning_content', None) or ""
+                    return content, m
                 except Exception as be:
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
@@ -390,8 +395,11 @@ async def test_api_key(provider: str, api_key: str, model: Optional[str] = None)
     
     try:
         # Usamos _call_ai directamente, saltando fallbacks para probar la llave específica
-        resp, used_model = await _call_ai(system, user, max_tokens=10, api_keys=keys, skip_fallback=True)
-        return "OK" in resp.upper() or len(resp) > 0
+        resp, used_model = await _call_ai(system, user, max_tokens=20, api_keys=keys, skip_fallback=True)
+        # Defender None: Gemini a veces retorna string vacío o None en respuestas cortas
+        if resp is None:
+            resp = ""  # Aun así la clave es válida si no lanó excepción
+        return len(resp) >= 0  # Si llega aquí sin excepción, la clave es válida
     except Exception as e:
         print(f"API Test failed for {provider}: {e}")
         raise e
