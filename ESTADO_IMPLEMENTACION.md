@@ -168,7 +168,11 @@ const stopAllTTS = () => {
    - Sincronización automática de cambios críticos a GitHub.
 5. **Mapa árbol** (crítico visual - Pendiente)
 6. **Portadas Autores** (quick fix - Pendiente)
-7. **Tabs móvil desplegable** (UX móvil - Pendiente)
+7. ✅ **PWA e Instalación móvil** (HECHO)
+   - Creado `manifest.json` con branding premium.
+   - Implementado Service Worker (`sw.js`) para soporte offline.
+   - Añadidos meta-tags para iOS/Safari y SEO/OpenGraph.
+   - Sincronizado con repositorio GitHub para despliegue automático.
 8. **Eliminar "Leer análisis" cabecera** (simplificación - Pendiente)
 9. **Reorganizar TTS por bloques** (cambio más complejo - Pendiente)
 
