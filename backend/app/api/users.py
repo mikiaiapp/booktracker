@@ -45,7 +45,10 @@ async def get_settings(current_user: User = Depends(get_current_user)):
         "gemini_api_key": mask(current_user.gemini_api_key),
         "openai_api_key": mask(current_user.openai_api_key),
         "anthropic_api_key": mask(current_user.anthropic_api_key),
-        "preferred_model": current_user.preferred_model
+        "preferred_model": current_user.preferred_model,
+        "has_gemini": bool(current_user.gemini_api_key),
+        "has_openai": bool(current_user.openai_api_key),
+        "has_anthropic": bool(current_user.anthropic_api_key),
     }
 
 @router.put("/settings")

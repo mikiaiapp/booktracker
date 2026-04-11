@@ -57,28 +57,34 @@ export default function APISettingsPage() {
   }
 
   const handleTest = async (provider) => {
+    console.log(`[Test] Iniciando prueba para ${provider}...`);
     const key = provider === 'gemini' ? settings.gemini_api_key : settings.openai_api_key
     const model = settings.preferred_model
     
-    // Si la llave está vacía y no hay una guardada (enmascarada), avisar
+    // Si la llave está vacía y no hay una guardada (backend nos lo dirá con has_...), avisar
     if (!key && !settings[`has_${provider}`]) {
-      return toast.error(`Introduce una clave de ${provider.title()} para probar`)
+      console.warn(`[Test] No hay llave para ${provider}`);
+      return toast.error(`Introduce una clave de ${provider.charAt(0).toUpperCase() + provider.slice(1)} para probar`)
     }
 
-    const tId = toast.loading(`Probando conexión con ${provider.title()}...`)
+    const tId = toast.loading(`Probando conexión con ${provider.charAt(0).toUpperCase() + provider.slice(1)}...`)
     try {
+      console.log(`[Test] Llamando a /users/test-api con provider=${provider}, model=${model}`);
       const { data } = await api.post('/users/test-api', {
         provider,
         api_key: key,
         model
       })
+      console.log(`[Test] Respuesta recibida:`, data);
       if (data.status === 'success') {
         toast.success(data.message, { id: tId })
       } else {
         toast.error(data.message, { id: tId })
       }
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Error en la prueba de conexión', { id: tId })
+      console.error(`[Test] Error en la petición:`, err);
+      const msg = err.response?.data?.detail || 'Error en la prueba de conexión'
+      toast.error(msg, { id: tId })
     }
   }
 
