@@ -5,6 +5,7 @@ from typing import Optional
 from app.core.security import get_current_user
 from app.core.database import get_global_db
 from app.models.user import User
+from app.services.ai_analyzer import test_api_key
 
 router = APIRouter()
 
@@ -14,6 +15,11 @@ class UserSettingsUpdate(BaseModel):
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     preferred_model: Optional[str] = None
+
+class TestAPIRequest(BaseModel):
+    provider: str # gemini | openai
+    api_key: Optional[str] = None
+    model: Optional[str] = None
 
 @router.get("/profile")
 async def get_profile(current_user: User = Depends(get_current_user)):
@@ -60,3 +66,34 @@ async def update_settings(
     await db.merge(current_user)
     await db.commit()
     return {"status": "success"}
+
+@router.post("/test-api")
+async def test_api_endpoint(
+    data: TestAPIRequest,
+    current_user: User = Depends(get_current_user)
+):
+    key_to_test = data.api_key
+    
+    # Si no nos pasan la llave (porque el usuario no quiere revelarla de nuevo al server si ya está guardada), 
+    # usamos la que tenemos en DB
+    if not key_to_test or "..." in key_to_test:
+        if data.provider == "gemini":
+            key_to_test = current_user.gemini_api_key
+        elif data.provider == "openai":
+            key_to_test = current_user.openai_api_key
+    
+    if not key_to_test:
+        raise HTTPException(status_code=400, detail="No hay clave de API para probar")
+    
+    try:
+        success = await test_api_key(data.provider, key_to_test, data.model)
+        if success:
+            return {"status": "success", "message": f"Conexión con {data.provider.title()} establecida correctamente"}
+        else:
+            return {"status": "error", "message": "Respuesta inesperada de la IA"}
+    except Exception as e:
+        error_msg = str(e)
+        # Limpiar mensajes de error largos o técnicos para el usuario
+        if "API key not found" in error_msg: error_msg = "Clave de API no válida"
+        if "quota" in error_msg.lower(): error_msg = "Has excedido tu cuota de API"
+        raise HTTPException(status_code=400, detail=error_msg)

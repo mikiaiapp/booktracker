@@ -56,6 +56,32 @@ export default function APISettingsPage() {
     }
   }
 
+  const handleTest = async (provider) => {
+    const key = provider === 'gemini' ? settings.gemini_api_key : settings.openai_api_key
+    const model = settings.preferred_model
+    
+    // Si la llave está vacía y no hay una guardada (enmascarada), avisar
+    if (!key && !settings[`has_${provider}`]) {
+      return toast.error(`Introduce una clave de ${provider.title()} para probar`)
+    }
+
+    const tId = toast.loading(`Probando conexión con ${provider.title()}...`)
+    try {
+      const { data } = await api.post('/users/test-api', {
+        provider,
+        api_key: key,
+        model
+      })
+      if (data.status === 'success') {
+        toast.success(data.message, { id: tId })
+      } else {
+        toast.error(data.message, { id: tId })
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Error en la prueba de conexión', { id: tId })
+    }
+  }
+
   if (loading) {
     return <div className="api-settings-page loading">Cargando configuración...</div>
   }
@@ -116,24 +142,36 @@ export default function APISettingsPage() {
                 <label className="premium-label">Google Gemini Key</label>
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>Obtener clave gratis ↗</a>
               </div>
-              <input 
-                type="password" className="premium-input" 
-                value={settings.gemini_api_key || ''} 
-                onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
-                placeholder="Introduce tu clave de Google AI Studio"
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="password" className="premium-input" 
+                  style={{ flex: 1 }}
+                  value={settings.gemini_api_key || ''} 
+                  onChange={e => setSettings({...settings, gemini_api_key: e.target.value})}
+                  placeholder="Introduce tu clave de Google AI Studio"
+                />
+                <button type="button" className="premium-btn" style={{ padding: '0 1.25rem' }} onClick={() => handleTest('gemini')}>
+                  Probar
+                </button>
+              </div>
             </div>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                 <label className="premium-label">OpenAI Key</label>
                 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: 'var(--gold)' }}>Gestionar OpenAI ↗</a>
               </div>
-              <input 
-                type="password" className="premium-input" 
-                value={settings.openai_api_key || ''} 
-                onChange={e => setSettings({...settings, openai_api_key: e.target.value})}
-                placeholder="sk-..."
-              />
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input 
+                  type="password" className="premium-input" 
+                  style={{ flex: 1 }}
+                  value={settings.openai_api_key || ''} 
+                  onChange={e => setSettings({...settings, openai_api_key: e.target.value})}
+                  placeholder="sk-..."
+                />
+                <button type="button" className="premium-btn" style={{ padding: '0 1.25rem' }} onClick={() => handleTest('openai')}>
+                  Probar
+                </button>
+              </div>
             </div>
           </div>
         </div>

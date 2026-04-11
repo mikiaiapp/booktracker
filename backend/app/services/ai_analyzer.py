@@ -351,3 +351,27 @@ async def talk_to_book(book_title: str, author: str, context: str, user_msg: str
     except Exception as e:
         print(f"Error crítico en el Diálogo Literario: {e}")
         return f"Lo lamento, todos los sistemas de inteligencia artificial están reportando errores: {str(e)}", "Error"
+
+async def test_api_key(provider: str, api_key: str, model: Optional[str] = None) -> bool:
+    """Verifica si una clave de API es válida realizando una llamada mínima."""
+    system = "Responde solo OK."
+    user = "Test de conexión."
+    
+    # Preparamos el diccionario de llaves para _call_ai
+    keys = {}
+    if provider == "gemini":
+        keys["gemini"] = api_key
+        # Si no pasan modelo, usamos el flash que es más rápido y barato para test
+        keys["preferred_model"] = model or "gemini-1.5-flash"
+    elif provider == "openai":
+        keys["openai"] = api_key
+        keys["preferred_model"] = model or "gpt-4o-mini"
+    
+    try:
+        # Usamos _call_ai directamente (sin retries largos para el test)
+        # para que el usuario reciba feedback rápido si falla
+        resp, _ = await _call_ai(system, user, max_tokens=10, api_keys=keys)
+        return "OK" in resp.upper() or len(resp) > 0
+    except Exception as e:
+        print(f"API Test failed for {provider}: {e}")
+        raise e
