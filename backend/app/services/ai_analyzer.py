@@ -29,16 +29,16 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     api_keys = api_keys or {}
     
     # Prioridad de modelos a intentar (Escalado de costes sugerido por el usuario)
-    # 1. Gemini 1.5 Flash (Gratuito/Económico - Ideal para tareas rápidas)
-    # 2. Gemini 1.5 Pro (Gratuito/Económico - Potente para análisis profundos)
-    # 3. GPT-4o Mini (Pago - Muy económico)
-    # 4. GPT-4o (Pago - Premium/Costoso - Último recurso)
+    # 1. Gemini 2.5 Flash Lite (Gratuito - Tareas rápidas/masivas)
+    # 2. Gemini 2.5 Flash (Gratuito - Análisis de calidad)
+    # 3. GPT-4o Mini (Pago - Muy económico, fallback seguro)
+    # 4. GPT-4o (Pago - Premium - Último recurso)
     
     # Determinamos el orden base según si es una tarea rápida o compleja
     if is_fast_task:
-        fallbacks = ["gemini-1.5-flash", "gpt-4o-mini", "gemini-1.5-pro", "gpt-4o"]
+        fallbacks = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gpt-4o-mini", "gpt-4o"]
     else:
-        fallbacks = ["gemini-1.5-pro", "gpt-4o", "gemini-1.5-flash", "gpt-4o-mini"]
+        fallbacks = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gpt-4o", "gpt-4o-mini"]
     
     # El modelo preferido por el usuario siempre va primero,
     # PERO solo si no estamos saltando fallbacks (como en los tests específicos)
@@ -48,7 +48,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     if skip_fallback:
         models_to_try = [preferred]
     else:
-        # Construimos la lista sin duplicados, poniendo el preferido primero
+        # El preferido del usuario va primero, luego los fallbacks por coste
         models_to_try = [preferred] + [m for m in fallbacks if m != preferred]
     
     last_error = ""
@@ -64,9 +64,9 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 # Intentamos Bridge OpenAI primero (más estable para streaming/mensajes si se escala después)
                 try:
                     from openai import AsyncOpenAI
-                    client = AsyncOpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/")
+                    client = AsyncOpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
                     resp = await client.chat.completions.create(
-                        model=m if "gemini" in m else "gemini-1.5-flash",
+                        model=m if "gemini" in m else "gemini-2.5-flash",
                         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                         max_tokens=max_tokens,
                         temperature=0.5
@@ -76,7 +76,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                     # Si falla el bridge, intentamos nativo
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
-                    model = genai.GenerativeModel(m if "gemini" in m else "gemini-1.5-flash")
+                    model = genai.GenerativeModel(m if "gemini" in m else "gemini-2.5-flash")
                     # El prompt combinado para genai nativo
                     prompt = f"{system}\n\n{user}"
                     response = await asyncio.to_thread(model.generate_content, prompt)
@@ -372,7 +372,7 @@ async def test_api_key(provider: str, api_key: str, model: Optional[str] = None)
     keys = {}
     if provider == "gemini":
         keys["gemini"] = api_key
-        keys["preferred_model"] = "gemini-1.5-flash"
+        keys["preferred_model"] = "gemini-2.5-flash"
     elif provider == "openai":
         keys["openai"] = api_key
         keys["preferred_model"] = "gpt-4o-mini"

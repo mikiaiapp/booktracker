@@ -25,8 +25,8 @@ const MODES = [
 
 const AI_MODELS = [
   { id: 'auto', label: 'Auto (Recomendado)', color: '#6366f1' },
-  { id: 'gemini-1.5-flash', label: 'Gemini Flash', color: '#4f46e5' },
-  { id: 'gemini-1.5-pro', label: 'Gemini Pro', color: '#8b5cf6' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash ✦ Gratis', color: '#4f46e5' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite ✦ Gratis', color: '#8b5cf6' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini', color: '#10b981' },
   { id: 'gpt-4o', label: 'GPT-4o', color: '#059669' },
 ];
