@@ -50,11 +50,13 @@
 .cp-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  grid-auto-rows: min-content;
+  gap: 1.5rem;
   padding: 1.5rem;
   overflow-y: auto;
   flex: 1;
   background: rgba(0,0,0,0.02);
+  align-items: start;
 }
 
 /* Scrollbar elegante */
@@ -74,40 +76,42 @@
 
 .cp-thumb {
   position: relative;
+  display: block;
+  width: 100%;
   border: 2px solid var(--paper-dark);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
   background: white;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 0;
-  width: 100%;
-  aspect-ratio: 2/3;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  margin: 0;
 }
 
 .cp-thumb:hover:not(:disabled) {
   border-color: var(--gold);
-  transform: translateY(-4px);
-  box-shadow: 0 10px 20px rgba(201,169,110,0.3);
-  z-index: 2;
+  transform: translateY(-5px);
+  box-shadow: 0 12px 25px rgba(201,169,110,0.3);
+  z-index: 10;
 }
 
 .cp-thumb img {
   width: 100%;
-  height: 100%;
-  object-fit: contain;
+  height: auto;
   display: block;
-  padding: 4px;
+  object-fit: contain;
+  background: #fdfcfb;
 }
 
 .cp-thumb-overlay {
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,0.5);
-  display: flex; align-items: center; justify-content: center;
+  position: absolute; 
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex; 
+  align-items: center; 
+  justify-content: center;
   color: white;
+  backdrop-filter: blur(2px);
 }
 
 .cp-thumb.loading { border-color: var(--gold); }
