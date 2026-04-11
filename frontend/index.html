@@ -2,14 +2,45 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#c9a96e" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/logo-premium.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- SEO & UX Premium -->
+    <title>BookTracker | Tu Biblioteca Inteligente con IA</title>
+    <meta name="description" content="Organiza tu biblioteca, genera resúmenes con IA y escucha podcasts personalizados de tus libros favoritos." />
+    
+    <!-- Open Graph (Facebook/WhatsApp/Discord) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="BookTracker Premium" />
+    <meta property="og:description" content="Tu biblioteca inteligente con análisis de IA y podcasts personalizados." />
+    <meta property="og:image" content="/logo-premium.png" />
+    
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="BookTracker Premium" />
+    <meta name="twitter:description" content="Domina tu biblioteca con el poder de la Inteligencia Artificial." />
+    <meta name="twitter:image" content="/logo-premium.png" />
+    
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW registrado', reg))
+            .catch(err => console.log('SW error', err));
+        });
+      }
+    </script>
+
     <!-- Fuentes premium -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400;1,500;1,700&display=swap" rel="stylesheet">
+    
     <style>
-      :root {
         --ink: #0d0d0d; --paper: #f5f0e8; --gold: #c9a96e; --cream: #faf7f2;
         --paper-dark: #ede6d6; --mist: #8a9aaa; --radius: 4px;
       }

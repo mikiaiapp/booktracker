@@ -1,0 +1,23 @@
+{
+  "name": "BookTracker Premium",
+  "short_name": "BookTracker",
+  "description": "Tu biblioteca inteligente con análisis de IA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#c9a96e",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo-premium.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32 64x64",
+      "type": "image/png"
+    }
+  ]
+}
