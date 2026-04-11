@@ -28,19 +28,28 @@ def _compress_text(text: str) -> str:
 async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
     api_keys = api_keys or {}
     
-    # Prioridad de modelos a intentar
+    # Prioridad de modelos a intentar (Escalado de costes sugerido por el usuario)
+    # 1. Gemini 1.5 Flash (Gratuito/Económico - Ideal para tareas rápidas)
+    # 2. Gemini 1.5 Pro (Gratuito/Económico - Potente para análisis profundos)
+    # 3. GPT-4o Mini (Pago - Muy económico)
+    # 4. GPT-4o (Pago - Premium/Costoso - Último recurso)
+    
+    # Determinamos el orden base según si es una tarea rápida o compleja
+    if is_fast_task:
+        fallbacks = ["gemini-1.5-flash", "gpt-4o-mini", "gemini-1.5-pro", "gpt-4o"]
+    else:
+        fallbacks = ["gemini-1.5-pro", "gpt-4o", "gemini-1.5-flash", "gpt-4o-mini"]
+    
+    # El modelo preferido por el usuario siempre va primero,
+    # PERO solo si no estamos saltando fallbacks (como en los tests específicos)
     preferred = api_keys.get("preferred_model") or settings.AI_MODEL
     preferred = preferred.lower()
     
-    # Lista de reintentos inteligente (Fallback)
-    # Si falla el preferido, probamos alternativas seguras
-    fallbacks = []
-    if "gemini" in preferred:
-        fallbacks = ["gemini-1.5-flash", "gpt-4o-mini", "gemini-1.5-pro", "gpt-4o"]
+    if skip_fallback:
+        models_to_try = [preferred]
     else:
-        fallbacks = ["gpt-4o-mini", "gemini-1.5-flash", "gpt-4o", "gemini-1.5-pro"]
-        
-    models_to_try = [preferred] + ([m for m in fallbacks if m != preferred] if not skip_fallback else [])
+        # Construimos la lista sin duplicados, poniendo el preferido primero
+        models_to_try = [preferred] + [m for m in fallbacks if m != preferred]
     
     last_error = ""
     
@@ -129,7 +138,7 @@ def _parse_json(text: str):
 
 # --- FUNCIONES DE ALTA INTENSIDAD ---
 
-async def summarize_chapter(chapter_title, text, book_title, author, api_keys: dict = None) -> dict:
+async def summarize_chapter(chapter_title, text, book_title, author, api_keys: dict = None) -> tuple[dict, str]:
     system = (
         "Eres un erudito literario de España. Responde siempre en español de España culto. "
         "Responde SOLO con JSON válido, sin texto extra, usando exactamente estas claves en inglés:\n"
@@ -243,7 +252,7 @@ Esquema JSON obligatorio:
         print(f"Error al analizar personaje {name}: {e}")
         return None, "Error"
 
-async def generate_global_summary(all_summaries: str, book_title: str, author: str, api_keys: dict = None) -> str:
+async def generate_global_summary(all_summaries: str, book_title: str, author: str, api_keys: dict = None) -> tuple[str, str]:
     if not all_summaries or len(all_summaries.strip()) < 50:
         return ""
     system = "Académico de la lengua de España. Escribe un ensayo literario magistral (mínimo 1500 palabras) en español de España."
@@ -254,7 +263,8 @@ Resúmenes de la trama:
 ---
 Basándote en los resúmenes anteriores, escribe un ensayo literario magistral."""
     try:
-        return await _call_ai_with_retry(system, user, 5000, api_keys=api_keys)
+        # Los ensayos son tareas profundas (is_fast_task=False lo prioriza como Pro/4o)
+        return await _call_ai_with_retry(system, user, 5000, is_fast_task=False, api_keys=api_keys)
     except Exception as e:
         print(f"Error al generar ensayo global: {e}")
         return "", "Error"
@@ -289,7 +299,7 @@ Basándote en los resúmenes anteriores, genera el mapa mental completo para la 
     except:
         return {"center": book_title, "branches": []}, "Error"
 
-async def generate_podcast_script(book_title, author, summary, chars, api_keys: dict = None) -> str:
+async def generate_podcast_script(book_title, author, summary, chars, api_keys: dict = None) -> tuple[str, str]:
     if not summary or len(summary.strip()) < 50:
         return ""
     system = (
@@ -314,6 +324,7 @@ async def generate_podcast_script(book_title, author, summary, chars, api_keys: 
         f"Personajes principales:\n{str(chars)[:2000]}"
     )
     try:
+        # Los guiones de podcast son largos pero permitimos Flash para velocidad
         return await _call_ai_with_retry(system, user, 8000, is_fast_task=True, api_keys=api_keys)
     except Exception as e:
         print(f"Error al generar guion de podcast: {e}")
@@ -346,8 +357,8 @@ async def talk_to_book(book_title: str, author: str, context: str, user_msg: str
     combined_user = f"Historial reciente:\n{hist_str}\n\nUSUARIO: {user_msg}"
     
     try:
-        # Delegamos en _call_ai_with_retry que ahora es súper robusto y tiene fallbacks
-        return await _call_ai_with_retry(system, combined_user, 2500, api_keys=api_keys)
+        # El chat es tarea profunda por defecto (prioriza calidad)
+        return await _call_ai_with_retry(system, combined_user, 2500, is_fast_task=False, api_keys=api_keys)
     except Exception as e:
         print(f"Error crítico en el Diálogo Literario: {e}")
         return f"Lo lamento, todos los sistemas de inteligencia artificial están reportando errores: {str(e)}", "Error"
