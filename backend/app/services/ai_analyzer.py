@@ -33,15 +33,15 @@ _MODEL_CACHE = {
     "keys_hash": ""
 }
 
-async def _get_dynamic_hierarchy(keys: dict) -> List[Tuple[str, str]]:
+async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[str, str]]:
     """Obtiene y clasifica los modelos disponibles dinámicamente."""
     global _MODEL_CACHE
     
     # Generar un hash simple de las llaves para detectar cambios
     keys_str = f"{keys.get('gemini')}-{keys.get('groq')}-{keys.get('openai')}"
     
-    # Si la caché tiene menos de 24h y las llaves no han cambiado, la usamos
-    if _MODEL_CACHE["hierarchy"] and (time.time() - _MODEL_CACHE["last_update"] < 86400) and (_MODEL_CACHE["keys_hash"] == keys_str):
+    # Si la caché tiene menos de 24h y las llaves no han cambiado (y no se fuerza refresh), la usamos
+    if not force and _MODEL_CACHE["hierarchy"] and (time.time() - _MODEL_CACHE["last_update"] < 86400) and (_MODEL_CACHE["keys_hash"] == keys_str):
         return _MODEL_CACHE["hierarchy"]
 
     print("[IA] Descubriendo catálogo de modelos disponible...")

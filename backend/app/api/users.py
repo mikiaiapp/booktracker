@@ -1,28 +1,31 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Optional
 from app.core.security import get_current_user
 from app.core.database import get_global_db
 from app.models.user import User
-from app.services.ai_analyzer import test_api_key
+from app.services.ai_analyzer import test_api_key, _get_dynamic_hierarchy
 
 router = APIRouter()
 
-
-class UserSettingsUpdate(BaseModel):
-    gemini_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    groq_api_key: Optional[str] = None
-    preferred_model: Optional[str] = None
-
-class TestAPIRequest(BaseModel):
-    provider: str  # gemini | openai | groq
-    api_key: Optional[str] = None
-    model: Optional[str] = None
-
 @router.get("/profile")
-async def get_profile(current_user: User = Depends(get_current_user)):
+async def get_profile(
+    background_tasks: BackgroundTasks, 
+    current_user: User = Depends(get_current_user)
+):
+    # Al entrar en la app (se llama a /profile), disparamos un refresco de modelos en 2º plano
+    # Solo si tiene alguna API Key configurada
+    keys = {
+        "gemini": current_user.gemini_api_key,
+        "openai": current_user.openai_api_key,
+        "groq": getattr(current_user, "groq_api_key", None),
+        "preferred_model": current_user.preferred_model
+    }
+    if any([keys["gemini"], keys["openai"], keys["groq"]]):
+        # No bloqueamos el login, lo hacemos en background
+        background_tasks.add_task(_get_dynamic_hierarchy, keys, force=True)
+
     return {
         "id": current_user.id,
         "email": current_user.email,
