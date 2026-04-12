@@ -67,17 +67,9 @@ Si no quieres usar el servidor NAS, puedes ejecutar BookTracker directamente en 
 
 ---
 
-## 🤖 Uso de IA Local (Ollama)
-Puedes delegar tareas a un servidor **Ollama** local configurando estas variables en el Stack:
-- `USE_OLLAMA_FOR_FAST_TASKS`: `true`
-- `OLLAMA_URL`: `http://IP_DE_TU_NAS:11434`
-- `OLLAMA_MODEL`: `llama3.1`
-
----
-
 ## Actualizar a nuevas versiones
 - **En NAS:** Ve al Stack → Editor → "Update the stack" (marcando "Re-pull image").
-- **En Windows:** Haz un `git pull` de la carpeta y vuelve a ejecutar `LANZAR_WINDOWS.bat`.
+- **En Windows:** Haz un `git pull` de la carpeta y vuelve a ejecutar `BOOKTRACKER.bat`.
 
 ---
 
