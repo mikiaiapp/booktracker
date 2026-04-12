@@ -876,13 +876,15 @@ export default function BookPage() {
               {TABS.map(t => {
                 const isDone = t.statusKey ? (t.statusKey === 'status' ? true : statusInfo[t.statusKey]) : true
                 const iconMap = {info:'📖',chapters:'📑',characters:'👤',summary:'🧠',mindmap:'🗺️',chat:'💬',podcast:'🎙️',refs:'🔗'}
+                const statusSymbol = isDone ? ' ✅' : ' ⏳'
                 return (
                   <option key={t.id} value={t.id}>
-                    {iconMap[t.id] || '•'} {t.label} {!isDone ? '(Pendiente)' : ''}
+                    {iconMap[t.id] || '•'} {t.label}{statusSymbol}
                   </option>
                 )
               })}
             </select>
+            <ChevronDown className="tabs-select-arrow" size={20} />
           </div>
         </div>
 
