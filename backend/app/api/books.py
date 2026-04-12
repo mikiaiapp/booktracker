@@ -156,8 +156,8 @@ async def upload_book(
         await db.commit()
         
         from app.workers.queue_manager import enqueue as q_enqueue
-        q_enqueue(current_user.id, book.id, book.title, ["1", "2", "3", "4", "podcast"])
-        print(f"[API] Libro encolado con exito")
+        q_enqueue(current_user.id, book.id, book.title, ["1", "2", "3", "4", "5", "6"])
+        print(f"[API] Libro encolado con éxito (F1-F6)")
     except Exception as e:
         print(f"[API] Error al encolar: {e}")
 
@@ -194,32 +194,24 @@ async def list_books(
     )
     ch_counts = {r[0]: r[1] for r in ch_counts_res.all()}
 
-    char_counts_res = await db.execute(
-        select(Character.book_id, func.count(Character.id))
-        .where(Character.book_id.in_([b.id for b in books]))
-        .group_by(Character.book_id)
-    )
-    char_counts = {r[0]: r[1] for r in char_counts_res.all()}
-
     response = []
     for b in books:
-        # Lógica de "auto-reparación" de estado visual
+        # Detectar si el libro está realmente en proceso (basado en el nuevo pipeline)
+        is_analyzing = b.status in ("queued", "identifying", "analyzing", "structuring", "summarizing")
+        
+        # Si tiene fases hechas pero no todas, y no está marcado como complete, es 'incomplete' (A Medias)
         status = b.status
-        is_processing = status in ("queued", "identifying", "analyzed_structure", "summarizing", "generating_podcast")
+        is_complete = (
+            b.phase1_done and b.phase2_done and b.phase3_done and 
+            b.phase4_done and b.phase5_done and b.phase6_done
+        )
         
-        has_chapters = ch_counts.get(b.id, 0) > 0
-        has_chars = char_counts.get(b.id, 0) > 0
-        
-        # Si tiene capítulos y personajes y el sistema dice que sigue procesando...
-        # lo "promovemos" visualmente a analizado (incomplete o complete)
-        if is_processing and has_chapters and has_chars:
-            is_complete = (
-                b.phase2_done and 
-                b.phase3_done and 
-                bool(b.global_summary) and 
-                bool(b.mindmap_data)
-            )
-            status = "complete" if is_complete else "incomplete"
+        if is_complete:
+            status = "complete"
+        elif is_analyzing:
+            status = "analyzing"
+        elif any([b.phase1_done, b.phase2_done, b.phase3_done, b.phase4_done, b.phase5_done]):
+            status = "incomplete"
 
         response.append({
             "id": b.id, "title": b.title, "author": b.author,
@@ -227,8 +219,11 @@ async def list_books(
             "isbn": b.isbn, "status": status,
             "read_status": b.read_status, "rating": b.rating,
             "phase1_done": b.phase1_done, "phase2_done": b.phase2_done,
-            "phase3_done": b.phase3_done, "created_at": b.created_at,
-            "has_chapters": has_chapters, "has_characters": has_chars
+            "phase3_done": b.phase3_done, "phase4_done": b.phase4_done,
+            "phase5_done": b.phase5_done, "phase6_done": b.phase6_done,
+            "created_at": b.created_at,
+            "has_chapters": ch_counts.get(b.id, 0) > 0,
+            "has_characters": char_counts.get(b.id, 0) > 0
         })
     
     return response
@@ -275,11 +270,53 @@ async def get_book(
             for b in others_result.scalars().all()
         ]
 
+    # Limpiar y normalizar capítulos para evitar fallos en el frontend
+    chapters_data = []
+    for c in chapters_result.scalars().all():
+        cd = {
+            "id": c.id,
+            "title": c.title or "Sin título",
+            "order": c.order,
+            "summary": c.summary or "",
+            "key_events": c.key_events or [],
+            "summary_status": "done" if c.summary and len(c.summary) > 10 else "pending"
+        }
+        chapters_data.append(cd)
+
+    # Limpiar y normalizar personajes
+    chars_data = []
+    for c in chars_result.scalars().all():
+        chars_data.append({
+            "id": c.id,
+            "name": c.name or "Desconocido",
+            "role": c.role or "",
+            "description": c.description or "",
+            "personality": c.personality or "",
+            "arc": c.arc or "",
+            "relationships": c.relationships or {},
+            "key_moments": c.key_moments or [],
+            "quotes": c.quotes or []
+        })
+
     return {
-        "book": book.__dict__,
+        "book": {
+            "id": book.id,
+            "title": book.title,
+            "author": book.author,
+            "isbn": book.isbn,
+            "synopsis": book.synopsis or "",
+            "author_bio": book.author_bio or "",
+            "genre": book.genre or "",
+            "year": book.year,
+            "status": book.status,
+            "phase1_done": book.phase1_done,
+            "phase2_done": book.phase2_done,
+            "phase3_done": book.phase3_done,
+            "global_summary": book.global_summary or ""
+        },
         "parts": [p.__dict__ for p in parts_result.scalars().all()],
-        "chapters": [c.__dict__ for c in chapters_result.scalars().all()],
-        "characters": [c.__dict__ for c in chars_result.scalars().all()],
+        "chapters": chapters_data,
+        "characters": chars_data,
         "other_books": other_books,
     }
 
@@ -555,6 +592,6 @@ async def upload_file_to_shell(
     await db.commit()
 
     from app.workers.queue_manager import enqueue as q_enqueue
-    q_enqueue(current_user.id, book_id, book.title, ["1", "2", "3", "3b", "podcast"])
+    q_enqueue(current_user.id, book_id, book.title, ["1", "2", "3", "4", "5", "6"])
 
     return {"id": book_id, "status": "queued", "task_id": None}

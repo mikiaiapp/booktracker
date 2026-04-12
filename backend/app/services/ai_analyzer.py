@@ -192,10 +192,17 @@ def _parse_json(text: str):
 # --- FUNCIONES DE ALTO NIVEL ---
 
 async def summarize_chapter(title, text, book, author, api_keys=None) -> tuple[dict, str]:
-    system = "Eres un experto literario. Responde SOLO con JSON."
-    user = f"Capítulo: {title} de {book}. Resumen JSON (claves 'summary' y 'key_events'):\n{_compress_text(text)}"
+    system = """Actúa como un experto crítico literario. Analiza con gran detalle y profundidad el capítulo.
+No te limites a un resumen superficial. Tu respuesta debe incluir:
+1. Análisis detallado de la trama y eventos clave.
+2. Evolución y psicología de los personajes presentes.
+3. Temas, simbolismos y subtexto literario del capítulo.
+4. Tono y atmósfera narrativa.
+
+Responde ESTRICTAMENTE con un JSON con las claves 'summary' (un texto largo y analítico) y 'key_events' (una lista de puntos críticos)."""
+    user = f"Capítulo: '{title}' del libro '{book}' de {author}.\n\nTexto para analizar:\n{_compress_text(text, 30000)}"
     try:
-        raw, m = await _call_ai_with_retry(system, user, 1500, is_fast_task=True, api_keys=api_keys)
+        raw, m = await _call_ai_with_retry(system, user, 3000, is_fast_task=True, api_keys=api_keys)
         return _parse_json(raw), m
     except: return None, "Error"
 
@@ -215,18 +222,23 @@ async def get_character_list(all_summaries, api_keys=None) -> list:
 
 async def analyze_single_character(name, is_main, all_summaries, book, api_keys=None) -> dict:
     t = "PRINCIPAL" if is_main else "SECUNDARIO"
-    system = "Crítico literario. Responde SOLO con JSON siguiendo el esquema proporcionado."
-    user = f"""Analiza al personaje {t}: {name} del libro {book}.
-Usa este formato JSON: {{"name":"{name}","role":"...","description":"...","personality":"...","arc":"...","relationships":{{}},"key_moments":[],"quotes":[]}}
-Contexto:\n{_compress_text(all_summaries, 12000)}"""
+    system = f"""Actúa como un psicólogo narratológico y crítico literario. Realiza un estudio exhaustivo del personaje {t}.
+Debes profundizar en:
+- Personalidad, virtudes, defectos y motivaciones ocultas.
+- Su arco de transformación a lo largo de la obra.
+- La complejidad de sus relaciones y su papel temático.
+
+Responde ESTRICTAMENTE con este esquema JSON:
+{{"name":"{name}","role":"...","description":"Análisis amplio de su papel","personality":"Estudio psicológico detallado","arc":"Su evolución del inicio al fin","relationships":{{"personaje":"tipo de relación"}},"key_moments":["momento 1", "momento 2"],"quotes":["cita memorable"]}}"""
+    user = f"Contexto del libro '{book}' para analizar a '{name}':\n{_compress_text(all_summaries, 40000)}"
     try:
-        raw, m = await _call_ai_with_retry(system, user, 2500, api_keys=api_keys)
+        raw, m = await _call_ai_with_retry(system, user, 3500, api_keys=api_keys)
         return _parse_json(raw), m
     except: return None, "Error"
 
 async def generate_global_summary(summaries, book, author, api_keys=None):
-    system = "Académico literario. Escribe un ensayo magistral en español."
-    user = f"Libro: {book} de {author}. Ensayo basado en:\n{_compress_text(summaries, 20000)}"
+    system = "Académico literario y ensayista. Escribe un ensayo magistral, profundo y estructurado en español sobre la obra completa."
+    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 35000)}"
     return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys)
 
 async def generate_mindmap(summaries, book, api_keys=None):

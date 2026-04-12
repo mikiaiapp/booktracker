@@ -260,6 +260,39 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
 
 # --- MANTENIMIENTO Y OTROS ---
 
+@celery_app.task(name="summarize_chapter_task")
+def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
+    from app.workers.queue_manager import update_progress, on_done
+    async def _sc():
+        async for db in get_user_db(user_id):
+            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            ch = (await db.execute(select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id))).scalar_one_or_none()
+            if not book or not ch: return
+
+            update_progress(user_id, book_id, "phase3", 50, f"Analizando {ch.title}...", model="Buscando IA...")
+            keys = await _get_user_api_keys(user_id)
+            res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
+            
+            if res:
+                ch.summary, ch.key_events, ch.summary_status = res.get("summary"), res.get("key_events", []), "done"
+                await db.commit()
+                update_progress(user_id, book_id, "phase3", 100, f"Completado: {ch.title}", model=model_used)
+                
+                # REVISIÓN DE HUECOS: ¿Faltan más capítulos por resumir?
+                missing_res = await db.execute(select(func.count(Chapter.id)).where(Chapter.book_id == book_id, Chapter.summary == None))
+                missing_count = missing_res.scalar() or 0
+                
+                if missing_count > 0:
+                    print(f"[WORKER] Detectados {missing_count} capítulos restantes. Continuando análisis...")
+                    process_book_phase3.delay(user_id, book_id, chain=True)
+                else:
+                    # Si era el último, intentamos avanzar a personajes
+                    process_book_phase4.delay(user_id, book_id, chain=True)
+            else:
+                on_done(user_id, book_id)
+                
+    return run_async(_sc())
+
 @celery_app.task(name="reanalyze_characters_task")
 def reanalyze_characters_task(user_id: str, book_id: str):
     return process_book_phase4.delay(user_id, book_id, chain=False, force=True)
