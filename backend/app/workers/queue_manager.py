@@ -146,6 +146,7 @@ def cancel(uid: str, book_id: str) -> str:
 def cancel_all(uid: str):
     """Vacía la cola completa y cancela el libro activo."""
     r = _r()
+    # 1. Limpiar cola de espera
     raw = r.lrange(_qk(uid), 0, -1)
     for x in raw:
         try:
@@ -156,8 +157,18 @@ def cancel_all(uid: str):
             pass
     r.delete(_qk(uid))
 
+    # 2. Detener proceso activo si existe
     active = r.get(_ak(uid))
     if active:
+        try:
+            from app.workers.celery_app import celery_app
+            tid = r.hget(_ik(uid, active), "task_id")
+            if tid:
+                print(f"[QUEUE] Cancel All: Revocando tarea activa {tid} (libro {active})")
+                celery_app.control.revoke(tid, terminate=True, signal='SIGKILL')
+        except Exception as e:
+            print(f"[QUEUE] Error al revocar en cancel_all: {e}")
+            
         r.delete(_ak(uid))
         r.delete(_ik(uid, active))
 

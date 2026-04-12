@@ -104,11 +104,20 @@ async def upload_book(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    print(f"[API] Iniciando subida de: {file.filename}")
     # Validate file type
+    print(f"[API] Iniciando subida de: {file.filename}")
+    if not file.filename:
+        raise HTTPException(400, "Nombre de archivo no válido")
+    
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in ("pdf", "epub"):
-        raise HTTPException(400, "Only PDF and EPUB files are supported")
+        raise HTTPException(400, "Solo se admiten archivos PDF y EPUB")
+
+    def sanitize_title(title: str) -> str:
+        import re
+        # Quitar caracteres que no sean alfanuméricos, espacios, puntos o guiones
+        s = re.sub(r'[^\w\s\.-]', '', title).strip()
+        return s[:150] or "Libro sin titulo"
 
     try:
         content = await file.read()
@@ -133,7 +142,7 @@ async def upload_book(
         raise HTTPException(500, f"Error al guardar disco: {e}")
 
     try:
-        base_title = file.filename.rsplit(".", 1)[0]
+        base_title = sanitize_title(file.filename.rsplit(".", 1)[0])
         book = Book(
             id=book_id,
             title=base_title,

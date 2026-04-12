@@ -760,9 +760,26 @@ async def resume_analysis_queue(current_user: User = Depends(get_current_user)):
     return {"status": "resumed"}
 
 @router.delete("/queue")
-async def clear_analysis_queue(current_user: User = Depends(get_current_user)):
+async def clear_analysis_queue(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.workers.queue_manager import cancel_all
     cancel_all(current_user.id)
+    
+    # Resetear TODOS los libros del usuario que estén en estados de procesamiento
+    from app.models.book import Book, AnalysisJob
+    from sqlalchemy import update
+    await db.execute(
+        update(Book)
+        .where(Book.status.in_(["queued", "identifying", "analyzing_structure", "summarizing", "generating_podcast"]))
+        .values(status="incomplete", task_id=None, error_msg="Proceso cancelado globalmente")
+    )
+    # También cancelar los jobs activos para que no aparezcan como 'procesando' en el UI
+    await db.execute(
+        update(AnalysisJob)
+        .where(AnalysisJob.status == "processing")
+        .values(status="cancelled", detail="Cancelado por limpieza de cola global")
+    )
+    await db.commit()
+    
     return {"status": "cleared"}
 
 @router.post("/{book_id}/cancel")
