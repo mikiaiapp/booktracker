@@ -270,6 +270,14 @@ async def get_book(
             for b in others_result.scalars().all()
         ]
 
+    def _safe_json(val, default=[]):
+        if not val: return default
+        if isinstance(val, (list, dict)): return val
+        try:
+            import json
+            return json.loads(val)
+        except: return default
+
     # Limpiar y normalizar capítulos para evitar fallos en el frontend
     chapters_data = []
     for c in chapters_result.scalars().all():
@@ -278,7 +286,7 @@ async def get_book(
             "title": c.title or "Sin título",
             "order": c.order,
             "summary": c.summary or "",
-            "key_events": c.key_events or [],
+            "key_events": _safe_json(c.key_events, []),
             "summary_status": "done" if c.summary and len(c.summary) > 10 else "pending"
         }
         chapters_data.append(cd)
@@ -293,9 +301,9 @@ async def get_book(
             "description": c.description or "",
             "personality": c.personality or "",
             "arc": c.arc or "",
-            "relationships": c.relationships or {},
-            "key_moments": c.key_moments or [],
-            "quotes": c.quotes or []
+            "relationships": _safe_json(c.relationships, {}),
+            "key_moments": _safe_json(c.key_moments, []),
+            "quotes": _safe_json(c.quotes, [])
         })
 
     return {
@@ -312,7 +320,8 @@ async def get_book(
             "phase1_done": book.phase1_done,
             "phase2_done": book.phase2_done,
             "phase3_done": book.phase3_done,
-            "global_summary": book.global_summary or ""
+            "global_summary": book.global_summary or "",
+            "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []})
         },
         "parts": [p.__dict__ for p in parts_result.scalars().all()],
         "chapters": chapters_data,

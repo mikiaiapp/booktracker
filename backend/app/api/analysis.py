@@ -117,7 +117,7 @@ async def trigger_phase3b(
     db: AsyncSession = Depends(get_db),
 ):
     """Alias de /phase4 para compatibilidad con versiones anteriores."""
-    return await trigger_phase4(book_id, current_user, db)
+    return await trigger_phase4(book_id=book_id, current_user=current_user, db=db)
 
 
 # ── Resumen de un capítulo individual ────────────────────────
@@ -147,7 +147,11 @@ async def summarize_single_chapter(
         raise HTTPException(400, "Chapter has no text to summarize")
 
     from app.workers.tasks import summarize_chapter_task
-    task = summarize_chapter_task.delay(current_user.id, book_id, chapter_id)
+    try:
+        task = summarize_chapter_task.delay(current_user.id, book_id, chapter_id)
+    except Exception as e:
+        print(f"[API] Error lanzando tarea: {e}")
+        raise HTTPException(500, f"Error al encolar tarea: {str(e)}")
     chapter.summary_status = "processing"
     await db.commit()
     return {"task_id": task.id, "chapter_id": chapter_id}
