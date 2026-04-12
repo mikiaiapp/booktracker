@@ -16,7 +16,7 @@
 ### 🔑 Configuración de las "Llaves" de IA
 Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso a modelos de IA.
 1.  Entra en la aplicación y **regístrate**.
-2.  Ve a tu **Perfil** (arriba a la derecha) → **Ajustes de IA**.
+2.  Haz clic en tu nombre o avatar **abajo a la izquierda (en la barra lateral)** → **Ajustes de IA**.
 3.  Introduce una clave de **Google Gemini** o **Groq** (ambas tienen opciones gratuitas muy generosas).
 4.  ¡Listo! Ya puedes subir tu primer libro.
 
