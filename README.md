@@ -24,7 +24,7 @@ Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso a mod
 Si quieres que la app te envíe correos (por ejemplo, para recuperar tu contraseña si se te olvida), necesitas configurar el servicio de mensajería:
 *   **SMTP_HOST:** La dirección del servidor de tu correo (ej: `smtp.gmail.com`).
 *   **SMTP_USER:** Tu dirección de correo (ej: `tu-usuario@gmail.com`).
-*   **SMTP_PASS:** Tu contraseña (en Gmail se usa una "Contraseña de aplicación").
+*   **SMTP_PASS:** Tu contraseña (en Gmail se requiere crear una [Contraseña de Aplicación](https://myaccount.google.com/apppasswords)).
 *   **SECRET_KEY:** Escribe una frase larga y rara aquí para proteger tu seguridad.
 
 ---
