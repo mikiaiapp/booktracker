@@ -211,21 +211,19 @@ export default function APISettingsPage() {
                   borderColor: hasSaved ? 'rgba(16,185,129,0.3)' : 'var(--paper-dark)',
                 }}>
                   {/* Cabecera del proveedor */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <span style={{ fontWeight: '700', fontSize: '1rem' }}>{prov.label}</span>
-                        <span style={{
-                          fontSize: '0.65rem', fontWeight: '700', padding: '2px 7px', borderRadius: '4px',
+                  <div className="provider-header">
+                    <div className="provider-info">
+                      <div className="provider-title-row">
+                        <span className="provider-label">{prov.label}</span>
+                        <span className="provider-badge" style={{
                           background: prov.badgeColor + '18', color: prov.badgeColor,
                           border: `1px solid ${prov.badgeColor}35`
                         }}>{prov.badge}</span>
-                        {hasSaved && <span style={{ fontSize: '0.7rem', color: '#10b981' }}>✓ Guardada</span>}
+                        {hasSaved && <span className="provider-saved">✓ Guardada</span>}
                       </div>
-                      <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: 'var(--mist)' }}>{prov.description}</p>
+                      <p className="provider-desc">{prov.description}</p>
                     </div>
-                    <a href={prov.link} target="_blank" rel="noreferrer"
-                      style={{ fontSize: '0.75rem', color: 'var(--gold)', whiteSpace: 'nowrap', marginLeft: '1rem' }}>
+                    <a href={prov.link} target="_blank" rel="noreferrer" className="provider-link">
                       {prov.linkLabel}
                     </a>
                   </div>
@@ -240,12 +238,10 @@ export default function APISettingsPage() {
                     ))}
                   </div>
 
-                  {/* Campo + botón Probar */}
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div className="provider-input-group">
                     <input
                       type="password"
                       className="premium-input"
-                      style={{ flex: 1 }}
                       value={settings[prov.field] || ''}
                       onChange={e => setSettings({ ...settings, [prov.field]: e.target.value })}
                       placeholder={hasSaved ? '••••••••••••••••••••' : prov.placeholder}
@@ -253,7 +249,6 @@ export default function APISettingsPage() {
                     <button
                       type="button"
                       className="premium-btn"
-                      style={{ padding: '0 1.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: '90px', justifyContent: 'center' }}
                       onClick={() => handleTest(prov.key)}
                       disabled={testState === 'loading'}
                     >

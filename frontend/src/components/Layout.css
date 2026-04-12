@@ -35,11 +35,20 @@
 }
 
 .sidebar-brand-premium {
-  padding: 1rem 1.5rem 1.5rem;
+  padding: 1.5rem 1.5rem 2rem;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 1rem;
+}
+
+.sidebar-logo-nav {
+  display: block;
+  height: 40px;
+  width: auto;
+  object-fit: contain;
 }
 
 .sidebar-logo-img {
@@ -217,6 +226,22 @@
     border-top: 1px solid rgba(201,169,110,0.2);
     box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
     z-index: 200;
+  }
+
+  /* Marca en móvil: solo logo a la izquierda */
+  .sidebar-brand-premium {
+    padding: 0 0.75rem 0 1.25rem;
+    border: none;
+    margin: 0;
+    justify-content: center;
+  }
+
+  .sidebar-brand-premium .brand-text {
+    display: none;
+  }
+
+  .sidebar-logo-nav {
+    height: 28px;
   }
 
   /* Ocultar marca y logos en móvil para dejar espacio a los botones */

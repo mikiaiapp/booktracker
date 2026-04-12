@@ -6,3 +6,129 @@
   to   { transform: rotate(360deg); }
 }
 .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+
+.provider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+  gap: 1rem;
+}
+
+.provider-info {
+  flex: 1;
+}
+
+.provider-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.provider-label {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.provider-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.provider-saved {
+  font-size: 0.7rem;
+  color: #10b981;
+}
+
+.provider-desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--mist);
+  line-height: 1.4;
+}
+
+.provider-link {
+  font-size: 0.75rem;
+  color: var(--gold);
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+
+.provider-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.provider-input-group {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.premium-input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1.5px solid var(--paper-dark);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.premium-btn {
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 100px;
+  justify-content: center;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.premium-btn:hover:not(:disabled) {
+  background: #1a1a1a;
+  transform: translateY(-1px);
+}
+
+.premium-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .premium-page {
+    padding: 1.25rem;
+  }
+  
+  .provider-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .provider-link {
+    margin-left: 0 !important;
+    white-space: normal;
+    display: inline-block;
+  }
+  
+  .provider-input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .premium-btn {
+    padding: 0.75rem 1rem;
+    width: 100%;
+  }
+
+  .premium-card {
+    padding: 1.25rem !important;
+  }
+}
