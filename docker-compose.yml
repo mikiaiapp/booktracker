@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     volumes:
-      - ./backend:/app
+      - /volume1/docker/booktracker/backend:/app
       - /volume1/docker/booktracker/data:/data
       - /volume1/docker/booktracker/data/databases:/data/databases
       - /volume1/docker/booktracker/data/uploads:/data/uploads
@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
     volumes:
-      - ./backend:/app
+      - /volume1/docker/booktracker/backend:/app
       - /volume1/docker/booktracker/data:/data
       - /volume1/docker/booktracker/data/databases:/data/databases
       - /volume1/docker/booktracker/data/uploads:/data/uploads
