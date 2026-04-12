@@ -55,7 +55,7 @@ Si no quieres usar el servidor NAS, puedes ejecutar BookTracker directamente en 
 
 ### 2 — Lanzar la Experiencia Completa
 1. Descarga o clona este proyecto en una carpeta de tu PC.
-2. Busca el archivo **`LANZAR_WINDOWS.bat`** y haz doble clic sobre él.
+2. Busca el archivo **`BOOKTRACKER.bat`** y haz doble clic sobre él.
 3. **¡Listo!** El script configurará los contenedores y **abrirá automáticamente tu navegador** en [http://localhost:8081](http://localhost:8081).
 
 ---
