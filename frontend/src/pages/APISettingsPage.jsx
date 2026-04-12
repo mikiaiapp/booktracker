@@ -175,7 +175,9 @@ export default function APISettingsPage() {
                   style={{ display: 'none' }}
                 />
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-                  <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{model.name}</span>
+                  <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>
+                    {model.name} {settings.preferred_model === model.id && <span style={{ color: 'var(--gold)', marginLeft: '4px' }}>✓</span>}
+                  </span>
                   <span style={{
                     fontSize: '0.65rem', fontWeight: '700', padding: '1px 6px', borderRadius: '4px',
                     background: model.badgeColor + '20', color: model.badgeColor, border: `1px solid ${model.badgeColor}40`

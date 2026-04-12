@@ -14,6 +14,18 @@ from app.core.config import settings
 
 # --- Helpers de Estado ---
 
+def _sanitize_model_name(m_name: str) -> str:
+    """Corrige nombres legados o typos antes de mostrarlos al usuario."""
+    if not m_name: return "gemini-1.5-flash"
+    m_low = str(m_name).lower()
+    mapping = {
+        "gemini-2.5-flash": "gemini-1.5-flash",
+        "gemini-2.5-flash-lite": "gemini-1.5-flash",
+        "gemini-2.5-pro": "gemini-1.5-pro",
+        "gemini-2.0-flash": "gemini-2.0-flash-exp"
+    }
+    return mapping.get(m_low, m_low)
+
 async def _get_user_api_keys(user_id: str) -> dict:
     from app.core.database import get_global_db
     from app.models.user import User
@@ -89,7 +101,7 @@ def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, fo
                 print(f"[WORKER] ERROR: Libro {book_id} no encontrado en la DB")
                 return
             keys = await _get_user_api_keys(user_id)
-            model_to_log = keys.get("preferred_model") or settings.AI_MODEL
+            model_to_log = _sanitize_model_name(keys.get("preferred_model") or settings.AI_MODEL)
             update_progress(user_id, book_id, "phase1", 10, "Identificando libro...", model=model_to_log)
             print(f"[WORKER] Llamando a identify_book para {book.title}")
             meta = await identify_book(book.file_path, book.file_type, book.title, os.path.join(settings.COVERS_DIR, user_id), book_id, api_keys=keys)
@@ -130,7 +142,7 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True, fo
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
             keys = await _get_user_api_keys(user_id)
-            model_to_log = keys.get("preferred_model") or settings.AI_MODEL
+            model_to_log = _sanitize_model_name(keys.get("preferred_model") or settings.AI_MODEL)
             update_progress(user_id, book_id, "phase2", 5, "Analizando estructura...", model=model_to_log)
             struct = await parse_book_structure(book.file_path, book.file_type)
             await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
@@ -171,7 +183,7 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = False, f
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
             keys = await _get_user_api_keys(user_id)
-            model_to_log = keys.get("preferred_model") or settings.AI_MODEL
+            model_to_log = _sanitize_model_name(keys.get("preferred_model") or settings.AI_MODEL)
             update_progress(user_id, book_id, "phase3", 5, "Iniciando análisis de personajes...", model=model_to_log)
             all_summaries = await _get_summaries_text(db, book_id)
             await db.execute(delete(Character).where(Character.book_id == book_id))
@@ -222,7 +234,7 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = False, f
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
             keys = await _get_user_api_keys(user_id)
-            model_to_log = keys.get("preferred_model") or settings.AI_MODEL
+            model_to_log = _sanitize_model_name(keys.get("preferred_model") or settings.AI_MODEL)
             update_progress(user_id, book_id, "phase4", 5, "Generando resumen global...", model=model_to_log)
             
             if chain and not force and book.global_summary and len(book.global_summary.strip()) > 10:
@@ -256,7 +268,7 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = False, f
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
             keys = await _get_user_api_keys(user_id)
-            model_to_log = keys.get("preferred_model") or settings.AI_MODEL
+            model_to_log = _sanitize_model_name(keys.get("preferred_model") or settings.AI_MODEL)
             update_progress(user_id, book_id, "phase5", 5, "Generando mapa mental...", model=model_to_log)
             
             if chain and not force and book.mindmap_data and len(str(book.mindmap_data)) > 50:
@@ -290,7 +302,7 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
             keys = await _get_user_api_keys(user_id)
-            model_to_log = keys.get("preferred_model") or settings.AI_MODEL
+            model_to_log = _sanitize_model_name(keys.get("preferred_model") or settings.AI_MODEL)
             update_progress(user_id, book_id, "phase6", 5, "Generando podcast...", model=model_to_log)
             
             if force or not (book.podcast_audio_path and os.path.exists(book.podcast_audio_path) and book.podcast_script):
