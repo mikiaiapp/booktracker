@@ -28,66 +28,77 @@ def _compress_text(text: str) -> str:
 async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
     api_keys = api_keys or {}
     
-    # Prioridad de modelos a intentar (Escalado de costes optimizado)
-    # 1. Gemini 2.5 Flash / Lite  (Gratuito - Google AI Studio)
-    # 2. Groq Llama / Mixtral      (Gratuito - Groq Cloud)
-    # 3. GPT-4o Mini               (Pago - OpenAI, muy económico)
-    # 4. GPT-4o                    (Último recurso - OpenAI premium)
-    
+    # 1. Identificar proveedores con llaves disponibles (en api_keys, settings o env)
+    has_key = {
+        "gemini": bool(api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', None) or os.environ.get("GEMINI_API_KEY")),
+        "groq": bool(api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', None) or os.environ.get("GROQ_API_KEY")),
+        "openai": bool(api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', None) or os.environ.get("OPENAI_API_KEY")),
+    }
+
+    # 2. Definir fallbacks realistas (Corregido gemini-2.5 a 1.5 o 2.0)
+    # Prioridad: Gemini (gratis/potente) -> Groq (gratis/rápido) -> OpenAI (pago)
     if is_fast_task:
-        fallbacks = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o-mini", "gpt-4o"]
+        all_fallbacks = ["gemini-1.5-flash", "gemini-2.0-flash-exp", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o-mini"]
     else:
-        fallbacks = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o", "gpt-4o-mini"]
+        all_fallbacks = ["gemini-1.5-pro", "gemini-1.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o", "gpt-4o-mini"]
     
-    # El modelo preferido por el usuario siempre va primero,
-    # PERO solo si no estamos saltando fallbacks (como en los tests específicos)
-    preferred = api_keys.get("preferred_model") or settings.AI_MODEL
-    preferred = preferred.lower()
+    # Función para saber a qué proveedor pertenece un modelo
+    def get_provider(m_name: str):
+        if "gemini" in m_name: return "gemini"
+        if any(g in m_name for g in ["llama", "mixtral"]): return "groq"
+        if "gpt" in m_name: return "openai"
+        return None
+
+    # 3. Filtrar solo modelos que tengan llave
+    valid_fallbacks = [m for m in all_fallbacks if has_key.get(get_provider(m))]
+
+    # 4. Determinar modelo preferido y validar su llave
+    preferred = (api_keys.get("preferred_model") or settings.AI_MODEL).lower()
+    preferred_provider = get_provider(preferred)
     
-    if skip_fallback:
-        models_to_try = [preferred]
-    else:
-        # El preferido del usuario va primero, luego los fallbacks por coste
-        models_to_try = [preferred] + [m for m in fallbacks if m != preferred]
+    models_to_try = []
+    if preferred_provider and has_key.get(preferred_provider):
+        models_to_try.append(preferred)
     
+    if not skip_fallback:
+        # Añadir el resto de modelos válidos que no sean el preferido
+        models_to_try.extend([m for m in valid_fallbacks if m != preferred])
+
+    if not models_to_try:
+        raise ValueError("No hay ninguna llave de API configurada para realizar el análisis.")
+
     last_error = ""
     
     for m in models_to_try:
         try:
             print(f"[AI] Intentando con modelo: {m}")
-            if "gemini" in m:
-                # --- GEMINI (Google AI Studio) ---
-                api_key = api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', None) or os.environ.get("GEMINI_API_KEY")
-                api_key = str(api_key or "").strip().strip('"').strip("'")
-                if not api_key: continue
+            provider = get_provider(m)
+            
+            if provider == "gemini":
+                # --- GEMINI ---
+                api_key = str(api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', "") or os.environ.get("GEMINI_API_KEY", "")).strip().strip('"').strip("'")
                 try:
                     from openai import AsyncOpenAI
                     client = AsyncOpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
                     resp = await client.chat.completions.create(
-                        model=m if "gemini" in m else "gemini-2.5-flash",
+                        model=m,
                         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
                         max_tokens=max_tokens,
                         temperature=0.5
                     )
-                    content = resp.choices[0].message.content
-                    # Gemini bridge puede devolver None en content (respuesta válida pero vacía)
-                    if content is None:
-                        # Intentar campo alternativo o aceptar como respuesta válida
-                        content = getattr(resp.choices[0].message, 'reasoning_content', None) or ""
+                    content = resp.choices[0].message.content or ""
                     return content, m
-                except Exception as be:
+                except Exception:
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
-                    mdl = genai.GenerativeModel(m if "gemini" in m else "gemini-2.5-flash")
+                    mdl = genai.GenerativeModel(m)
                     prompt = f"{system}\n\n{user}"
                     response = await asyncio.to_thread(mdl.generate_content, prompt)
                     return (response.text or ""), m
 
-            elif m in ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "llama3-70b-8192", "llama3-8b-8192"]:
-                # --- GROQ (OpenAI-compatible, gratuito) ---
-                api_key = api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', None) or os.environ.get("GROQ_API_KEY")
-                api_key = str(api_key or "").strip().strip('"').strip("'")
-                if not api_key: continue
+            elif provider == "groq":
+                # --- GROQ ---
+                api_key = str(api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', "") or os.environ.get("GROQ_API_KEY", "")).strip().strip('"').strip("'")
                 from openai import AsyncOpenAI
                 client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
                 resp = await client.chat.completions.create(
@@ -97,11 +108,9 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 )
                 return resp.choices[0].message.content, m
 
-            else:
-                # --- OPENAI (pago, último recurso) ---
-                api_key = api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', None) or os.environ.get("OPENAI_API_KEY")
-                api_key = str(api_key or "").strip().strip('"').strip("'")
-                if not api_key: continue
+            elif provider == "openai":
+                # --- OPENAI ---
+                api_key = str(api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', "") or os.environ.get("OPENAI_API_KEY", "")).strip().strip('"').strip("'")
                 from openai import AsyncOpenAI
                 client = AsyncOpenAI(api_key=api_key)
                 resp = await client.chat.completions.create(
@@ -114,14 +123,12 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         except Exception as e:
             last_error = str(e)
             print(f"[AI] Fallo en modelo {m}: {last_error}")
-            
-            # Si el error es de autenticación o cuota, no perdemos tiempo y saltamos al siguiente
             if any(msg in last_error.lower() for msg in ["api key", "auth", "quota", "limit", "429", "401"]):
-                print(f"[AI] Error crítico de proveedor en {m}. Saltando al siguiente modelo inmediatamente...")
+                print(f"[AI] Error persistente de proveedor en {m}. Saltando...")
+            continue 
             
-            continue # Siguiente en la lista
-            
-    raise ValueError(f"Todos los modelos de IA fallaron. Último error: {last_error}")
+    
+    raise ValueError(f"Todos los modelos de IA configurados fallaron. Último error: {last_error}")
 
 
 async def _call_ai_with_retry(system: str, user: str, max_tokens: int = 2000, max_retries: int = 5, is_fast_task: bool = False, api_keys: dict = None) -> tuple[str, str]:

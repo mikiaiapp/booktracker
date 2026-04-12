@@ -6,8 +6,8 @@ import { api } from '../utils/api'
 import './APISettingsPage.css'
 
 const MODELS = [
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Rápido y gratuito (Google AI Studio).', badge: 'Gratis', badgeColor: '#10b981' },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', desc: 'Ultra‑rápido para tareas masivas.', badge: 'Gratis', badgeColor: '#10b981' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Rápido y gratuito (Google AI Studio).', badge: 'Gratis', badgeColor: '#10b981' },
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Máxima capacidad de razonamiento.', badge: 'Gratis', badgeColor: '#10b981' },
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'Open‑source potente vía Groq Cloud.', badge: 'Gratis', badgeColor: '#10b981' },
   { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'Alta velocidad, contexto extenso (Groq).', badge: 'Gratis', badgeColor: '#10b981' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Económico y preciso (OpenAI).', badge: 'Pago', badgeColor: '#f59e0b' },
@@ -24,8 +24,8 @@ const PROVIDERS = [
     linkLabel: 'Obtener clave gratis en Google AI Studio ↗',
     badge: 'Gratuito',
     badgeColor: '#10b981',
-    description: 'Acceso a los modelos Gemini 2.5 Flash y Flash Lite. Cuota gratuita muy generosa para análisis de libros.',
-    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+    description: 'Acceso a los modelos Gemini 1.5 Flash y Pro. Cuota gratuita muy generosa para análisis de libros.',
+    models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
   },
   {
     key: 'groq',
@@ -62,7 +62,7 @@ export default function APISettingsPage() {
     gemini_api_key: '',
     openai_api_key: '',
     groq_api_key: '',
-    preferred_model: 'gemini-2.5-flash',
+    preferred_model: 'gemini-1.5-flash',
     has_gemini: false,
     has_openai: false,
     has_groq: false,
