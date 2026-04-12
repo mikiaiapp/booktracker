@@ -184,8 +184,25 @@ async def extract_key_events_from_summary(summary_text: str, api_keys: dict = No
     except: return [], "Error"
 
 async def analyze_single_character(name: str, is_main: bool, all_summaries: str, book_title: str, api_keys: dict = None) -> dict:
-    system = "Crítico literario de la RAE. Realiza un estudio psicológico monumental. Responde SOLO en JSON."
-    user = f"Libro: {book_title}. Analiza el personaje: {name}.\nContexto:\n{all_summaries[:25000]}"
+    if not all_summaries: return None, "Error"
+    tipo = "PRINCIPAL" if is_main else "SECUNDARIO"
+    system = "Eres un crítico literario de la RAE. Realiza un estudio psicológico monumental. Responde SOLO en JSON."
+    user = f"""Libro: {book_title}. 
+Analiza al personaje {tipo}: {name}.
+Contexto del libro:
+{all_summaries[:25000]}
+
+Responde EXACTAMENTE con este esquema JSON:
+{{
+  "name": "{name}",
+  "role": "breve descripción de su papel",
+  "description": "retrato físico y social",
+  "personality": "análisis psicológico",
+  "arc": "su evolución en la obra",
+  "relationships": {{"Personaje X": "tipo de relación"}},
+  "key_moments": ["Momento 1", "Momento 2"],
+  "quotes": ["Cita o frase representativa"]
+}}"""
     try:
         raw, model_name = await _call_ai_with_retry(system, user, 3500, api_keys=api_keys)
         return _parse_json(raw), model_name
@@ -198,10 +215,23 @@ async def generate_global_summary(all_summaries: str, book_title: str, author: s
     except: return "", "Error"
 
 async def generate_mindmap(all_summaries: str, book_title: str, api_keys: dict = None) -> dict:
-    system = "Genera un mapa mental completo en JSON con 8 ramas: Trama, Subtramas, Personajes, Relaciones, Temas, Escenarios, Símbolos y Estilo."
+    if not all_summaries: return {"center": book_title, "branches": []}, "Error"
+    system = "Experto en análisis literario. Responde SOLO con JSON válido."
+    user = f"""Genera un mapa mental del libro {book_title}.
+Ramas obligatorias: Trama, Subtramas, Personajes, Relaciones, Temas, Escenarios, Símbolos, Estilo.
+Esquema JSON:
+{{
+  "center": "{book_title}",
+  "branches": [
+    {{ "label": "Nombre Rama", "color": "#hex", "children": ["Idea 1", "Idea 2"] }}
+  ]
+}}
+Contexto:
+{all_summaries[:25000]}"""
     try:
-        raw, model_name = await _call_ai_with_retry(system, f"Resúmenes:\n{all_summaries[:25000]}", 5000, is_fast_task=True, api_keys=api_keys)
-        return (_parse_json(raw) or {"center": book_title, "branches": []}), model_name
+        raw, model_name = await _call_ai_with_retry(system, user, 5000, is_fast_task=True, api_keys=api_keys)
+        parsed = _parse_json(raw)
+        return (parsed or {"center": book_title, "branches": []}), model_name
     except: return {"center": book_title, "branches": []}, "Error"
 
 async def generate_podcast_script(book_title, author, summary, chars, api_keys: dict = None) -> tuple[str, str]:
