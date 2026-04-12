@@ -50,12 +50,16 @@ Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso a mod
 2.  Sigue los pasos de instalación y, cuando termine, **reinicia tu PC**.
 3.  Abre "Docker Desktop" y espera a que el icono de la ballena abajo a la izquierda esté en verde.
 
-### 2 — Lanzar BookTracker
-1.  Descarga este proyecto (botón verde "Code" → "Download ZIP") y descomprímelo en una carpeta.
+### 2 — Descargar el proyecto
+1.  Pulsa arriba en el botón verde que dice **"Code"** y elige **"Download ZIP"**.
+2.  Descomprime ese archivo en una carpeta de tu ordenador (por ejemplo, en el Escritorio o en Documentos).
+
+### 3 — Lanzar BookTracker
+1.  Abre la carpeta que acabas de descomprimir.
 2.  Busca el archivo llamado **`BOOKTRACKER.bat`** y haz doble clic sobre él.
 3.  **No cierres la ventana negra** que se abrirá. Verás que después de unos segundos, **tu navegador se abrirá solo** en la dirección de la aplicación.
 
-### 3 — ¿Cómo lo apago o lo enciendo otro día?
+### 4 — ¿Cómo lo apago o lo enciendo otro día?
 *   Para **apagarlo**: Solo tienes que cerrar la ventana negra o pulsar el botón "Stop" en Docker Desktop.
 *   Para **encenderlo**: Solo vuelve a hacer doble clic en `BOOKTRACKER.bat`. No necesitas configurar nada más.
 
