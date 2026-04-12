@@ -38,8 +38,12 @@ Si quieres que la app te envíe correos (por ejemplo, para recuperar tu contrase
 4.  **Método:** Selecciona **Repository**.
 5.  **Repository URL:** Pega la URL de este proyecto de GitHub.
 6.  **Compose path:** Asegúrate de que ponga `docker-compose.yml`.
-7.  **Variables de Entorno:** Baja hasta la sección "Environment variables" y pulsa "Add environment variable" para añadir las de correo explicadas arriba y el puerto:
-    - `NGINX_PORT`: El número de puerto para entrar a la app (ej: `8081`).
+7.  **Variables de Entorno:** Baja hasta la sección "Environment variables" y pulsa **"Add environment variable"** para añadir estas configuraciones clave:
+    *   `NGINX_PORT`: El número de puerto para entrar a la app (ej: `8081`).
+    *   `SECRET_KEY`: Una frase larga y rara de al menos 32 caracteres (no tienes que memorizarla).
+    *   `SMTP_HOST`: El servidor de tu correo (ej: `smtp.gmail.com`).
+    *   `SMTP_USER`: Tu dirección de correo (ej: `tu-usuario@gmail.com`).
+    *   `SMTP_PASS`: Tu contraseña de correo (en Gmail usa una [Contraseña de Aplicación](https://myaccount.google.com/apppasswords)).
 8.  Pulsa el botón **Deploy the stack** y espera unos minutos. ¡Ya puedes entrar!
 
 ---
