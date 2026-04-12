@@ -54,6 +54,16 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
     # 4. Determinar modelo preferido y validar su llave
     preferred = (api_keys.get("preferred_model") or settings.AI_MODEL).lower()
+    
+    # --- AUTOCORRECCIÓN DE NOMBRES (Legado/Typos) ---
+    legacy_map = {
+        "gemini-2.5-flash": "gemini-1.5-flash",
+        "gemini-2.5-flash-lite": "gemini-1.5-flash",
+        "gemini-2.5-pro": "gemini-1.5-pro",
+        "gemini-2.0-flash": "gemini-2.0-flash-exp"
+    }
+    preferred = legacy_map.get(preferred, preferred)
+    
     preferred_provider = get_provider(preferred)
     
     models_to_try = []
