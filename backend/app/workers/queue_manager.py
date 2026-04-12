@@ -135,26 +135,23 @@ def cancel(uid: str, book_id: str) -> str:
 
 
 def cancel_all(uid: str):
-    """Vacía la cola completa y cancela el libro activo."""
+    """Vacía la cola completa, cancela el libro activo y limpia TODO el rastro en Redis."""
     r = _r()
-    # 1. Limpiar cola de espera
-    raw = r.lrange(_qk(uid), 0, -1)
-    for x in raw:
-        try:
-            bid = json.loads(x).get("book_id")
-            if bid:
-                r.delete(_ik(uid, bid))
-        except Exception:
-            pass
-    r.delete(_qk(uid))
-
-    # 2. Retornar task_id de proceso activo si existe
+    # 1. Obtener task_id del activo antes de borrar todo
     active = r.get(_ak(uid))
     tid = None
     if active:
         tid = r.hget(_ik(uid, active), "task_id")
-        r.delete(_ak(uid))
-        r.delete(_ik(uid, active))
+
+    # 2. Borrado masivo de todas las llaves asociadas al usuario
+    keys = r.keys(f"btq:{uid}:*")
+    if keys:
+        print(f"[QUEUE] Borrando {len(keys)} llaves de Redis para usuario {uid}")
+        r.delete(*keys)
+    
+    # 3. Asegurar limpieza de slots específicos (redundante pero seguro)
+    r.delete(_qk(uid), _ak(uid), _pk(uid))
+    
     return tid
 
 

@@ -796,12 +796,12 @@ async def clear_analysis_queue(current_user: User = Depends(get_current_user), d
         except Exception as e:
             print(f"[API] Error revocando tarea global: {e}")
             
-    # Resetear TODOS los libros del usuario que estén en estados de procesamiento
+    # Resetear TODOS los libros del usuario que no estén marcados como 'complete'
     from app.models.book import Book, AnalysisJob
-    from sqlalchemy import update
+    from sqlalchemy import update, or_
     await db.execute(
         update(Book)
-        .where(Book.status.in_(["queued", "identifying", "analyzing_structure", "summarizing", "generating_podcast"]))
+        .where(Book.status != "complete")
         .values(status="incomplete", task_id=None, error_msg="Proceso cancelado globalmente")
     )
     # También cancelar los jobs activos para que no aparezcan como 'procesando' en el UI
@@ -826,11 +826,17 @@ async def cancel_queue_item(book_id: str, current_user: User = Depends(get_curre
     book = result.scalar_one_or_none()
     if book:
         print(f"[API] Cancelando análisis de {book.title} ({book_id})")
-        if book.status in ["queued", "identifying", "analyzing_structure", "summarizing", "generating_podcast"]:
-            # Retroceder al estado lógico anterior
-            book.status = "incomplete" if book.phase2_done else "identified"
-            book.task_id = None
-            book.error_msg = "Proceso cancelado por el usuario"
-            await db.commit()
+        # Resetear a un estado seguro (identificado o incompleto)
+        book.status = "incomplete" if not book.phase1_done else "identified"
+        book.task_id = None
+        book.error_msg = "Proceso cancelado por el usuario"
+        
+        # También cancelar los jobs asociados
+        await db.execute(
+            update(AnalysisJob)
+            .where(AnalysisJob.book_id == book_id, AnalysisJob.status == "processing")
+            .values(status="cancelled", detail="Cancelado individualmente")
+        )
+        await db.commit()
             
     return {"status": "cancelled", "manager_res": res}
