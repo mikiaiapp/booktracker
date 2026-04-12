@@ -95,6 +95,8 @@ async def test_api_endpoint(
             key_to_test = current_user.openai_api_key
         elif data.provider == "groq":
             key_to_test = getattr(current_user, 'groq_api_key', None)
+        elif data.provider == "anthropic":
+            key_to_test = current_user.anthropic_api_key
     
     if not key_to_test:
         raise HTTPException(status_code=400, detail="No hay clave de API para probar")

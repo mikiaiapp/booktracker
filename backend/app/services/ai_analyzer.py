@@ -57,7 +57,8 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             print(f"[AI] Intentando con modelo: {m}")
             if "gemini" in m:
                 # --- GEMINI (Google AI Studio) ---
-                api_key = api_keys.get("gemini") or (settings.GEMINI_API_KEY or os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
+                api_key = api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', None) or os.environ.get("GEMINI_API_KEY")
+                api_key = str(api_key or "").strip().strip('"').strip("'")
                 if not api_key: continue
                 try:
                     from openai import AsyncOpenAI
@@ -84,7 +85,8 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
             elif m in ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "llama3-70b-8192", "llama3-8b-8192"]:
                 # --- GROQ (OpenAI-compatible, gratuito) ---
-                api_key = api_keys.get("groq") or (getattr(settings, 'GROQ_API_KEY', None) or os.environ.get("GROQ_API_KEY") or "").strip()
+                api_key = api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', None) or os.environ.get("GROQ_API_KEY")
+                api_key = str(api_key or "").strip().strip('"').strip("'")
                 if not api_key: continue
                 from openai import AsyncOpenAI
                 client = AsyncOpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
@@ -97,7 +99,8 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
             elif "claude" in m or "anthropic" in m:
                 # --- ANTHROPIC (Claude) ---
-                api_key = api_keys.get("anthropic") or (getattr(settings, 'ANTHROPIC_API_KEY', None) or os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+                api_key = api_keys.get("anthropic") or getattr(settings, 'ANTHROPIC_API_KEY', None) or os.environ.get("ANTHROPIC_API_KEY")
+                api_key = str(api_key or "").strip().strip('"').strip("'")
                 if not api_key: continue
                 from anthropic import AsyncAnthropic
                 client = AsyncAnthropic(api_key=api_key)
@@ -112,7 +115,8 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
             else:
                 # --- OPENAI (pago, último recurso) ---
-                api_key = api_keys.get("openai") or (settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
+                api_key = api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', None) or os.environ.get("OPENAI_API_KEY")
+                api_key = str(api_key or "").strip().strip('"').strip("'")
                 if not api_key: continue
                 from openai import AsyncOpenAI
                 client = AsyncOpenAI(api_key=api_key)
