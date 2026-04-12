@@ -63,16 +63,25 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             provider = get_prov(m)
             api_key = keys[provider]
             if provider == "gemini":
+                # Configuración de seguridad permisiva para literatura
+                safety = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+                ]
                 try:
                     from openai import AsyncOpenAI
                     client = AsyncOpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
                     resp = await client.chat.completions.create(model=m, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], max_tokens=max_tokens, temperature=0.7)
                     return resp.choices[0].message.content or "", m
-                except:
+                except Exception as e_bridge:
+                    print(f"[AI] Gemini Bridge falló: {e_bridge}. Intentando nativo...")
                     import google.generativeai as genai
                     genai.configure(api_key=api_key)
                     mdl = genai.GenerativeModel(m)
-                    response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}")
+                    # Forzamos modo permisivo en llamada nativa
+                    response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
                     return (response.text or ""), m
             elif provider == "groq" or provider == "openai":
                 from openai import AsyncOpenAI
