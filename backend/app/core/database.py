@@ -97,12 +97,19 @@ async def get_user_engine(user_id: str):
         from app.models.book import BookBase
         async with engine.begin() as conn:
             await conn.run_sync(BookBase.metadata.create_all)
-            try:
                 # Intento de migración manual para SQLite
                 from sqlalchemy import text
                 await conn.execute(text("ALTER TABLE chat_messages ADD COLUMN model TEXT"))
+            except: pass
+
+            try:
+                from sqlalchemy import text
+                # Asegurar las nuevas fases del pipeline (F4, F5, F6)
+                await conn.execute(text("ALTER TABLE books ADD COLUMN phase4_done BOOLEAN DEFAULT 0"))
+                await conn.execute(text("ALTER TABLE books ADD COLUMN phase5_done BOOLEAN DEFAULT 0"))
+                await conn.execute(text("ALTER TABLE books ADD COLUMN phase6_done BOOLEAN DEFAULT 0"))
             except:
-                pass # Probablemente ya existe
+                pass # Ya existen
     return _user_engines[user_id]
 
 
