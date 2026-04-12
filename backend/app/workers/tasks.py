@@ -147,7 +147,8 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
             chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
             keys = await _get_user_api_keys(user_id)
             for i, ch in enumerate(chaps):
-                if ch.summary_status == "done" and not force: continue
+                # Solo analizamos si no tiene resumen o si forzamos el re-análisis
+                if ch.summary and len(ch.summary) > 20 and not force: continue
                 pct = int((i/len(chaps))*100)
                 update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando {ch.title}...", model="Buscando IA...")
                 res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
