@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { ArrowLeft, Cpu, Key, Zap, CheckCircle2, XCircle, Loader2, CloudCheck, CloudUpload } from 'lucide-react'
@@ -24,7 +24,7 @@ const PROVIDERS = [
     linkLabel: 'Obtener clave gratis ↗',
     badge: 'Gratis',
     badgeColor: '#10b981',
-    description: 'Acceso a los modelos Gemini 1.5 Flash y Pro.',
+    description: 'Modelos Gemini 1.5 Flash y Pro.',
     models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
   },
   {
@@ -68,53 +68,53 @@ export default function APISettingsPage() {
     has_groq: false,
   })
 
-  const isInitialLoad = useRef(true)
+  // Para evitar guardar la carga inicial
+  const lastSavedSettings = useRef(null)
   const debounceTimer = useRef(null)
 
-  useEffect(() => { fetchSettings() }, [])
-
-  // AUTO-GUARDADO: Se dispara cada vez que cambian los settings
-  useEffect(() => {
-    if (isInitialLoad.current) return
-    
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    
-    setSyncing(true)
-    debounceTimer.current = setTimeout(() => {
-        performSilentSave()
-    }, 1000)
-
-    return () => clearTimeout(debounceTimer.current)
-  }, [settings])
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const { data } = await api.get('/users/settings')
-      isInitialLoad.current = true
-      setSettings(prev => ({ ...prev, ...data }))
-      // Desactiva el flag de carga inicial tras el primer set exitoso
-      setTimeout(() => { isInitialLoad.current = false }, 100)
+      setSettings(data)
+      lastSavedSettings.current = JSON.stringify(data)
     } catch {
       toast.error('Error al cargar configuración')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const performSilentSave = async () => {
-    try {
-      const toSend = { ...settings }
-      if (settings.gemini_api_key?.includes('...')) delete toSend.gemini_api_key
-      if (settings.openai_api_key?.includes('...')) delete toSend.openai_api_key
-      if (settings.groq_api_key?.includes('...')) delete toSend.groq_api_key
+  useEffect(() => { fetchSettings() }, [fetchSettings])
 
-      await api.put('/users/settings', toSend)
-      setSyncing(false)
-    } catch (err) {
-      console.error("Auto-save failed", err)
-      setSyncing(false)
-    }
-  }
+  // Lógica de Auto-Guardado corregida
+  useEffect(() => {
+    if (!lastSavedSettings.current || loading) return
+
+    const currentStr = JSON.stringify(settings)
+    if (currentStr === lastSavedSettings.current) return
+
+    setSyncing(true)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+
+    debounceTimer.current = setTimeout(async () => {
+        try {
+            const toSend = { ...settings }
+            // No enviar si es el placeholder de enmascaramiento
+            if (settings.gemini_api_key?.includes('...')) delete toSend.gemini_api_key
+            if (settings.openai_api_key?.includes('...')) delete toSend.openai_api_key
+            if (settings.groq_api_key?.includes('...')) delete toSend.groq_api_key
+
+            await api.put('/users/settings', toSend)
+            lastSavedSettings.current = JSON.stringify(settings)
+            setSyncing(false)
+        } catch (err) {
+            console.error("Save failed", err)
+            setSyncing(false)
+        }
+    }, 1000)
+
+    return () => clearTimeout(debounceTimer.current)
+  }, [settings, loading])
 
   const handleTest = async (provider) => {
     const providerCfg = PROVIDERS.find(p => p.key === provider)
@@ -143,7 +143,7 @@ export default function APISettingsPage() {
 
   if (loading) return (
     <div className="api-settings-page loading">
-      <Loader2 className="spin" size={24} /> Cargando configuración...
+      <Loader2 className="spin" size={24} /> Cargando...
     </div>
   )
 
@@ -151,7 +151,7 @@ export default function APISettingsPage() {
     <div className="premium-page">
       <div className="premium-header">
         <button className="back-link" onClick={() => navigate('/profile')}>
-          <ArrowLeft size={16} /> Volver a Perfil
+          <ArrowLeft size={16} /> Volver
         </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '800px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -166,12 +166,9 @@ export default function APISettingsPage() {
             )}
           </div>
         </div>
-        <p style={{ color: 'var(--mist)', marginTop: '0.5rem' }}>Los cambios se guardan automáticamente mientras editas.</p>
       </div>
 
       <div style={{ maxWidth: '800px', display: 'grid', gap: '2.5rem' }}>
-
-        {/* --- MODELO PREFERIDO --- */}
         <section>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
             <Zap size={20} color="var(--gold)" />
@@ -199,7 +196,6 @@ export default function APISettingsPage() {
           </div>
         </section>
 
-        {/* --- CLAVES DE API --- */}
         <section>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             <Key size={20} color="var(--gold)" />
