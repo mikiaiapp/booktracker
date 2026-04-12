@@ -6,7 +6,7 @@
 
 ![Stack](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square)
 ![Stack](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB?style=flat-square)
-![Stack](https://img.shields.io/badge/IA-Gemini%202.0%20Flash-4285F4?style=flat-square)
+![Stack](https://img.shields.io/badge/IA-Gemini%20|%20Groq%20|%20Claude-4285F4?style=flat-square)
 ![Stack](https://img.shields.io/badge/Deploy-Docker%20%2B%20Portainer-2496ED?style=flat-square)
 
 **🚀 [Guía rápida de despliegue →](QUICKSTART.md)**
@@ -16,265 +16,96 @@
 ## ✨ Características principales
 
 ### 📖 Gestión de biblioteca
-- Sube PDFs y EPUBs para análisis automático
-- Fichas de libros sin archivo (shell books)
-- Metadatos automáticos desde Open Library y Google Books
-- Portadas descargadas automáticamente
-- Estados de lectura: por leer / leyendo / leído
-- Valoraciones y notas personales
+- Sube PDFs y EPUBs para análisis automático o crea fichas manuales.
+- Metadatos automáticos desde Open Library y Google Books con descarga de portadas.
+- Estados de lectura, valoraciones y biblioteca organizada por autores.
 
-### 🤖 Análisis con IA (Gemini 2.0 Flash - gratuito)
-- **Fase 1:** Identificación y metadatos (autor, sinopsis, año, ISBN)
-- **Fase 2:** Detección de estructura (partes, capítulos, páginas)
-- **Fase 3:** Resúmenes por capítulo + análisis global
-- Extracción de personajes con descripción, rol y arcos narrativos
-- Mapa mental interactivo de conceptos clave
-- Generación de podcasts (guión + audio TTS)
+### 🤖 Análisis con IA (Multimodal)
+- **Análisis Multi-Proveedor:** Soporte para **Gemini (gratis)**, **Groq (gratis)**, **Claude (Anthropic)** y **OpenAI**.
+- **Resúmenes Magistrales:** Análisis por capítulo y ensayo global literario.
+- **Personajes y Mapas Mentales:** Extracción de psicología de personajes y visualización interactiva de conceptos.
+- **Podcast:** Generación automática de guion y audio (TTS) para escuchar tus libros.
 
-### 👥 Multiusuario con seguridad
-- Registro e inicio de sesión
-- 2FA opcional (TOTP / Email OTP)
-- Recuperación de contraseña por email
-- Bases de datos SQLite independientes por usuario
-- Sesiones con JWT
-
-### 📚 Sección de autores
-- Agrupación automática por autor
-- Biografías desde Wikipedia
-- Bibliografía completa desde Google Books
-- Vista de todos los libros del mismo autor
-
-### 🎯 Despliegue simplificado
-- Stack Docker completo listo para Portainer
-- Configuración mediante variables de entorno
-- Todo el código en el repositorio (sin archivos externos)
-- Actualizaciones con un clic: "Pull and redeploy"
+### 👥 Multiusuario y Privacidad
+- Registro, login, 2FA y recuperación de contraseña.
+- **Gestión de APIs en el perfil:** Cada usuario configura sus propias claves desde la web, sin tocar Docker.
+- Bases de datos SQLite independientes por usuario para máxima privacidad.
 
 ---
 
-## Despliegue en Synology NAS con Portainer
+## Despliegue en NAS con Portainer
 
-### 1 — Preparar el NAS (una sola vez, vía SSH)
-
+### 1 — Preparar el NAS
+Crea las carpetas de datos necesarias (vía SSH o File Station):
 ```bash
-# Crear carpetas de datos
 mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
 ```
 
 ---
 
 ### 2 — Crear el Stack en Portainer
-
-**Portainer → Stacks → Add stack → Repository**
-
-| Campo | Valor |
-|-------|-------|
-| Name | `booktracker` |
-| Repository URL | `https://github.com/TU_USUARIO/TU_REPO` |
-| Repository reference | `refs/heads/main` |
-| Compose path | `docker-compose.yml` |
-
-Si el repo es **privado**: activa *Authentication* → usuario GitHub + [Personal Access Token](https://github.com/settings/tokens) (scope: `repo`).
+1. En **Portainer → Stacks → Add stack → Repository**.
+2. **Name:** `booktracker`.
+3. **Repository URL:** La URL de este repositorio.
+4. **Compose path:** `docker-compose.yml`.
 
 ---
 
-### 3 — Variables de entorno en Portainer
+### 3 — Variables de Entorno (Environment variables)
+Solo necesitas configurar las variables de sistema. Las claves de IA se configuran después en la aplicación.
 
-Sección **Environment variables** del Stack:
+#### Obligatorias (Sistema)
+| Variable | Valor | Descripción |
+|----------|-------|-------------|
+| `SECRET_KEY` | Texto aleatorio largo | Para cifrar sesiones y seguridad interna. |
+| `NGINX_PORT` | `8080` | Puerto donde estará disponible la app. |
 
-#### Obligatorias
+#### Recomendadas (Email)
+*Necesarias para recuperar contraseñas y 2FA.*
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`.
 
-| Variable | Valor |
-|----------|-------|
-| `SECRET_KEY` | Texto aleatorio largo (mín. 32 chars) |
-| `GEMINI_API_KEY` | Clave de [aistudio.google.com](https://aistudio.google.com) → Get API key |
-| `GOOGLE_API_KEY` | La misma clave (nombre que usa la librería de Google) |
-| `AI_MODEL` | `gemini-2.0-flash` |
-
-> ⚠️ **Importante:** La clave de Gemini debe crearse en **AI Studio** con
-> **"Create API key in new project"** (proyecto sin billing activado).
-> Así se activa la capa gratuita de 1.500 peticiones/día.
-> Si la clave viene de Google Cloud Console con billing, el límite es 0.
-
-#### Para el podcast TTS (opcional)
-
-| Variable | Valor |
-|----------|-------|
-| `OPENAI_API_KEY` | `sk-...` de [platform.openai.com](https://platform.openai.com) |
-| `TTS_PROVIDER` | `openai` |
-
-#### Otras opcionales
-
-| Variable | Por defecto | Descripción |
-|----------|-------------|-------------|
-| `NGINX_PORT` | `8080` | Puerto de acceso web |
-| `ANTHROPIC_API_KEY` | — | Si prefieres Claude en vez de Gemini |
-| `SMTP_HOST` | — | Para 2FA por email (ej: `smtp.gmail.com`) |
-| `SMTP_PORT` | `587` | |
-| `SMTP_USER` | — | |
-| `SMTP_PASS` | — | App Password de Google |
+#### IA Local (Ollama - Opcional)
+- `USE_OLLAMA_FOR_FAST_TASKS`: `true`
+- `OLLAMA_URL`: `http://IP_DE_TU_NAS:11434`
+- `OLLAMA_MODEL`: `llama3.1`.
 
 ---
 
-## 🤖 IA Local (Ollama + Open WebUI) — ¡Análisis Gratis!
+### 4 — Configurar las APIs en la App
+Una vez desplegado:
+1. Accede a `http://IP-NAS:8080` y regístrate.
+2. Ve a **Perfil → Configuración de IA**.
+3. Introduce tus claves de **Gemini** (Gratis), **Groq** (Gratis) o **OpenAI/Anthropic**.
 
-BookTracker permite delegar los resúmenes y tareas pesadas a un servidor **Ollama** local. Esto elimina el consumo de tokens de Gemini y mejora la privacidad.
+---
 
-### 1. Desplegar Ollama (Stack independiente en Portainer)
-
-Para un rendimiento óptimo en **Synology**, usa este `docker-compose.yml` en un nuevo stack llamado `ollama`:
-
+## 🤖 Uso de IA Local (Ollama)
+Puedes instalar Ollama en tu NAS con este stack:
 ```yaml
 version: "3"
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: ollama-standalone
+    container_name: ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - /volume1/docker/ollama/data:/root/.ollama
-    # 🏎️ ACELERACIÓN PARA SYNOLOGY (Intel iGPU):
-    # Descomenta las siguientes 2 líneas si tu NAS tiene CPU Intel con gráfica:
-    # devices:
-    #   - /dev/dri:/dev/dri
-    environment:
-      - OLLAMA_KEEP_ALIVE=24h  # Mantiene el modelo en RAM para evitar esperas
-
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: open-webui
-    restart: unless-stopped
-    ports:
-      - "8081:8080"
-    environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
-    depends_on:
-      - ollama
-    volumes:
-      - /volume1/docker/ollama/webui:/app/backend/data
-```
-
-### 2. Configuración y Optimización
-
-1. **Descargar Modelo**: Entra en `http://IP-NAS:8081` (Open WebUI), regístrate y descarga el modelo `llama3.1:8b` (o `phi3` si tu NAS es poco potente).
-2. **Aceleración**: Si Ollama tarda más de 1 minuto en responder, asegúrate de haber mapeado `/dev/dri` en el stack de Ollama (esto requiere que el paquete "Video Station" o similar esté instalado para activar los drivers en el NAS).
-3. **Vincular con BookTracker**: En el stack de **BookTracker**, configura estas variables:
-   - `USE_OLLAMA_FOR_FAST_TASKS`: `true`
-   - `OLLAMA_URL`: `http://TU_IP_NAS:11434`
-   - `OLLAMA_MODEL`: `llama3.1`
-
----
-
-### 4 — Deploy
-
-Clic en **Deploy the stack**. La primera vez tarda 5–15 minutos.
-
----
-
-### 5 — Acceder
-
-```
-http://IP-NAS:8080
+    ports: ["11434:11434"]
+    volumes: ["/volume1/docker/ollama:/root/.ollama"]
+    # devices: ["/dev/dri:/dev/dri"] # Aceleración Intel iGPU
 ```
 
 ---
 
-## Actualizar código
-
-Cuando hagas cambios en el código:
-
-```bash
-# 1. Haz commit y push a GitHub
-git add .
-git commit -m "Nueva funcionalidad"
-git push
-
-# 2. En Portainer → Stacks → booktracker → "Pull and redeploy"
-# Espera 2-3 minutos mientras reconstruye las imágenes
-```
-
-El stack completo se reconstruye automáticamente con el código actualizado.
+## Actualizar a nuevas versiones
+1. En Portainer, entra en el stack `booktracker`.
+2. Pulsa en **Editor** y luego en **"Update the stack"**.
+3. Marca **"Re-pull image and redeploy"** y pulsa **Update**.
 
 ---
 
 ## Arquitectura
-
-```
-┌─────────────────────────────────────────────────────┐
-│  NGINX  (puerto 8080)                               │
-│   ├── /api/*    →  backend:8000   (FastAPI)         │
-│   ├── /data/*   →  archivos estáticos               │
-│   └── /*        →  frontend:3000  (React + Vite)    │
-├─────────────────────────────────────────────────────┤
-│  Celery worker  ←→  Redis                           │
-│   · Fase 1 — Open Library + Google Books            │
-│   · Fase 2 — estructura PDF/EPUB                    │
-│   · Fase 3 — resúmenes IA (Gemini 2.0 Flash)        │
-│   · Podcast — guión + TTS audio MP3                 │
-├─────────────────────────────────────────────────────┤
-│  SQLite por usuario                                 │
-│   /data/databases/global.db       ← usuarios        │
-│   /data/databases/user_{id}.db    ← libros          │
-└─────────────────────────────────────────────────────┘
-```
-
-### Carpetas en el NAS
-
-```
-/volume1/docker/booktracker/
-└── data/
-    ├── uploads/      ← PDFs y EPUBs originales
-    ├── covers/       ← portadas descargadas
-    ├── audio/        ← podcasts MP3
-    ├── databases/    ← SQLite (global.db + user_{id}.db)
-    └── redis/        ← cola de tareas Celery
-```
+- **Backend:** FastAPI + Celery para tareas pesadas.
+- **Frontend:** React + Vite (PWA instalable).
+- **Almacenamiento:** `/volume1/docker/booktracker/data/`.
 
 ---
-
-## Comandos útiles
-
-```bash
-# Ver estado de los contenedores
-docker ps | grep booktracker
-
-# Logs en tiempo real
-docker logs booktracker-worker -f
-docker logs booktracker-backend -f
-
-# Reiniciar un servicio específico
-docker restart booktracker-worker
-docker restart booktracker-backend
-
-# Backup de datos
-tar -czf backup-$(date +%Y%m%d).tar.gz /volume1/docker/booktracker/data/
-
-# Ver uso de recursos
-docker stats booktracker-backend booktracker-worker
-```
-
----
-
-## Solución de errores frecuentes
-
-| Error | Causa | Solución |
-|-------|-------|----------|
-| `Quota exceeded, limit: 0` | Clave Gemini con billing activado | Crear clave nueva en AI Studio con proyecto nuevo sin billing |
-| `No API_KEY or ADC found` | `GOOGLE_API_KEY` no definida | Añadir en Portainer → Environment variables |
-| `bcrypt` error al registrar | Versión incompatible de bcrypt | Verificar `bcrypt==4.0.1` en requirements.txt |
-| Backend unhealthy | Arranque lento en NAS | Esperar 2-3 min y verificar logs con `docker logs booktracker-backend` |
-| Worker no procesa tareas | Redis desconectado | Verificar `docker logs booktracker-redis` y reiniciar stack |
-| Imágenes no se muestran | Permisos en /data/covers | `chmod -R 755 /volume1/docker/booktracker/data/covers` |
-
----
-
-## Coste estimado
-
-| Proveedor | Modelo | Coste por libro |
-|-----------|--------|-----------------|
-| Google Gemini | gemini-2.0-flash | **Gratuito** (1.500 req/día) |
-| Anthropic | claude-sonnet-4 | €0.30–0.85 |
-| OpenAI | gpt-4o | €0.40–1.00 |
-| Audio TTS | openai tts-1 | €0.12 por podcast |
+*Desarrollado con ❤️ para amantes de la lectura y la tecnología.*
