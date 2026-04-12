@@ -41,6 +41,25 @@ mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
 3. **Repository URL:** La URL de este repositorio.
 4. **Compose path:** `docker-compose.yml`.
 
+### 3 — Variables de Entorno (Environment Variables)
+Configura estas variables en la pestaña **Environment variables** de Portainer:
+- `SECRET_KEY`: Una cadena aleatoria larga para proteger las sesiones.
+- `NGINX_PORT`: El puerto donde quieras que responda la app (ej: `8080`).
+- `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`: (Opcional) Si quieres activar la recuperación de contraseña por email y el 2FA.
+
+---
+
+## 🏁 Primeros Pasos (Configuración de IA)
+
+Una vez instalada la aplicación (ya sea en NAS o Windows), sigue estos pasos para activar la inteligencia artificial:
+
+1.  **Registro:** Accede a la URL de tu app y crea una cuenta de usuario.
+2.  **Ajustes de IA:** Haz clic en tu avatar arriba a la derecha → **Perfil** → **Ajustes de IA**.
+3.  **Añadir Claves:** Introduce tu clave de **Google Gemini** (Gratis) o **Groq** (Gratis).
+4.  **Guardar y Probar:** Pulsa el botón "Probar" para verificar que la conexión funciona y guarda los cambios.
+
+*¡A partir de este momento ya puedes subir tu primer libro!*
+
 ---
 
 ## 💻 Instalación Local en Windows (Fácil)
