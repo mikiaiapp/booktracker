@@ -23,77 +23,75 @@ def _compress_text(text: str, limit: int = 15000) -> str:
     clean = re.sub(r'\s+', ' ', text).strip()
     return clean[:limit]
 
-async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
-    api_keys = api_keys or {}
-    def clean_k(val): return str(val or "").strip().strip('"').strip("'")
-    
+async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:    # Limpieza total de llaves
+    def ck(v): return str(v or "").strip().strip('"').strip("'")
     keys = {
-        "gemini": clean_k(api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', "") or os.environ.get("GEMINI_API_KEY", "")),
-        "groq": clean_k(api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', "") or os.environ.get("GROQ_API_KEY", "")),
-        "openai": clean_k(api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', "") or os.environ.get("OPENAI_API_KEY", "")),
+        "gemini": ck(api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', "")),
+        "groq": ck(api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', "")),
+        "openai": ck(api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', ""))
     }
 
-    legacy_map = {"gemini-2.5-flash": "gemini-1.5-flash", "gemini-2.5-pro": "gemini-1.5-pro"}
-    preferred = (api_keys.get("preferred_model") or settings.AI_MODEL or "gemini-1.5-flash").lower()
-    preferred = legacy_map.get(preferred, preferred)
+    # Determinación de modelos
+    preferred = (api_keys.get("preferred_model") or "gemini-1.5-flash").lower()
+    if "2.5" in preferred: preferred = preferred.replace("2.5", "1.5")
 
-    def get_prov(m_name: str):
-        m = m_name.lower()
+    def get_prov(m):
+        m = str(m).lower()
         if "gemini" in m: return "gemini"
-        if any(g in m for g in ["llama", "mixtral"]): return "groq"
+        if "llama" in m or "mix" in m: return "groq"
         if "gpt" in m: return "openai"
         return None
 
-    models_to_try = []
+    # COLA DE INTENTOS ESTRICTA
+    q = []
+    # 1. El preferido del usuario primero
     p_prov = get_prov(preferred)
-    if p_prov and keys.get(p_prov): models_to_try.append(preferred)
+    if p_prov and keys.get(p_prov): q.append(preferred)
 
     if not skip_fallback:
-        standard = ["gemini-1.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gpt-4o-mini", "gemini-1.5-pro"]
-        for m in standard:
+        # 2. SECCIÓN GRATUITA OBLIGATORIA (Si tienen llave)
+        free = ["gemini-1.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemini-1.5-pro"]
+        for m in free:
             prov = get_prov(m)
-            if keys.get(prov) and m not in models_to_try: models_to_try.append(m)
+            if keys.get(prov) and m not in q: q.append(m)
+        
+        # 3. SECCIÓN DE PAGO (Solo al final del todo)
+        if keys.get("openai"):
+            for m in ["gpt-4o-mini", "gpt-4o"]:
+                if m not in q: q.append(m)
 
-    if not models_to_try: raise ValueError("No hay llaves de API válidas.")
+    if not q: raise ValueError("Error de configuración: No tienes ninguna llave de API válida (Gemini, Groq u OpenAI).")
 
-    last_error = ""
-    for m in models_to_try:
+    print(f"[IA] ORDEN DE ANÁLISIS: {' -> '.join(q)}")
+
+    last_err = ""
+    for m in q:
+        prov = get_prov(m)
+        key = keys[prov]
         try:
-            print(f"[AI] Llamando a {m}...")
-            provider = get_prov(m)
-            api_key = keys[provider]
-            if provider == "gemini":
-                # Configuración de seguridad permisiva para literatura
-                safety = [
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                ]
-                try:
-                    from openai import AsyncOpenAI
-                    client = AsyncOpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
-                    resp = await client.chat.completions.create(model=m, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], max_tokens=max_tokens, temperature=0.7)
-                    return resp.choices[0].message.content or "", m
-                except Exception as e_bridge:
-                    print(f"[AI] Gemini Bridge falló: {e_bridge}. Intentando nativo...")
-                    import google.generativeai as genai
-                    genai.configure(api_key=api_key)
-                    mdl = genai.GenerativeModel(m)
-                    # Forzamos modo permisivo en llamada nativa
-                    response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
-                    return (response.text or ""), m
-            elif provider == "groq" or provider == "openai":
+            print(f"[IA] Intentando con {m}...")
+            if prov == "gemini":
+                import google.generativeai as genai
+                genai.configure(api_key=key)
+                mdl = genai.GenerativeModel(m)
+                safety = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
+                response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
+                if not response or not response.text: raise ValueError("Respuesta vacía/bloqueada")
+                return response.text, m
+            
+            elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
-                base = "https://api.groq.com/openai/v1" if provider == "groq" else None
-                client = AsyncOpenAI(api_key=api_key, base_url=base)
+                base = "https://api.groq.com/openai/v1" if prov == "groq" else None
+                client = AsyncOpenAI(api_key=key, base_url=base)
                 resp = await client.chat.completions.create(model=m, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
+                if not resp.choices[0].message.content: raise ValueError("Respuesta vacía del modelo")
                 return resp.choices[0].message.content, m
         except Exception as e:
-            last_error = str(e)
-            print(f"[AI] Fallo en {m}: {last_error}")
+            last_err = str(e)
+            print(f"[IA] Falló {m}: {last_err[:80]}")
             continue
-    raise ValueError(f"Falla total. Último error: {last_error}")
+
+    raise ValueError(f"Agotados todos los modelos disponibles. Último error: {last_err}")
 
 async def _call_ai_with_retry(system, user, max_tokens=2000, max_retries=3, is_fast_task=False, api_keys=None):
     for i in range(max_retries):
