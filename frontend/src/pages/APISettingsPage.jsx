@@ -10,7 +10,6 @@ const MODELS = [
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', desc: 'Ultra‑rápido para tareas masivas.', badge: 'Gratis', badgeColor: '#10b981' },
   { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B', desc: 'Open‑source potente vía Groq Cloud.', badge: 'Gratis', badgeColor: '#10b981' },
   { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'Alta velocidad, contexto extenso (Groq).', badge: 'Gratis', badgeColor: '#10b981' },
-  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', desc: 'Cerebro premium de Anthropic (muy preciso).', badge: 'Pago', badgeColor: '#f59e0b' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Económico y preciso (OpenAI).', badge: 'Pago', badgeColor: '#f59e0b' },
   { id: 'gpt-4o', name: 'GPT-4o', desc: 'Máxima potencia disponible (OpenAI).', badge: 'Pago', badgeColor: '#ef4444' },
 ]
@@ -41,18 +40,6 @@ const PROVIDERS = [
     models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768'],
   },
   {
-    key: 'anthropic',
-    label: 'Anthropic (Claude)',
-    field: 'anthropic_api_key',
-    placeholder: 'sk-ant-api03-...',
-    link: 'https://console.anthropic.com/settings/keys',
-    linkLabel: 'Obtener clave en Anthropic Console ↗',
-    badge: 'De pago',
-    badgeColor: '#f59e0b',
-    description: 'Claude 3.5 Sonnet. Excelente para análisis literario profundo y matices de lenguaje.',
-    models: ['claude-3-5-sonnet-latest', 'claude-3-opulent'],
-  },
-  {
     key: 'openai',
     label: 'OpenAI',
     field: 'openai_api_key',
@@ -74,7 +61,6 @@ export default function APISettingsPage() {
   const [settings, setSettings] = useState({
     gemini_api_key: '',
     openai_api_key: '',
-    anthropic_api_key: '',
     groq_api_key: '',
     preferred_model: 'gemini-2.5-flash',
     has_gemini: false,
@@ -103,7 +89,6 @@ export default function APISettingsPage() {
       // No reenviar claves enmascaradas
       if (settings.gemini_api_key?.includes('...')) delete toSend.gemini_api_key
       if (settings.openai_api_key?.includes('...')) delete toSend.openai_api_key
-      if (settings.anthropic_api_key?.includes('...')) delete toSend.anthropic_api_key
       if (settings.groq_api_key?.includes('...')) delete toSend.groq_api_key
 
       await api.put('/users/settings', toSend)

@@ -5,7 +5,7 @@
 
 ![Stack](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square)
 ![Stack](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB?style=flat-square)
-![Stack](https://img.shields.io/badge/IA-Gemini%20|%20Groq%20|%20Claude-4285F4?style=flat-square)
+![Stack](https://img.shields.io/badge/IA-Gemini%20|%20Groq%20|%20OpenAI-4285F4?style=flat-square)
 ![Stack](https://img.shields.io/badge/Deploy-Docker%20%2B%20Portainer-2496ED?style=flat-square)
 
 **🚀 [Guía rápida de despliegue →](QUICKSTART.md)**
@@ -20,7 +20,7 @@
 - Estados de lectura, valoraciones y biblioteca organizada por autores.
 
 ### 🤖 Análisis con IA (Multimodal)
-- **Análisis Multi-Proveedor:** Soporte para **Gemini (gratis)**, **Groq (gratis)**, **Claude (Anthropic)** y **OpenAI**.
+- **Análisis Multi-Proveedor:** Soporte para **Gemini (gratis)**, **Groq (gratis)** y **OpenAI**.
 - **Resúmenes Magistrales:** Análisis por capítulo y ensayo global literario.
 - **Personajes y Mapas Mentales:** Extracción de psicología de personajes y visualización interactiva de conceptos.
 - **Podcast:** Generación automática de guion y audio (TTS) para escuchar tus libros.

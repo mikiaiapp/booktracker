@@ -13,7 +13,6 @@ router = APIRouter()
 class UserSettingsUpdate(BaseModel):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
-    anthropic_api_key: Optional[str] = None
     groq_api_key: Optional[str] = None
     preferred_model: Optional[str] = None
 
@@ -36,7 +35,6 @@ async def get_profile(current_user: User = Depends(get_current_user)):
         # No devolvemos las claves completas por seguridad
         "has_gemini": bool(current_user.gemini_api_key),
         "has_openai": bool(current_user.openai_api_key),
-        "has_anthropic": bool(current_user.anthropic_api_key),
         "has_groq": bool(getattr(current_user, 'groq_api_key', None)),
     }
 
@@ -46,12 +44,10 @@ async def get_settings(current_user: User = Depends(get_current_user)):
     return {
         "gemini_api_key": mask(current_user.gemini_api_key),
         "openai_api_key": mask(current_user.openai_api_key),
-        "anthropic_api_key": mask(current_user.anthropic_api_key),
         "groq_api_key": mask(getattr(current_user, 'groq_api_key', None)),
         "preferred_model": current_user.preferred_model,
         "has_gemini": bool(current_user.gemini_api_key),
         "has_openai": bool(current_user.openai_api_key),
-        "has_anthropic": bool(current_user.anthropic_api_key),
         "has_groq": bool(getattr(current_user, 'groq_api_key', None)),
     }
 
@@ -65,8 +61,6 @@ async def update_settings(
         current_user.gemini_api_key = settings_data.gemini_api_key
     if settings_data.openai_api_key is not None:
         current_user.openai_api_key = settings_data.openai_api_key
-    if settings_data.anthropic_api_key is not None:
-        current_user.anthropic_api_key = settings_data.anthropic_api_key
     if settings_data.groq_api_key is not None:
         # Guardamos de forma segura incluso si la columna aún no existe en la DB (graceful)
         try:
@@ -95,8 +89,6 @@ async def test_api_endpoint(
             key_to_test = current_user.openai_api_key
         elif data.provider == "groq":
             key_to_test = getattr(current_user, 'groq_api_key', None)
-        elif data.provider == "anthropic":
-            key_to_test = current_user.anthropic_api_key
     
     if not key_to_test:
         raise HTTPException(status_code=400, detail="No hay clave de API para probar")

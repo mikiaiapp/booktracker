@@ -97,22 +97,6 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 )
                 return resp.choices[0].message.content, m
 
-            elif "claude" in m or "anthropic" in m:
-                # --- ANTHROPIC (Claude) ---
-                api_key = api_keys.get("anthropic") or getattr(settings, 'ANTHROPIC_API_KEY', None) or os.environ.get("ANTHROPIC_API_KEY")
-                api_key = str(api_key or "").strip().strip('"').strip("'")
-                if not api_key: continue
-                from anthropic import AsyncAnthropic
-                client = AsyncAnthropic(api_key=api_key)
-                # Claude usa un formato de mensajes similar pero requiere 'system' como parámetro aparte o primer mensaje
-                resp = await client.messages.create(
-                    model=m,
-                    max_tokens=max_tokens,
-                    system=system,
-                    messages=[{"role": "user", "content": user}]
-                )
-                return resp.content[0].text, m
-
             else:
                 # --- OPENAI (pago, último recurso) ---
                 api_key = api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', None) or os.environ.get("OPENAI_API_KEY")
@@ -411,9 +395,6 @@ async def test_api_key(provider: str, api_key: str, model: Optional[str] = None)
     elif provider == "groq":
         keys["groq"] = api_key
         keys["preferred_model"] = "llama-3.3-70b-versatile"
-    elif provider == "anthropic":
-        keys["anthropic"] = api_key
-        keys["preferred_model"] = "claude-3-5-sonnet-latest"
     
     try:
         # Usamos _call_ai directamente, saltando fallbacks para probar la llave específica
