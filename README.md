@@ -53,14 +53,17 @@ Si no quieres usar el servidor NAS, puedes ejecutar BookTracker directamente en 
 3. **Reinicia tu PC** cuando termine.
 4. Abre "Docker Desktop" desde el menú Inicio y espera a que el icono de la ballena se quede quieto (verde).
 
-### 2 — Lanzar la aplicación (Sin comandos)
+### 2 — Lanzar la Experiencia Completa
 1. Descarga o clona este proyecto en una carpeta de tu PC.
-2. Busca el archivo llamado **`LANZAR_WINDOWS.bat`** y haz doble clic sobre él.
-3. Se abrirá una ventana negra que configurará todo por ti. Cuando termine, no la cierres si quieres seguir usando la app.
+2. Busca el archivo **`LANZAR_WINDOWS.bat`** y haz doble clic sobre él.
+3. **¡Listo!** El script configurará los contenedores y **abrirá automáticamente tu navegador** en [http://localhost:8081](http://localhost:8081).
 
-### 3 — Acceso y Gestión Visual
-*   **Para entrar:** Abre tu navegador en [http://localhost:8081](http://localhost:8081).
-*   **Para gestionar:** Abre la ventana principal de **Docker Desktop**. Verás una lista llamada `booktracker-local`. Desde ahí puedes ver los logs, detener la app o reiniciarla pulsando los botones de "Play/Stop" de forma totalmente visual.
+---
+
+## 🛠️ Gestión y Mantenimiento
+
+*   **Gestión Visual:** Puedes abrir **Docker Desktop** y verás la lista `booktracker-local`. Desde ahí puedes ver logs, detener o reiniciar la app con botones de "Play/Stop".
+*   **Actualizar:** Para bajar nuevas mejoras, haz un `git pull` de la carpeta y vuelve a ejecutar el `.bat`.
 
 ---
 

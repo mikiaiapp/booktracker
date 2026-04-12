@@ -1,32 +1,42 @@
 @echo off
-setlocal
-cd /d "%~dp0"
+setlocal enabledelayedexpansion
 
-echo ==========================================
-echo    INSTALADOR LOCAL - BOOKTRACKER
-echo ==========================================
+:: =================================================================
+:: 📚 BookTracker - Lanzador para Windows (Modo Premium)
+:: =================================================================
+
 echo.
-echo Este script lanzara BookTracker en tu PC local usando Docker.
-echo Asegurate de que Docker Desktop este abierto.
-echo.
-
-docker-compose -f docker-compose.local.yml up -d
-
-if %ERRORLEVEL% NEQ 0 (
+echo  [1/3] Verificando Docker Desktop...
+docker --version >nul 2>&1
+if %errorlevel% neq 0 (
     echo.
-    echo [ERROR] Hubo un problema al arrancar los contenedores.
-    echo Asegurate de que Docker Desktop este funcionando.
+    echo  [!] ERROR: Docker no esta instalado o no se esta ejecutando.
+    echo      Por favor, abre Docker Desktop y espera a que la ballena este verde.
+    echo.
     pause
-    exit /b %ERRORLEVEL%
+    exit /b
 )
 
+echo  [2/3] Arrancando contenedores de BookTracker...
+docker-compose -f docker-compose.local.yml up -d
+
+echo  [3/3] Preparando interfaz premium...
+echo      Esperando a que los servicios esten listos (5s)...
+timeout /t 5 /nobreak >nul
+
 echo.
-echo ==========================================
-echo    ¡TODO LISTO!
-echo ==========================================
+echo  [🚀] EXITO: BookTracker se esta ejecutando.
+echo      Abriendo aplicacion en tu navegador...
 echo.
-echo Puedes acceder a la app en: http://localhost:8081
+
+:: Abrir el navegador por defecto
+start http://localhost:8081
+
+echo  =================================================================
+echo  RECUERDA: No cierres esta ventana si quieres ver los logs. 
+echo  Tambien puedes gestionar todo visualmente desde Docker Desktop.
+echo  =================================================================
 echo.
-echo Para detener la app, cierra esta ventana (o usa el panel de Docker Desktop).
-echo.
-pause
+
+:: Mantener la ventana abierta para ver logs en vivo del backend si el usuario quiere
+docker logs -f booktracker-api-local
