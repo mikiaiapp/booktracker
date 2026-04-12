@@ -107,6 +107,7 @@ export default function APISettingsPage() {
             await api.put('/users/settings', toSend)
             lastSavedSettings.current = JSON.stringify(settings)
             setSyncing(false)
+            console.log("Configuración sincronizada automáticamente")
         } catch (err) {
             console.error("Save failed", err)
             setSyncing(false)

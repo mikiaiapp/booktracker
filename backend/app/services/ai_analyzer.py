@@ -125,13 +125,18 @@ async def summarize_chapter(title, text, book, author, api_keys=None) -> tuple[d
 
 async def get_character_list(all_summaries, api_keys=None) -> list:
     if not all_summaries: return [], "Error"
-    system = "Responde SOLO un array JSON: [{\"name\": \"...\", \"is_main\": true/false}]"
-    user = f"Identifica personajes principales y secundarios basándote en estos resúmenes:\n{_compress_text(all_summaries)}"
+    system = "Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true}]"
+    # Aumentamos el límite a 100k para aprovechar el contexto de Gemini
+    context = _compress_text(all_summaries, 100000)
     try:
-        raw, m = await _call_ai_with_retry(system, user, 1000, is_fast_task=True, api_keys=api_keys)
+        raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys)
         data = _parse_json(raw)
-        return ([c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else []), m
-    except: return [], "Error"
+        char_list = ([c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else [])
+        print(f"[AI] Detectados {len(char_list)} personajes usando {m}")
+        return char_list, m
+    except Exception as e:
+        print(f"[AI] Error detectando personajes: {e}")
+        return [], "Error"
 
 async def analyze_single_character(name, is_main, all_summaries, book, api_keys=None) -> dict:
     t = "PRINCIPAL" if is_main else "SECUNDARIO"
