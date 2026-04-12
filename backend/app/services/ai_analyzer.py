@@ -395,13 +395,13 @@ async def test_api_key(provider: str, api_key: str, model: Optional[str] = None)
     keys = {}
     if provider == "gemini":
         keys["gemini"] = api_key
-        keys["preferred_model"] = "gemini-2.5-flash"
+        keys["preferred_model"] = model or "gemini-1.5-flash"
     elif provider == "openai":
         keys["openai"] = api_key
-        keys["preferred_model"] = "gpt-4o-mini"
+        keys["preferred_model"] = model or "gpt-4o-mini"
     elif provider == "groq":
         keys["groq"] = api_key
-        keys["preferred_model"] = "llama-3.3-70b-versatile"
+        keys["preferred_model"] = model or "llama-3.3-70b-versatile"
     
     try:
         # Usamos _call_ai directamente, saltando fallbacks para probar la llave específica
