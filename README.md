@@ -25,7 +25,7 @@ Si quieres que la app te envíe correos (por ejemplo, para recuperar tu contrase
 *   **SMTP_HOST:** La dirección del servidor de tu correo (ej: `smtp.gmail.com`).
 *   **SMTP_USER:** Tu dirección de correo (ej: `tu-usuario@gmail.com`).
 *   **SMTP_PASS:** Tu contraseña (en Gmail se requiere crear una [Contraseña de Aplicación](https://myaccount.google.com/apppasswords)).
-*   **SECRET_KEY:** Escribe una frase larga y rara aquí para proteger tu seguridad.
+*   **SECRET_KEY:** Escribe una frase larga y rara de al menos 32 caracteres. (No te preocupes: no tienes que memorizarla ni volver a usarla nunca más, solo sirve para la seguridad interna).
 
 ---
 
