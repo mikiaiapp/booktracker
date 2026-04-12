@@ -8,7 +8,7 @@
 *Este apartado es común para cualquier tipo de instalación.*
 
 ### ✨ ¿Qué puedes hacer con BookTracker?
-*   **Biblioteca Organizada:** Sube tus libros (PDF/EPUB) o crea fichas de los que tienes en papel.
+*   **Biblioteca Organizada:** Sube tus libros (PDF/EPUB) para analizarlos y resumirlos.
 *   **Análisis Inteligente:** La IA lee tus libros por ti y genera resúmenes por capítulo y ensayos globales.
 *   **Psicología de Personajes:** Descubre la personalidad y evolución de los protagonistas.
 *   **Podcast Automático:** Convierte el análisis de tu libro en un audio para escucharlo donde quieras.
