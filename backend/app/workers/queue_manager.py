@@ -123,22 +123,13 @@ def cancel(uid: str, book_id: str) -> str:
         except Exception:
             pass
 
-    # Activo → revocar tarea Celery y limpiar
+    # Activo → retornar task_id para que el API lo revoque y limpiar Redis
     if r.get(_ak(uid)) == book_id:
-        # Intentar detener físicamente la tarea
-        try:
-            from app.workers.celery_app import celery_app
-            tid = r.hget(_ik(uid, book_id), "task_id")
-            if tid:
-                print(f"[QUEUE] Revocando tarea Celery activa {tid} (libro {book_id})")
-                celery_app.control.revoke(tid, terminate=True, signal='SIGKILL')
-        except Exception as e:
-            print(f"[QUEUE] Error al revocar tarea: {e}")
-
+        tid = r.hget(_ik(uid, book_id), "task_id")
         r.delete(_ak(uid))
         r.delete(_ik(uid, book_id))
         _pump(uid)
-        return "cancelled"
+        return tid if tid else "cancelled"
 
     return "not_found"
 
@@ -157,20 +148,14 @@ def cancel_all(uid: str):
             pass
     r.delete(_qk(uid))
 
-    # 2. Detener proceso activo si existe
+    # 2. Retornar task_id de proceso activo si existe
     active = r.get(_ak(uid))
+    tid = None
     if active:
-        try:
-            from app.workers.celery_app import celery_app
-            tid = r.hget(_ik(uid, active), "task_id")
-            if tid:
-                print(f"[QUEUE] Cancel All: Revocando tarea activa {tid} (libro {active})")
-                celery_app.control.revoke(tid, terminate=True, signal='SIGKILL')
-        except Exception as e:
-            print(f"[QUEUE] Error al revocar en cancel_all: {e}")
-            
+        tid = r.hget(_ik(uid, active), "task_id")
         r.delete(_ak(uid))
         r.delete(_ik(uid, active))
+    return tid
 
 
 def on_done(uid: str, book_id: str):

@@ -279,15 +279,18 @@ def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
                 await db.commit()
                 update_progress(user_id, book_id, "phase3", 100, f"Completado: {ch.title}", model=model_used)
                 
-                # REVISIÓN DE HUECOS: ¿Faltan más capítulos por resumir?
-                missing_res = await db.execute(select(func.count(Chapter.id)).where(Chapter.book_id == book_id, Chapter.summary == None))
-                missing_count = missing_res.scalar() or 0
+                # BUSCAR EL SIGUIENTE HUECO DE FORMA LINEAL
+                # Buscamos el primer capítulo de este libro que siga sin resumen
+                next_chap_stmt = select(Chapter).where(Chapter.book_id == book_id, Chapter.summary == None).order_by(Chapter.order).limit(1)
+                next_chap = (await db.execute(next_chap_stmt)).scalar_one_or_none()
                 
-                if missing_count > 0:
-                    print(f"[WORKER] Detectados {missing_count} capítulos restantes. Continuando análisis...")
-                    process_book_phase3.delay(user_id, book_id, chain=True)
+                if next_chap:
+                    print(f"[WORKER] Continuando con siguiente capítulo pendiente: {next_chap.title}")
+                    # Llamada recursiva CONTROLADA: solo al siguiente capítulo
+                    summarize_chapter_task.delay(user_id, book_id, next_chap.id)
                 else:
-                    # Si era el último, intentamos avanzar a personajes
+                    # Si ya no hay huecos, avanzamos a la siguiente fase (Personajes)
+                    print(f"[WORKER] Todos los capítulos resumidos. Avanzando a Fase 4.")
                     process_book_phase4.delay(user_id, book_id, chain=True)
             else:
                 on_done(user_id, book_id)

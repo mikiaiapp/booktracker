@@ -747,6 +747,30 @@ async def get_analysis_queue(current_user: User = Depends(get_current_user)):
     from app.workers.queue_manager import get_state
     return get_state(current_user.id)
 
+@router.post("/{book_id}/cancel")
+async def cancel_book_analysis(book_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.workers.queue_manager import cancel
+    res = cancel(current_user.id, book_id)
+    
+    # Si res es un string de tarea (UUID), lo revocamos
+    if res and len(res) > 20 and "-" in res:
+        try:
+            from app.workers.celery_app import celery_app
+            print(f"[API] Revocando tarea de libro {book_id}: {res}")
+            celery_app.control.revoke(res, terminate=True)
+        except Exception as e:
+            print(f"[API] Error revocando tarea de libro: {e}")
+
+    # Forzar actualización de estado en DB
+    from app.models.book import Book
+    book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+    if book:
+        book.status = "error"
+        book.error_msg = "Análisis cancelado manualmente"
+        await db.commit()
+        
+    return {"status": "cancelled", "detail": str(res)}
+
 @router.post("/queue/pause")
 async def pause_analysis_queue(current_user: User = Depends(get_current_user)):
     from app.workers.queue_manager import pause
@@ -762,8 +786,16 @@ async def resume_analysis_queue(current_user: User = Depends(get_current_user)):
 @router.delete("/queue")
 async def clear_analysis_queue(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     from app.workers.queue_manager import cancel_all
-    cancel_all(current_user.id)
+    tid = cancel_all(current_user.id)
     
+    if tid:
+        try:
+            from app.workers.celery_app import celery_app
+            print(f"[API] Revocando tarea activa global {tid}")
+            celery_app.control.revoke(tid, terminate=True)
+        except Exception as e:
+            print(f"[API] Error revocando tarea global: {e}")
+            
     # Resetear TODOS los libros del usuario que estén en estados de procesamiento
     from app.models.book import Book, AnalysisJob
     from sqlalchemy import update
