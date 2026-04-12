@@ -1,0 +1,88 @@
+version: "3.8"
+
+services:
+  # 🚀 BACKEND (FastAPI)
+  backend:
+    build: ./backend
+    container_name: booktracker-api-local
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    volumes:
+      - ./data:/data
+      - ./data/databases:/data/databases
+      - ./data/uploads:/data/uploads
+      - ./data/audio:/data/audio
+      - ./data/covers:/data/covers
+    environment:
+      - DATABASE_DIR=/data/databases
+      - UPLOADS_DIR=/data/uploads
+      - AUDIO_DIR=/data/audio
+      - COVERS_DIR=/data/covers
+      - REDIS_URL=redis://redis-local:6379/0
+      - SECRET_KEY=cambiame-en-produccion-123
+    depends_on:
+      - redis
+    networks:
+      - booktracker-local-net
+
+  # ⚙️ WORKER (Procesamiento de fondo)
+  worker:
+    build: ./backend
+    container_name: booktracker-worker-local
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
+    volumes:
+      - ./data:/data
+      - ./data/databases:/data/databases
+      - ./data/uploads:/data/uploads
+      - ./data/audio:/data/audio
+      - ./data/covers:/data/covers
+    environment:
+      - DATABASE_DIR=/data/databases
+      - UPLOADS_DIR=/data/uploads
+      - AUDIO_DIR=/data/audio
+      - COVERS_DIR=/data/covers
+      - REDIS_URL=redis://redis-local:6379/0
+      - SECRET_KEY=cambiame-en-produccion-123
+    depends_on:
+      - redis
+    networks:
+      - booktracker-local-net
+
+  # 🔴 REDIS
+  redis:
+    image: redis:alpine
+    container_name: booktracker-redis-local
+    restart: unless-stopped
+    networks:
+      - booktracker-local-net
+
+  # 🌐 FRONTEND
+  frontend:
+    build: ./frontend
+    container_name: booktracker-ui-local
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - booktracker-local-net
+
+  # 🛡️ NGINX
+  nginx:
+    build: ./nginx
+    container_name: booktracker-nginx-local
+    restart: unless-stopped
+    ports:
+      - "8081:80" # Usamos el 8081 para no chocar si tienes algo en el 8080
+    volumes:
+      - ./data/covers:/data/covers
+      - ./data/audio:/data/audio
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - booktracker-local-net
+
+networks:
+  booktracker-local-net:
+    driver: bridge
