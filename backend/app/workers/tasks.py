@@ -149,11 +149,12 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
             for i, ch in enumerate(chaps):
                 if ch.summary_status == "done" and not force: continue
                 pct = int((i/len(chaps))*100)
-                update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando {ch.title}...")
-                res, model = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
+                update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando {ch.title}...", model="Buscando IA...")
+                res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
                 if res:
                     ch.summary, ch.key_events, ch.summary_status = res.get("summary"), res.get("key_events", []), "done"
                     await db.commit()
+                update_progress(user_id, book_id, "phase3", pct, f"F3: Resumido {ch.title}", model=model_used)
                 await asyncio.sleep(2) # Evitar saturación
 
             book.phase3_done = True
@@ -176,20 +177,19 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
                 else: on_done(user_id, book_id)
                 return
 
-            update_progress(user_id, book_id, "phase4", 5, "F4: Extrayendo personajes...")
+            update_progress(user_id, book_id, "phase4", 5, "F4: Extrayendo personajes...", model="Buscando IA...")
             keys = await _get_user_api_keys(user_id)
             all_summaries = await _get_summaries_text(db, book_id)
             await db.execute(delete(Character).where(Character.book_id == book_id))
             
-            char_list, _ = await get_character_list(all_summaries, api_keys=keys)
+            char_list, m_list = await get_character_list(all_summaries, api_keys=keys)
             for i, c in enumerate(char_list[:12]): # Optimizado para costo y tiempo
                 char_name = c["name"]
-                update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}")
-                detail, _ = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
+                update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
+                detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
                 if detail:
                     db.add(Character(book_id=book_id, **detail))
                     await db.commit()
-                await asyncio.sleep(1)
             
             book.phase4_done = True
             await db.commit()
@@ -205,19 +205,18 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
         async for db in get_user_db(user_id):
             book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
             if not book: return
-            if book.phase5_done and not force:
-                if chain: process_book_phase6.delay(user_id, book_id)
-                else: on_done(user_id, book_id)
-                return
-
-            update_progress(user_id, book_id, "phase5", 10, "F5: Sintetizando ensayo y mapa...")
+            
+            update_progress(user_id, book_id, "phase5", 10, "F5: Iniciando ensayo y mapa...", model="Buscando IA...")
             keys = await _get_user_api_keys(user_id)
             all_summaries = await _get_summaries_text(db, book_id)
             
             # Ensayo magistral
-            book.global_summary, _ = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys)
+            book.global_summary, m_ensayo = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys)
+            update_progress(user_id, book_id, "phase5", 50, "F5: Ensayo completado", model=m_ensayo)
+            
             # Mapa mental JSON
-            book.mindmap_data, _ = await generate_mindmap(all_summaries, book.title, api_keys=keys)
+            book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys)
+            update_progress(user_id, book_id, "phase5", 90, "F5: Mapa mental completado", model=m_mapa)
             
             book.phase5_done = True
             await db.commit()
