@@ -470,9 +470,10 @@ export default function AuthorsPage() {
                 </div>
 
                 {/* --- SECCIÓN 1: MIS LIBROS (Analizados o en proceso) --- */}
-                {biblioFilter !== 'unanalyzed' && selected.books.filter(b => {
+                {selected.books.filter(b => {
                   const isAnalyzed = b.status === 'complete' || b.phase3_done
                   if (biblioFilter === 'analyzed') return isAnalyzed
+                  if (biblioFilter === 'unanalyzed') return !isAnalyzed
                   return true
                 }).length > 0 && (
                   <div className="biblio-subcategory">
@@ -482,6 +483,7 @@ export default function AuthorsPage() {
                         .filter(book => {
                           const isAnalyzed = book.status === 'complete' || book.phase3_done
                           if (biblioFilter === 'analyzed') return isAnalyzed
+                          if (biblioFilter === 'unanalyzed') return !isAnalyzed
                           return true
                         })
                         .sort((a, b) => (b.year || 0) - (a.year || 0)) // Orden cronológico desc
