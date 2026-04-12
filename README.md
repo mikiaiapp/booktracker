@@ -1,101 +1,65 @@
 # 📚 BookTracker
 
-> Sistema multiusuario para el seguimiento y análisis inteligente de libros con IA.
-> Desplegable en **Synology NAS** mediante GitHub + Portainer o en **Windows Local**.
-
-![Stack](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat-square)
-![Stack](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB?style=flat-square)
-![Stack](https://img.shields.io/badge/IA-Gemini%20|%20Groq%20|%20OpenAI-4285F4?style=flat-square)
-![Stack](https://img.shields.io/badge/Deploy-Docker%20%2B%20Portainer-2496ED?style=flat-square)
-
-**🚀 [Guía rápida de despliegue →](QUICKSTART.md)**
+> Tu biblioteca personal inteligente. Organiza tus libros, genera resúmenes con IA, analiza personajes y crea podcasts automáticos de tus lecturas.
 
 ---
 
-## ✨ Características principales
+## 🌟 Bloque 1: Características y Configuración Inicial
+*Este apartado es común para cualquier tipo de instalación.*
 
-### 📖 Gestión de biblioteca
-- Sube PDFs y EPUBs para análisis automático o crea fichas manuales.
-- Metadatos automáticos desde Open Library y Google Books con descarga de portadas.
-- Estados de lectura, valoraciones y biblioteca organizada por autores.
+### ✨ ¿Qué puedes hacer con BookTracker?
+*   **Biblioteca Organizada:** Sube tus libros (PDF/EPUB) o crea fichas de los que tienes en papel.
+*   **Análisis Inteligente:** La IA lee tus libros por ti y genera resúmenes por capítulo y ensayos globales.
+*   **Psicología de Personajes:** Descubre la personalidad y evolución de los protagonistas.
+*   **Podcast Automático:** Convierte el análisis de tu libro en un audio para escucharlo donde quieras.
 
-### 🤖 Análisis con IA (Multimodal)
-- **Análisis Multi-Proveedor:** Soporte para **Gemini (gratis)**, **Groq (gratis)** y **OpenAI**.
-- **Resúmenes Magistrales:** Análisis por capítulo y ensayo global literario.
-- **Personajes y Mapas Mentales:** Extracción de psicología de personajes y visualización interactiva de conceptos.
-- **Podcast:** Generación automática de guion y audio (TTS) para escuchar tus libros.
+### 🔑 Configuración de las "Llaves" de IA
+Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso a modelos de IA.
+1.  Entra en la aplicación y **regístrate**.
+2.  Ve a tu **Perfil** (arriba a la derecha) → **Ajustes de IA**.
+3.  Introduce una clave de **Google Gemini** o **Groq** (ambas tienen opciones gratuitas muy generosas).
+4.  ¡Listo! Ya puedes subir tu primer libro.
 
----
-
-## ☁️ Despliegue en NAS con Portainer
-
-### 1 — Preparar el NAS
-Crea las carpetas de datos necesarias (vía SSH o File Station):
-```bash
-mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
-```
-
-### 2 — Crear el Stack en Portainer
-1. En **Portainer → Stacks → Add stack → Repository**.
-2. **Name:** `booktracker`.
-3. **Repository URL:** La URL de este repositorio.
-4. **Compose path:** `docker-compose.yml`.
-
-### 3 — Variables de Entorno (Environment Variables)
-Configura estas variables en la pestaña **Environment variables** de Portainer:
-- `SECRET_KEY`: Una cadena aleatoria larga para proteger las sesiones.
-- `NGINX_PORT`: El puerto donde quieras que responda la app (ej: `8080`).
-- `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS`: (Opcional) Si quieres activar la recuperación de contraseña por email y el 2FA.
+### 📧 Configuración de Correo (Opcional pero recomendado)
+Si quieres que la app te envíe correos (por ejemplo, para recuperar tu contraseña si se te olvida), necesitas configurar el servicio de mensajería:
+*   **SMTP_HOST:** La dirección del servidor de tu correo (ej: `smtp.gmail.com`).
+*   **SMTP_USER:** Tu dirección de correo (ej: `tu-usuario@gmail.com`).
+*   **SMTP_PASS:** Tu contraseña (en Gmail se usa una "Contraseña de aplicación").
+*   **SECRET_KEY:** Escribe una frase larga y rara aquí para proteger tu seguridad.
 
 ---
 
-## 🏁 Primeros Pasos (Configuración de IA)
+## ☁️ Bloque 2: Instalación en NAS / Servidor (Vía Portainer)
+*Ideal para tener la app encendida 24/7 en tu servidor doméstico. **Sin usar terminales.***
 
-Una vez instalada la aplicación (ya sea en NAS o Windows), sigue estos pasos para activar la inteligencia artificial:
-
-1.  **Registro:** Accede a la URL de tu app y crea una cuenta de usuario.
-2.  **Ajustes de IA:** Haz clic en tu avatar arriba a la derecha → **Perfil** → **Ajustes de IA**.
-3.  **Añadir Claves:** Introduce tu clave de **Google Gemini** (Gratis) o **Groq** (Gratis).
-4.  **Guardar y Probar:** Pulsa el botón "Probar" para verificar que la conexión funciona y guarda los cambios.
-
-*¡A partir de este momento ya puedes subir tu primer libro!*
-
----
-
-## 💻 Instalación Local en Windows (Fácil)
-
-Si no quieres usar el servidor NAS, puedes ejecutar BookTracker directamente en tu PC.
-
-### 1 — Instalar Docker Desktop (Modo Gráfico)
-1. Descarga el instalador desde [Docker Desktop para Windows](https://www.docker.com/products/docker-desktop/).
-2. Haz doble clic en el instalador y sigue los pasos (asegúrate de que la opción **"WSL 2"** esté activada).
-3. **Reinicia tu PC** cuando termine.
-4. Abre "Docker Desktop" desde el menú Inicio y espera a que el icono de la ballena se quede quieto (verde).
-
-### 2 — Lanzar la Experiencia Completa
-1. Descarga o clona este proyecto en una carpeta de tu PC.
-2. Busca el archivo **`BOOKTRACKER.bat`** y haz doble clic sobre él.
-3. **¡Listo!** El script configurará los contenedores y **abrirá automáticamente tu navegador** en [http://localhost:8081](http://localhost:8081).
+1.  **Abre Portainer** en tu navegador.
+2.  Ve a **Stacks** → **Add stack**.
+3.  **Nombre:** Ponle `booktracker`.
+4.  **Método:** Selecciona **Repository**.
+5.  **Repository URL:** Pega la URL de este proyecto de GitHub.
+6.  **Compose path:** Asegúrate de que ponga `docker-compose.yml`.
+7.  **Variables de Entorno:** Baja hasta la sección "Environment variables" y pulsa "Add environment variable" para añadir las de correo explicadas arriba y el puerto:
+    - `NGINX_PORT`: El número de puerto para entrar a la app (ej: `8081`).
+8.  Pulsa el botón **Deploy the stack** y espera unos minutos. ¡Ya puedes entrar!
 
 ---
 
-## 🛠️ Gestión y Mantenimiento
+## 💻 Bloque 3: Instalación en Windows (PC Personal)
+*La forma más rápida de probar la app en tu propio ordenador.*
 
-*   **Gestión Visual:** Puedes abrir **Docker Desktop** y verás la lista `booktracker-local`. Desde ahí puedes ver logs, detener o reiniciar la app con botones de "Play/Stop".
-*   **Actualizar:** Para bajar nuevas mejoras, haz un `git pull` de la carpeta y vuelve a ejecutar el `.bat`.
+### 1 — Preparar el terreno
+1.  Descarga e instala **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**. Es el motor que hace que la app funcione.
+2.  Sigue los pasos de instalación y, cuando termine, **reinicia tu PC**.
+3.  Abre "Docker Desktop" y espera a que el icono de la ballena abajo a la izquierda esté en verde.
 
----
+### 2 — Lanzar BookTracker
+1.  Descarga este proyecto (botón verde "Code" → "Download ZIP") y descomprímelo en una carpeta.
+2.  Busca el archivo llamado **`BOOKTRACKER.bat`** y haz doble clic sobre él.
+3.  **No cierres la ventana negra** que se abrirá. Verás que después de unos segundos, **tu navegador se abrirá solo** en la dirección de la aplicación.
 
-## Actualizar a nuevas versiones
-- **En NAS:** Ve al Stack → Editor → "Update the stack" (marcando "Re-pull image").
-- **En Windows:** Haz un `git pull` de la carpeta y vuelve a ejecutar `BOOKTRACKER.bat`.
-
----
-
-## Arquitectura
-- **Backend:** FastAPI + Celery para tareas pesadas.
-- **Frontend:** React + Vite (PWA instalable).
-- **Almacenamiento:** `/volume1/docker/booktracker/data/` (NAS) o `./data/` (Local).
+### 3 — ¿Cómo lo apago o lo enciendo otro día?
+*   Para **apagarlo**: Solo tienes que cerrar la ventana negra o pulsar el botón "Stop" en Docker Desktop.
+*   Para **encenderlo**: Solo vuelve a hacer doble clic en `BOOKTRACKER.bat`. No necesitas configurar nada más.
 
 ---
 *Desarrollado con ❤️ para amantes de la lectura y la tecnología.*
