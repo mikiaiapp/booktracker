@@ -20,12 +20,6 @@ Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso a mod
 3.  Introduce una clave de **Google Gemini** o **Groq** (ambas tienen opciones gratuitas muy generosas).
 4.  ¡Listo! Ya puedes subir tu primer libro.
 
-### 📧 Configuración de Correo (Opcional pero recomendado)
-Si quieres que la app te envíe correos (por ejemplo, para recuperar tu contraseña si se te olvida), necesitas configurar el servicio de mensajería:
-*   **SMTP_HOST:** La dirección del servidor de tu correo (ej: `smtp.gmail.com`).
-*   **SMTP_USER:** Tu dirección de correo (ej: `tu-usuario@gmail.com`).
-*   **SMTP_PASS:** Tu contraseña (en Gmail se requiere crear una [Contraseña de Aplicación](https://myaccount.google.com/apppasswords)).
-*   **SECRET_KEY:** Escribe una frase larga y rara de al menos 32 caracteres. (No te preocupes: no tienes que memorizarla ni volver a usarla nunca más, solo sirve para la seguridad interna).
 
 ---
 
@@ -64,6 +58,9 @@ Si quieres que la app te envíe correos (por ejemplo, para recuperar tu contrase
 ### 3 — ¿Cómo lo apago o lo enciendo otro día?
 *   Para **apagarlo**: Solo tienes que cerrar la ventana negra o pulsar el botón "Stop" en Docker Desktop.
 *   Para **encenderlo**: Solo vuelve a hacer doble clic en `BOOKTRACKER.bat`. No necesitas configurar nada más.
+
+### 4 — Configuración avanzada (Correo)
+Si en el futuro quieres que la app de Windows también envíe correos (como en el NAS), busca el archivo llamado **`.env.example`**, cámbiale el nombre a **`.env`**, ábrelo con el Bloc de Notas y rellena los datos siguiendo las instrucciones que verás dentro.
 
 ---
 *Desarrollado con ❤️ para amantes de la lectura y la tecnología.*
