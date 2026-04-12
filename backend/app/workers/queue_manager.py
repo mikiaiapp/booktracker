@@ -221,25 +221,23 @@ def _launch(uid: str, book_id: str, phases: list, title: str = "", force: bool =
     from app.workers.tasks import (
         process_book_phase1, process_book_phase2,
         process_book_phase3, process_book_phase4,
-        process_book_phase6, process_book_repair_events,
+        process_book_phase5, process_book_phase6
     )
     first = phases[0] if phases else "1"
     dispatch = {
-        "1":       lambda: process_book_phase1.delay(uid, book_id, chain=True, force=force),
-        "2":       lambda: process_book_phase2.delay(uid, book_id, chain=True, force=force),
-        "3":       lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force),
-        "3b":      lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force), # Alias
-        "4":       lambda: process_book_phase4.delay(uid, book_id, chain=True, force=force),
-        "podcast": lambda: process_book_phase6.delay(uid, book_id, force=force),
-        "repair":  lambda: process_book_repair_events.delay(uid, book_id),
+        "1": lambda: process_book_phase1.delay(uid, book_id, chain=True, force=force),
+        "2": lambda: process_book_phase2.delay(uid, book_id, chain=True, force=force),
+        "3": lambda: process_book_phase3.delay(uid, book_id, chain=True, force=force),
+        "4": lambda: process_book_phase4.delay(uid, book_id, chain=True, force=force),
+        "5": lambda: process_book_phase5.delay(uid, book_id, chain=True, force=force),
+        "6": lambda: process_book_phase6.delay(uid, book_id, force=force),
     }
-    fn = dispatch.get(first)
+    fn = dispatch.get(str(first))
     if fn:
         res = fn()
         if hasattr(res, "id"):
             from app.core.config import settings
-            # Guardar task_id para poder cancelarlo físicamente
-            _set_info(uid, book_id, "starting", 5, "Iniciando…", title, task_id=res.id, model=settings.AI_MODEL)
+            _set_info(uid, book_id, f"phase{first}", 5, f"Estación {first} iniciada…", title, task_id=res.id, model=settings.AI_MODEL)
 
 
 def _set_info(uid, book_id, phase, pct, msg, title="", task_id=None, model=""):

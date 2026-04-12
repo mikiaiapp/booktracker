@@ -32,10 +32,13 @@ class Book(BookBase):
 
     # Processing state
     status = Column(String, default="uploaded")
-    # uploaded → identifying → identified → analyzing → analyzed → complete
+    # uploaded → identifying → identified → structuring → structured → analyzing → complete
     phase1_done = Column(Boolean, default=False)
     phase2_done = Column(Boolean, default=False)
     phase3_done = Column(Boolean, default=False)
+    phase4_done = Column(Boolean, default=False)
+    phase5_done = Column(Boolean, default=False)
+    phase6_done = Column(Boolean, default=False)
     task_id = Column(String, nullable=True)
     error_msg = Column(Text, nullable=True)
 

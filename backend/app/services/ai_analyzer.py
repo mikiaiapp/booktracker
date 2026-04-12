@@ -23,7 +23,8 @@ def _compress_text(text: str, limit: int = 15000) -> str:
     clean = re.sub(r'\s+', ' ', text).strip()
     return clean[:limit]
 
-async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:    # Limpieza total de llaves
+async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
+    # 1. Limpieza y validación de llaves
     def ck(v): return str(v or "").strip().strip('"').strip("'")
     keys = {
         "gemini": ck(api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', "")),
@@ -31,7 +32,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         "openai": ck(api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', ""))
     }
 
-    # Determinación de modelos
+    # 2. Construcción de la Pirámide de Supervivencia (Modelos Disponibles)
     preferred = (api_keys.get("preferred_model") or "gemini-1.5-flash").lower()
     if "2.5" in preferred: preferred = preferred.replace("2.5", "1.5")
 
@@ -42,56 +43,65 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         if "gpt" in m: return "openai"
         return None
 
-    # COLA DE INTENTOS ESTRICTA
+    # Creamos la cola dinámica real
     q = []
-    # 1. El preferido del usuario primero
+    
+    # - Añadir preferido si tiene llave
     p_prov = get_prov(preferred)
-    if p_prov and keys.get(p_prov): q.append(preferred)
+    if p_prov and keys.get(p_prov):
+        q.append(preferred)
 
     if not skip_fallback:
-        # 2. SECCIÓN GRATUITA OBLIGATORIA (Si tienen llave)
-        free = ["gemini-1.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemini-1.5-pro"]
-        for m in free:
+        # - Bloque Gratuito Obligatorio (Si hay llaves)
+        free_tier = ["gemini-1.5-flash", "llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemini-1.5-pro"]
+        for m in free_tier:
             prov = get_prov(m)
-            if keys.get(prov) and m not in q: q.append(m)
+            if keys.get(prov) and m not in q:
+                q.append(m)
         
-        # 3. SECCIÓN DE PAGO (Solo al final del todo)
+        # - Bloque de Pago (Solo si el resto falla)
         if keys.get("openai"):
             for m in ["gpt-4o-mini", "gpt-4o"]:
                 if m not in q: q.append(m)
 
-    if not q: raise ValueError("Error de configuración: No tienes ninguna llave de API válida (Gemini, Groq u OpenAI).")
+    if not q:
+        raise ValueError("Configuración de IA vacía: No has introducido ninguna API Key válida.")
 
-    print(f"[IA] ORDEN DE ANÁLISIS: {' -> '.join(q)}")
+    print(f"[IA] Jerarquía dinámica para esta tarea: {' -> '.join(q)}")
 
+    # 3. Ejecución Secuencial
     last_err = ""
     for m in q:
         prov = get_prov(m)
-        key = keys[prov]
+        token = keys[prov]
         try:
             print(f"[IA] Intentando con {m}...")
             if prov == "gemini":
                 import google.generativeai as genai
-                genai.configure(api_key=key)
+                genai.configure(api_key=token)
                 mdl = genai.GenerativeModel(m)
                 safety = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
                 response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
-                if not response or not response.text: raise ValueError("Respuesta vacía/bloqueada")
+                if not response or not response.text: raise ValueError("Sin respuesta o bloqueado por seguridad")
                 return response.text, m
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
                 base = "https://api.groq.com/openai/v1" if prov == "groq" else None
-                client = AsyncOpenAI(api_key=key, base_url=base)
-                resp = await client.chat.completions.create(model=m, max_tokens=max_tokens, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
-                if not resp.choices[0].message.content: raise ValueError("Respuesta vacía del modelo")
+                client = AsyncOpenAI(api_key=token, base_url=base)
+                resp = await client.chat.completions.create(
+                    model=m, 
+                    max_tokens=max_tokens, 
+                    messages=[{"role": "system", "content": system}, {"role": "user", "content": user}]
+                )
+                if not resp.choices[0].message.content: raise ValueError("Respuesta vacía del API")
                 return resp.choices[0].message.content, m
         except Exception as e:
             last_err = str(e)
-            print(f"[IA] Falló {m}: {last_err[:80]}")
+            print(f"[IA] Fallo en {m}: {last_err[:80]}...")
             continue
 
-    raise ValueError(f"Agotados todos los modelos disponibles. Último error: {last_err}")
+    raise ValueError(f"Agotados todos los modelos configurados. Error final: {last_err}")
 
 async def _call_ai_with_retry(system, user, max_tokens=2000, max_retries=3, is_fast_task=False, api_keys=None):
     for i in range(max_retries):
