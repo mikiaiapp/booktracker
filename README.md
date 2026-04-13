@@ -1,6 +1,6 @@
 # 📚 BookTracker
 
-> Tu biblioteca personal inteligente. Organiza tus libros, genera resúmenes con IA, analiza personajes y crea podcasts automáticos de tus lecturas.
+> Tu biblioteca personal inteligente. Organiza tus libros, genera resúmenes con IA, analiza personajes, crea podcasts y **charla directamente con tus lecturas**.
 
 ---
 
@@ -12,6 +12,7 @@
 *   **Análisis Inteligente:** La IA lee tus libros por ti y genera resúmenes por capítulo y ensayos globales.
 *   **Psicología de Personajes:** Descubre la personalidad y evolución de los protagonistas.
 *   **Podcast Automático:** Convierte el análisis de tu libro en un audio para escucharlo donde quieras.
+*   **Charla con tus Libros:** Haz preguntas directamente a tus libros para resolver dudas o profundizar en la trama.
 
 ### 🔑 Configuración de las "Llaves" de IA
 Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso a modelos de IA.
