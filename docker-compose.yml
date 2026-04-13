@@ -18,7 +18,7 @@ services:
         - CACHE_BUST=v2.2.3
     container_name: booktracker-api
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    command: tail -f /dev/null
     volumes:
       - /volume1/docker/booktracker/data:/data
       - /volume1/docker/booktracker/data/databases:/data/databases
@@ -50,7 +50,7 @@ services:
         - CACHE_BUST=v2.2.3
     container_name: booktracker-worker
     restart: unless-stopped
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
+    command: tail -f /dev/null
     volumes:
       - /volume1/docker/booktracker/data:/data
       - /volume1/docker/booktracker/data/databases:/data/databases
