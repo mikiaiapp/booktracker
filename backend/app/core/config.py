@@ -7,18 +7,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
-    # IA — configura solo el que vayas a usar
-    ANTHROPIC_API_KEY: Optional[str] = None
-    OPENAI_API_KEY: Optional[str] = None
-    GEMINI_API_KEY: Optional[str] = None
-    AI_MODEL: str = "gemini-1.5-flash-latest"   # Modelo más equilibrado y compatible
-    TTS_PROVIDER: str = "openai"
-
-    # Ollama — IA Local
-    OLLAMA_URL: str = "http://ollama:11434"
-    OLLAMA_MODEL: str = "llama3"
-    USE_OLLAMA_FOR_FAST_TASKS: str = "false" # "true" o "false"
-
+    # Rutas del sistema
     DATABASE_DIR: str = "/data/databases"
     UPLOADS_DIR: str = "/data/uploads"
     AUDIO_DIR: str = "/data/audio"

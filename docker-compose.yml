@@ -33,10 +33,7 @@ services:
       - AUDIO_DIR=/data/audio
       - COVERS_DIR=/data/covers
       - REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
-      - USE_OLLAMA_FOR_FAST_TASKS=false
     depends_on:
       - redis
     networks:
@@ -66,10 +63,7 @@ services:
       - AUDIO_DIR=/data/audio
       - COVERS_DIR=/data/covers
       - REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
-      - USE_OLLAMA_FOR_FAST_TASKS=false
     depends_on:
       - redis
     networks:

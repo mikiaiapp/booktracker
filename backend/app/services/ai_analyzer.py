@@ -6,17 +6,6 @@ import asyncio
 from typing import Optional
 from app.core.config import settings
 
-async def _call_ollama(prompt: str) -> str:
-    url = f"{settings.OLLAMA_URL}/api/generate"
-    payload = {
-        "model": settings.OLLAMA_MODEL, "prompt": prompt, "stream": False,
-        "options": {"temperature": 0.5}
-    }
-    timeout = httpx.Timeout(600.0, connect=10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        r = await client.post(url, json=payload)
-        if r.status_code != 200: raise ValueError(f"Ollama Error: {r.text}")
-        return r.json()["response"]
 
 def _compress_text(text: str, limit: int = 15000) -> str:
     if not text: return ""
@@ -107,9 +96,9 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     # 1. Limpieza de llaves
     def ck(v): return str(v or "").strip().strip('"').strip("'")
     current_keys = {
-        "gemini": ck(api_keys.get("gemini") or getattr(settings, 'GEMINI_API_KEY', "")),
-        "groq": ck(api_keys.get("groq") or getattr(settings, 'GROQ_API_KEY', "")),
-        "openai": ck(api_keys.get("openai") or getattr(settings, 'OPENAI_API_KEY', ""))
+        "gemini": ck(api_keys.get("gemini") if api_keys else ""),
+        "groq": ck(api_keys.get("groq") if api_keys else ""),
+        "openai": ck(api_keys.get("openai") if api_keys else "")
     }
 
     # 2. Obtener Jerarquía Dinámica
