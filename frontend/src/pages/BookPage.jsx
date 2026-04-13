@@ -457,23 +457,36 @@ export default function BookPage() {
 
   const load = async () => {
     try {
-      const [bookRes, statusRes] = await Promise.all([
-        booksAPI.get(id),
-        analysisAPI.status(id),
-      ])
+      setLoading(true)
+      console.log('[BOOK] Cargando ID:', id)
+      
+      const bookRes = await booksAPI.get(id).catch(e => {
+          const d = e.response?.data?.detail || e.message
+          console.error('[BOOK] Error base:', d)
+          throw new Error(`Base: ${d}`)
+      })
+      
+      const statusRes = await analysisAPI.status(id).catch(e => {
+          const d = e.response?.data?.detail || e.message
+          console.error('[BOOK] Error status:', d)
+          throw new Error(`Estado: ${d}`)
+      })
+
       setData(bookRes.data)
       setStatus(statusRes.data)
       setRating(bookRes.data.book?.rating || 0)
-      // Obtener mensaje de progreso de Redis si hay proceso activo
+      
       try {
         const { data: qState } = await queueAPI.get()
         const info = qState?.infos?.[id]
         if (info?.msg) setProgressMsg(info.msg)
         else setProgressMsg('')
       } catch { /* silencioso */ }
-    } catch {
-      toast.error('No se encontró el libro')
-      navigate('/')
+      
+    } catch (err) {
+      console.error('[BOOK] Fallo carga total:', err)
+      toast.error(`No se pudo cargar: ${err.message}`)
+      // navigate('/') // Desactivado para ver el error en pantalla
     } finally {
       setLoading(false)
     }

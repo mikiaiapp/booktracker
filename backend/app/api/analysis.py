@@ -248,10 +248,15 @@ async def get_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    print(f"[STATUS] Solicitado ID: '{book_id}'")
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
+    
     if not book:
-        raise HTTPException(404, "Book not found")
+        # Debugging total
+        all_ids = (await db.execute(select(Book.id))).scalars().all()[:10]
+        print(f"[STATUS] Book {book_id} NO ENCONTRADO. IDs disponibles (10 primeros): {all_ids}")
+        raise HTTPException(404, f"Book status not found: {book_id}")
 
     jobs_result = await db.execute(
         select(AnalysisJob).where(AnalysisJob.book_id == book_id).order_by(AnalysisJob.created_at.desc())

@@ -262,8 +262,14 @@ async def get_book(
         # 1. Obtener el libro base
         result = await db.execute(select(Book).where(Book.id == book_id))
         book = result.scalar_one_or_none()
+        
+        print(f"[API] get_book({book_id}) -> {'ENCONTRADO' if book else 'NO ENCONTRADO'}")
+        
         if not book:
-            raise HTTPException(404, "Libro no encontrado en la base de datos")
+            # Debug: Mostrar qué hay en la DB
+            all_ids = (await db.execute(select(Book.id))).scalars().all()[:5]
+            print(f"      IDs en DB (primeros 5): {all_ids}")
+            raise HTTPException(404, f"Libro {book_id} no existe en la base de datos de usuario")
 
         # 2. Capítulos
         ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
