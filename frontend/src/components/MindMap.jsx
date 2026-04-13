@@ -11,8 +11,8 @@ export default function MindMap({ data }) {
 
   if (!data) return null
 
-  const branches  = data.branches || []
-  const center    = data.center   || 'Libro'
+  const branches  = data.branches || data.nodes || data.items || data.topics || []
+  const center    = data.center || data.title || data.topic || 'Libro'
   const allOpen   = expanded.size === branches.length
   const anyOpen   = expanded.size > 0
 
@@ -57,8 +57,8 @@ export default function MindMap({ data }) {
           {branches.map((branch, bi) => {
             const color    = branch.color || PALETTE[bi % PALETTE.length]
             const isOpen   = expanded.has(bi)
-            const children = branch.children || []
-            const label    = branch.label || `Rama ${bi + 1}`
+            const children = branch.children || branch.nodes || branch.items || []
+            const label    = branch.label || branch.title || branch.text || `Rama ${bi + 1}`
 
             return (
               <div key={bi} className="mm-branch-block">

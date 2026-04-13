@@ -237,8 +237,18 @@ async def generate_global_summary(summaries, book, author, api_keys=None):
     return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys)
 
 async def generate_mindmap(summaries, book, api_keys=None):
-    system = "Experto en análisis. Responde SOLO con JSON de ramas y niños."
-    user = f"Mapa mental JSON para {book}. Contexto:\n{_compress_text(summaries, 12000)}"
+    system = """Experto en análisis visual. Genera un mapa mental profundo del libro.
+Responde ÚNICAMENTE en formato JSON con esta estructura exacta:
+{
+  "center": "Título del libro",
+  "branches": [
+    {
+      "label": "Idea Principal o Capítulo",
+      "children": ["Detalle clave 1", "Detalle clave 2", "Concepto importante"]
+    }
+  ]
+}"""
+    user = f"Contexto para el mapa mental de {book}:\n{_compress_text(summaries, 12000)}"
     try:
         raw, m = await _call_ai_with_retry(system, user, 4000, is_fast_task=True, api_keys=api_keys)
         return (_parse_json(raw) or {"center": book, "branches": []}), m
