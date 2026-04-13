@@ -109,6 +109,12 @@ async def get_user_engine(user_id: str):
                     await conn.execute(text(f"ALTER TABLE books ADD COLUMN phase{i}_done BOOLEAN DEFAULT 0"))
                 except:
                     pass # Ya existe
+            
+            try:
+                from sqlalchemy import text
+                await conn.execute(text("ALTER TABLE books ADD COLUMN podcast_duration INTEGER"))
+            except:
+                pass
     return _user_engines[user_id]
 
 
