@@ -347,9 +347,9 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                 print(f"[WORKER] Error en TTS: {e}")
                 book.error_msg = f"Error en generación de audio: {str(e)}"
             
-            await dispatch_next_final(db, user_id, book_id)
+            await dispatch_next_final(db, user_id, book_id, book)
 
-    async def dispatch_next_final(db, user_id, book_id):
+    async def dispatch_next_final(db, user_id, book_id, book):
         await _finalize_book_status(db, book)
         # Si al llegar aquí falta algo (por re-análisis forzado o error previo) 
         # _dispatch_next encontrará la primera pieza rota.
