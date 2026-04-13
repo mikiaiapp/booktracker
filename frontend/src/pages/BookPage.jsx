@@ -913,7 +913,7 @@ export default function BookPage() {
               (t.id === 'podcast' && statusInfo.status === 'generating_podcast')
             )
 
-            const showDone = isDone && (t.id !== 'chapters' || statusInfo.chapters_done === statusInfo.chapters_total) && (t.id !== 'characters' || statusInfo.has_characters) && (t.id !== 'podcast' || statusInfo.podcast_done)
+            const showDone = isDone && (t.id !== 'chapters' || statusInfo.chapters_done === statusInfo.chapters_total) && (t.id !== 'characters' || statusInfo.phase3_done) && (t.id !== 'podcast' || statusInfo.podcast_done)
 
             if (t.statusKey || t.id === 'refs') {
               if (showDone && !isProcessingThis) {
