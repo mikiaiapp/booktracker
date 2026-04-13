@@ -108,34 +108,29 @@ async def get_user_engine(user_id: str):
                 if "model" not in chat_cols:
                     await conn.execute(text("ALTER TABLE chat_messages ADD COLUMN model TEXT"))
                 
-                # Check books
-                res_books = await conn.execute(text("PRAGMA table_info(books)"))
-                book_cols = [row[1] for row in res_books.fetchall()]
-                
-                missing_book_cols = {
-                    "cover_local": "TEXT",
-                    "podcast_audio_path": "TEXT",
-                    "podcast_script": "TEXT",
-                    "podcast_duration": "INTEGER",
-                    "phase4_done": "BOOLEAN DEFAULT 0",
-                    "phase5_done": "BOOLEAN DEFAULT 0",
-                    "phase6_done": "BOOLEAN DEFAULT 0"
-                }
-                for col, ctype in missing_book_cols.items():
-                    if col not in book_cols:
-                        await conn.execute(text(f"ALTER TABLE books ADD COLUMN {col} {ctype}"))
-                
-                # Check chapters
-                res_chaps = await conn.execute(text("PRAGMA table_info(chapters)"))
-                chap_cols = [row[1] for row in res_chaps.fetchall()]
-                
-                missing_chap_cols = {
-                    "page_start": "INTEGER",
-                    "page_end": "INTEGER"
-                }
-                for col, ctype in missing_chap_cols.items():
-                    if col not in chap_cols:
-                        await conn.execute(text(f"ALTER TABLE chapters ADD COLUMN {col} {ctype}"))
+                # Auto-migrate all missing columns for all tables
+                for table_name, table in BookBase.metadata.tables.items():
+                    res = await conn.execute(text(f"PRAGMA table_info({table_name})"))
+                    existing_cols = {row[1] for row in res.fetchall()}
+                    
+                    for column in table.columns:
+                        if column.name not in existing_cols:
+                            # Construct basic ALTER TABLE (no constraints/foreign keys needed for our simple schema updates)
+                            ctype = str(column.type.compile(engine.dialect))
+                            default_stmt = ""
+                            if column.server_default is not None:
+                                default_stmt = f" DEFAULT {column.server_default.arg}"
+                            elif getattr(column, 'default', None) is not None and getattr(column.default, 'arg', None) is not None:
+                                # Very basic default handling for boolean/int
+                                if isinstance(column.default.arg, (int, bool, str)) and not callable(column.default.arg):
+                                    v = column.default.arg
+                                    default_stmt = f" DEFAULT {int(v) if isinstance(v, bool) else repr(v)}"
+                            
+                            stmt = f"ALTER TABLE {table_name} ADD COLUMN {column.name} {ctype}{default_stmt}"
+                            try:
+                                await conn.execute(text(stmt))
+                            except Exception as alt_e:
+                                print(f"Error adding {column.name} to {table_name}: {alt_e}")
 
             except Exception as e:
                 print(f"Error checking schema: {e}")
