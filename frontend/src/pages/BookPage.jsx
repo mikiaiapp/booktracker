@@ -1327,7 +1327,7 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
               <div className="chapter-body-inner">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '2rem' }}>
                   <div style={{ flex: 1 }}>
-                    {(!ch.summary || ch.summary.length < 50) ? (
+                    {(!ch.summary || typeof ch.summary !== 'string' || ch.summary.length < 50) ? (
                       <div className="empty-chapter-warning" style={{ 
                         display: 'flex', 
                         gap: '1rem', 
