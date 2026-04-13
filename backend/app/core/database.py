@@ -133,12 +133,16 @@ async def get_user_engine(user_id: str):
                                 print(f"Error adding {column.name} to {table_name}: {alt_e}")
                 
                 # Backfill logic for old books (mark phases as done if they have data)
-                await conn.execute(text("UPDATE books SET phase1_done = 1 WHERE phase1_done = 0 AND title IS NOT NULL AND author IS NOT NULL"))
+                # IMPORTANTE: Solo marcar libros REALES (con archivo), no las fichas bibliográficas
+                await conn.execute(text("UPDATE books SET phase1_done = 1 WHERE phase1_done = 0 AND status != 'shell' AND file_path IS NOT NULL AND title IS NOT NULL AND author IS NOT NULL"))
                 await conn.execute(text("UPDATE books SET phase2_done = 1 WHERE phase2_done = 0 AND id IN (SELECT book_id FROM chapters)"))
                 await conn.execute(text("UPDATE books SET phase3_done = 1 WHERE phase3_done = 0 AND id IN (SELECT book_id FROM chapters WHERE summary IS NOT NULL AND length(summary) > 50)"))
                 await conn.execute(text("UPDATE books SET phase4_done = 1 WHERE phase4_done = 0 AND id IN (SELECT book_id FROM characters)"))
                 await conn.execute(text("UPDATE books SET phase5_done = 1 WHERE phase5_done = 0 AND global_summary IS NOT NULL AND length(global_summary) > 100"))
                 await conn.execute(text("UPDATE books SET phase6_done = 1 WHERE phase6_done = 0 AND podcast_script IS NOT NULL AND podcast_audio_path IS NOT NULL"))
+                
+                # LIMPIEZA: Resetear banderas de fase para libros shell (fichas) que se pillaron por el backfill anterior
+                await conn.execute(text("UPDATE books SET phase1_done = 0, phase2_done = 0, phase3_done = 0, phase4_done = 0, phase5_done = 0, phase6_done = 0 WHERE status = 'shell' OR file_path IS NULL OR file_path = '' OR file_path = 'None'"))
 
             except Exception as e:
                 print(f"Error checking schema: {e}")

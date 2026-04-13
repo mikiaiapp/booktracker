@@ -430,3 +430,33 @@ def reidentify_author_task(user_id: str, author_name: str):
             for b in books: b.author_bio = bio
             await db.commit()
     return run_async(_ra())
+
+@celery_app.task(name="fetch_shell_metadata")
+def fetch_shell_metadata(user_id: str, book_id: str):
+    """Tarea de background para buscar metadatos de un libro shell (sin archivo)."""
+    from app.services.book_identifier import search_book_metadata, download_cover
+    from app.workers.queue_manager import update_progress
+    async def _fsm():
+        async for db in get_user_db(user_id):
+            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+            if not book: return
+            
+            update_progress(user_id, book_id, "phase1", 20, "Buscando metadatos...")
+            keys = await _get_user_api_keys(user_id)
+            
+            meta = await search_book_metadata(book.title, book.author, api_keys=keys)
+            if meta:
+                for k, v in meta.items():
+                    if hasattr(book, k) and v: setattr(book, k, v)
+                
+                # Descargar portada si hay URL
+                if meta.get("cover_url"):
+                    local = await download_cover(meta["cover_url"], os.path.join(settings.COVERS_DIR, user_id), book_id)
+                    if local: book.cover_local = local
+                
+                await db.commit()
+                update_progress(user_id, book_id, "phase1", 100, "Metadatos listos")
+            else:
+                update_progress(user_id, book_id, "phase1", 100, "No se encontraron metadatos adicionales")
+                
+    return run_async(_fsm())
