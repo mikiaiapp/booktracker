@@ -9,6 +9,17 @@ from app.services.ai_analyzer import test_api_key, _get_dynamic_hierarchy
 
 router = APIRouter()
 
+class UserSettingsUpdate(BaseModel):
+    gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    preferred_model: Optional[str] = None
+
+class TestAPIRequest(BaseModel):
+    provider: str
+    model: str
+    api_key: Optional[str] = None
+
 @router.get("/profile")
 async def get_profile(
     background_tasks: BackgroundTasks, 
