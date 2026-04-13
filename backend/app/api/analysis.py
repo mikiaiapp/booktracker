@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 
+from app.core.config import settings
 from app.core.security import get_current_user
 from app.core.database import get_user_db
 from app.models.user import User
@@ -248,14 +249,10 @@ async def get_status(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    print(f"[STATUS] Solicitado ID: '{book_id}'")
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     
     if not book:
-        # Debugging total
-        all_ids = (await db.execute(select(Book.id))).scalars().all()[:10]
-        print(f"[STATUS] Book {book_id} NO ENCONTRADO. IDs disponibles (10 primeros): {all_ids}")
         raise HTTPException(404, f"Book status not found: {book_id}")
 
     jobs_result = await db.execute(
