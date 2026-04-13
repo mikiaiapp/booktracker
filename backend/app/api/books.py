@@ -184,45 +184,53 @@ async def list_books(
     result = await db.execute(select(Book).order_by(Book.created_at.desc()))
     books = result.scalars().all()
     
-    # AUTO-REPARACIÓN: Si hay libros marcados como 'shell' pero tienen archivo, 
-    # es que son libros reales "escondidos". Los rescatamos.
-    repaired = False
-    for b in books:
-        if b.status == "shell" and b.file_path:
-            b.status = "identified"
-            repaired = True
-    if repaired:
-        await db.commit()
+    # Conteo de capítulos y personajes
+    from app.models.book import Chapter, Character
+    
+    # Optimizamos: Solo consultamos estados para los libros que no son 'shell'
+    real_book_ids = [b.id for b in books if b.status != "shell"]
+    
+    ch_counts = {}
+    if real_book_ids:
+        ch_counts_res = await db.execute(
+            select(Chapter.book_id, func.count(Chapter.id))
+            .where(Chapter.book_id.in_(real_book_ids))
+            .group_by(Chapter.book_id)
+        )
+        ch_counts = {r[0]: r[1] for r in ch_counts_res.all()}
 
-    # Pre-cargar conteos de capítulos y personajes para "curar" estados atascados
-    # (Agrupados por book_id para eficiencia)
-    ch_counts = {r[0]: r[1] for r in ch_counts_res.all()}
-
-    # Conteo de personajes
-    char_counts_res = await db.execute(
-        select(Character.book_id, func.count(Character.id))
-        .where(Character.book_id.in_([b.id for b in books]))
-        .group_by(Character.book_id)
-    )
-    char_counts = {r[0]: r[1] for r in char_counts_res.all()}
+    char_counts = {}
+    if real_book_ids:
+        char_counts_res = await db.execute(
+            select(Character.book_id, func.count(Character.id))
+            .where(Character.book_id.in_(real_book_ids))
+            .group_by(Character.book_id)
+        )
+        char_counts = {r[0]: r[1] for r in char_counts_res.all()}
 
     response = []
     for b in books:
-        # Detectar si el libro está realmente en proceso (basado en el nuevo pipeline)
+        # APLICAR TU FILTRO: No mostrar libros que son solo ficha (shell) sin archivo
+        if b.status == "shell" and not b.file_path:
+            continue
+
+        # Detectar si el libro está realmente en proceso
         is_analyzing = b.status in ("queued", "identifying", "analyzing", "structuring", "summarizing")
         
-        # Si tiene fases hechas pero no todas, y no está marcado como complete, es 'incomplete' (A Medias)
+        # Lógica de estados sincronizada con los campos reales
         status = b.status
         is_complete = (
             b.phase1_done and b.phase2_done and b.phase3_done and 
-            b.phase4_done and b.phase5_done and b.phase6_done
+            (b.global_summary and len(b.global_summary) > 100) and 
+            b.mindmap_data and 
+            b.podcast_audio_path
         )
         
         if is_complete:
             status = "complete"
         elif is_analyzing:
             status = "analyzing"
-        elif any([b.phase1_done, b.phase2_done, b.phase3_done, b.phase4_done, b.phase5_done]):
+        elif any([b.phase1_done, b.phase2_done, b.phase3_done, b.global_summary, b.mindmap_data]):
             status = "incomplete"
 
         response.append({
@@ -290,16 +298,20 @@ async def get_book(
             return json.loads(val)
         except: return default
 
-    # Limpiar y normalizar capítulos para evitar fallos en el frontend
+    # Limpiar y normalizar capítulos
     chapters_data = []
     for c in chapters_result.scalars().all():
+        summary_text = (c.summary or "").strip()
+        # Un resumen de menos de 50 caracteres probablemente es un error o basura
+        is_done = len(summary_text) > 50
+        
         cd = {
             "id": c.id,
             "title": c.title or "Sin título",
             "order": c.order,
-            "summary": c.summary or "",
+            "summary": summary_text,
             "key_events": _safe_json(c.key_events, []),
-            "summary_status": "done" if c.summary and len(c.summary) > 10 else "pending"
+            "summary_status": "done" if is_done else "pending"
         }
         chapters_data.append(cd)
 

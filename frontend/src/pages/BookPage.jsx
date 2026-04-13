@@ -1314,8 +1314,35 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
           <AnimatePresence>{expanded === ch.id && (
             <motion.div className="chapter-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
               <div className="chapter-body-inner">
-                <p>{ch.summary || 'Resumen no disponible'}</p>
-                {ch.key_events?.length > 0 && <div className="key-events"><strong>Eventos clave:</strong><ul>{ch.key_events.map((e, i) => <li key={i}>{e}</li>)}</ul></div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '2rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ whiteSpace: 'pre-wrap' }}>
+                      {ch.summary || (ch.summary_status === 'pending' ? 'Este capítulo está pendiente de resumen.' : 'Contenido no disponible.')}
+                    </p>
+                    {Array.isArray(ch.key_events) && ch.key_events.length > 0 && (
+                      <div className="key-events" style={{ marginTop: '1.5rem' }}>
+                        <strong>Eventos clave:</strong>
+                        <ul style={{ marginTop: '0.5rem' }}>
+                          {ch.key_events.map((e, i) => (
+                            <li key={i} style={{ marginBottom: '0.4rem' }}>{e}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Botón de re-análisis específico por capítulo */}
+                  <button 
+                    className="reanalyze-btn" 
+                    style={{ flexShrink: 0, margin: 0, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} 
+                    onClick={(e) => handleSummarize(e, ch)} 
+                    disabled={summarizing[ch.id]}
+                    title="Forzar a la IA a resumir este capítulo de nuevo"
+                  >
+                    <RefreshCw size={12} className={summarizing[ch.id] ? 'spin' : ''} />
+                    <span>{summarizing[ch.id] ? 'Procesando…' : 'Reanalizar capítulo'}</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}</AnimatePresence>

@@ -47,21 +47,30 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     print("[IA] Descubriendo catálogo de modelos disponible...")
     discovered = []
 
-    # 1. DESCUBRIR GEMINI
+    # 1. DESCUBRIR GEMINI (Filtro estricto)
     if keys.get("gemini"):
         try:
             import google.generativeai as genai
             genai.configure(api_key=keys["gemini"])
-            # Listar modelos que soporten generación de contenido
             for m in genai.list_models():
+                name = m.name.replace("models/", "")
+                # Filtrar solo modelos generativos reales y modernos
                 if "generateContent" in m.supported_generation_methods:
-                    name = m.name.replace("models/", "")
-                    score = 100 if "flash" in name else (80 if "pro" in name else 10)
-                    discovered.append(("gemini", name, score))
+                    # Ignorar explícitamente modelos que no son para texto puro o son muy viejos
+                    if any(x in name for x in ["tts", "embedding", "vision", "3.1", "3.0", "experimental"]): continue
+                    
+                    # Prioridad: Flash 2.0 > Flash 1.5 > Pro
+                    score = 0
+                    if "2.0-flash" in name: score = 100
+                    elif "1.5-flash" in name: score = 90
+                    elif "1.5-pro" in name: score = 80
+                    
+                    if score > 0:
+                        discovered.append(("gemini", name, score))
         except Exception as e:
             print(f"[IA] Error descubriendo Gemini: {e}")
 
-    # 2. DESCUBRIR GROQ (OpenAI Compatible)
+    # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
         try:
             from openai import AsyncOpenAI
@@ -69,24 +78,16 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
             models_res = await client.models.list()
             for m in models_res.data:
                 mid = m.id.lower()
-                # Priorizar Llama 3.3/3.1 de 70b o Mixtral por ser potentes y gratis
-                score = 95 if "llama-3.3" in mid else (90 if "70b" in mid else (85 if "mixtral" in mid else 75))
-                discovered.append(("groq", m.id, score))
+                # Filtrar modelos potentes de Groq
+                score = 0
+                if "llama-3.3-70b" in mid: score = 105 # Máxima prioridad por ser rápido y gratuito
+                elif "mixtral-8x7b" in mid: score = 85
+                elif "llama-3.1-8b" in mid: score = 70
+                
+                if score > 0:
+                    discovered.append(("groq", m.id, score))
         except Exception as e:
             print(f"[IA] Error descubriendo Groq: {e}")
-
-    # 3. DESCUBRIR OPENAI
-    if keys.get("openai"):
-        try:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=keys["openai"])
-            models_res = await client.models.list()
-            for m in models_res.data:
-                mid = m.id.lower()
-                if "gpt-4o-mini" in mid: discovered.append(("openai", m.id, 50))
-                elif "gpt-4o" in mid: discovered.append(("openai", m.id, 40))
-        except Exception as e:
-            print(f"[IA] Error descubriendo OpenAI: {e}")
 
     # ORDENAR POR PUNTUACIÓN (MAYOR A MENOR)
     discovered.sort(key=lambda x: x[2], reverse=True)
