@@ -275,6 +275,18 @@ async def get_status(
     has_characters = len(char_count_res.scalars().all()) > 0
     phase3_really_done = book.phase3_done or has_characters
 
+    real_audio_path = os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3")
+    podcast_exists = bool(book.podcast_script) and os.path.exists(real_audio_path)
+    
+    real_duration = book.podcast_duration
+    if podcast_exists and not real_duration:
+        try:
+            from mutagen.mp3 import MP3
+            audio = MP3(real_audio_path)
+            real_duration = int(audio.info.length)
+        except Exception:
+            real_duration = int(len(book.podcast_script.split()) / 2.5) if book.podcast_script else 0
+
     return {
         "status":               book.status,
         "phase1_done":          book.phase1_done,
@@ -283,13 +295,13 @@ async def get_status(
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary),
         "has_mindmap":          bool(book.mindmap_data),
-        "podcast_done":         bool(book.podcast_script) and os.path.exists(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3")),
+        "podcast_done":         podcast_exists,
         "error_msg":            book.error_msg,
         "chapters_total":       total_ch,
         "chapters_done":        done_ch,
         "podcast_audio_path":   book.podcast_audio_path,
         "podcast_script":       book.podcast_script or "",
-        "podcast_duration":     book.podcast_duration or (int(len(book.podcast_script.split()) / 2.5) if book.podcast_script else 0),
+        "podcast_duration":     real_duration,
         "jobs": [
             {
                 "phase":    j.phase,
