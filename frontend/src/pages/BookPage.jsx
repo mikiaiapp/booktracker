@@ -713,6 +713,13 @@ export default function BookPage() {
   const characters = activeData?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(statusInfo.status)
 
+  const formatDuration = (seconds) => {
+    if (!seconds) return ''
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
   return (
     <div className="book-page">
       <div className="book-hero">
@@ -965,7 +972,7 @@ export default function BookPage() {
                         </button>
                         <button className={`download-mp3-btn ${audioPlaying ? 'active' : ''}`} onClick={toggleAudio}>
                           {audioPlaying ? <Pause size={18} /> : <Play size={18} />}
-                          <span>{audioPlaying ? 'Pausar' : audioPaused ? 'Continuar' : 'Escuchar'}</span>
+                          <span>{audioPlaying ? 'Pausar' : audioPaused ? 'Continuar' : `Escuchar${statusInfo.podcast_duration ? ` (${formatDuration(statusInfo.podcast_duration)})` : ''}`}</span>
                         </button>
                       </div>
                     </div>
@@ -980,7 +987,7 @@ export default function BookPage() {
                               <div style={{fontSize:'0.75rem', color:'var(--gold)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.15em', marginBottom:'0.25rem'}}>Podcast Literario</div>
                               <div style={{fontSize:'1.1rem', color:'white', fontWeight:600}}>{book.title}</div>
                             </div>
-                            <div style={{fontSize:'0.85rem', color:'var(--mist)'}}>{audioPlaying ? 'Reproduciendo...' : audioPaused ? 'En pausa' : 'Listo para escuchar'}</div>
+                            <div style={{fontSize:'0.85rem', color:'var(--mist)'}}>{audioPlaying ? 'Reproduciendo...' : audioPaused ? 'En pausa' : `Listo para escuchar${statusInfo.podcast_duration ? ` — ${formatDuration(statusInfo.podcast_duration)}` : ''}`}</div>
                           </div>
                           <div style={{height:'6px', background:'rgba(255,255,255,0.1)', borderRadius:'10px', overflow:'hidden', position:'relative'}}>
                              <div className={audioPlaying ? 'animate-progress' : ''} style={{height:'100%', background:'var(--gold)', width: audioPlaying ? '100%' : '0%', transition: audioPlaying ? 'width 300s linear' : 'none', boxShadow:'0 0 10px var(--gold)'}} />

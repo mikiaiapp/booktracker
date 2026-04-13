@@ -339,6 +339,10 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                 await synthesize_podcast(script, audio_path, api_keys=keys)
                 book.podcast_audio_path = audio_path
                 book.phase6_done = True
+                
+                # Estimación de duración (aprox 150 ppm)
+                words = len(script.split())
+                book.podcast_duration = int(words / 2.5)
             except Exception as e:
                 print(f"[WORKER] Error en TTS: {e}")
                 book.error_msg = f"Error en generación de audio: {str(e)}"

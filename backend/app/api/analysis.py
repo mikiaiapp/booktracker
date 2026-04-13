@@ -289,6 +289,7 @@ async def get_status(
         "chapters_done":        done_ch,
         "podcast_audio_path":   book.podcast_audio_path,
         "podcast_script":       book.podcast_script or "",
+        "podcast_duration":     book.podcast_duration,
         "jobs": [
             {
                 "phase":    j.phase,

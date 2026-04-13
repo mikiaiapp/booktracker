@@ -47,6 +47,7 @@ class Book(BookBase):
     mindmap_data = Column(JSON, nullable=True)
     podcast_audio_path = Column(String, nullable=True)
     podcast_script = Column(Text, nullable=True)
+    podcast_duration = Column(Integer, nullable=True)  # duration in seconds
 
     # Reading tracking
     read_status = Column(String, default="to_read")  # to_read | reading | read
