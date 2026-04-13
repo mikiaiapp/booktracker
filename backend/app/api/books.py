@@ -228,15 +228,16 @@ async def list_books(
         p5_done = b.phase5_done or (b.global_summary and len(b.global_summary) > 50) or (b.mindmap_data and len(str(b.mindmap_data)) > 50)
         p6_done = b.phase6_done or (b.podcast_audio_path is not None)
 
-        # Estado global calculado
-        is_complete = p1_done and p2_done and p3_done and p5_done and p6_done
+        # Estado global calculado (Riguroso: todas las fases deben estar OK)
+        is_complete = p1_done and p2_done and p3_done and p4_done and p5_done and p6_done
         
         status = b.status
         if is_complete:
             status = "complete"
         elif is_analyzing:
             status = "analyzing"
-        elif any([p1_done, p2_done, p3_done, p4_done, p5_done, p6_done]):
+        else:
+            # Si no está analizando ni está completo, pero tiene algo hecho (o es un libro real), está "a medias"
             status = "incomplete"
 
         response.append({
