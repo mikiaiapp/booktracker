@@ -25,7 +25,7 @@ const TABS = [
   { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: 'status' },
 ]
 
-const PROCESSING_STATUSES = ['queued', 'identifying', 'analyzing_structure', 'summarizing', 'generating_podcast']
+const PROCESSING_STATUSES = ['queued', 'starting', 'identifying', 'analyzing', 'analyzing_structure', 'summarizing', 'generating_podcast', 'generating_mindmap', 'generating_global_summary', 'phase1', 'phase2', 'phase3', 'phase4', 'phase5', 'phase6']
 
 // ── Modal de confirmación propio (evita el checkbox del window.confirm nativo) ──
 function ConfirmModal({ message, onConfirm, onCancel }) {
@@ -484,19 +484,23 @@ export default function BookPage() {
   useEffect(() => {
     if (!status) return
     if (PROCESSING_STATUSES.includes(status.status)) {
-      const t = setTimeout(load, 3500)
+      const t = setTimeout(load, 3000)
       return () => clearTimeout(t)
+    }
+    // Si acaba de terminar (el anterior era procesando y ahora no), forzamos un último load para pillar los datos finales
+    if (data?.book?.status !== 'complete' && status.status === 'done') {
+       load();
     }
   }, [status])
 
   const triggerPhase = async (phase, force = false) => {
     try {
       if (phase === 1) await analysisAPI.triggerPhase1(id, force)
-      else if (phase === 2) await analysisAPI.triggerPhase2(id)
-      else if (phase === 3) await analysisAPI.triggerPhase3(id)
-      else if (phase === 4) await analysisAPI.triggerPhase4(id)
-      else if (phase === 5) await analysisAPI.triggerPhase5(id)
-      else if (phase === 6) await analysisAPI.triggerPodcast(id)
+      else if (phase === 2) await analysisAPI.triggerPhase2(id, force)
+      else if (phase === 3) await analysisAPI.triggerPhase3(id, force)
+      else if (phase === 4) await analysisAPI.triggerPhase4(id, force)
+      else if (phase === 5) await analysisAPI.triggerPhase5(id, force)
+      else if (phase === 6) await analysisAPI.triggerPodcast(id, force)
       
       toast.success(force ? 'Análisis completo encolado' : 'Proceso iniciado')
       navigate('/')

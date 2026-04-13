@@ -44,8 +44,11 @@ def enqueue(uid: str, book_id: str, title: str = "", phases: list = None, force:
     qk = _qk(uid)
 
     # ¿Ya activo?
-    if r.get(_ak(uid)) == book_id:
+    if r.get(_ak(uid)) == book_id and not force:
         return -1  # ya procesándose
+    
+    if force:
+        r.delete(_ak(uid)) # Liberar slot para permitir re-entrada
 
     # ¿Ya en cola?
     raw = r.lrange(qk, 0, -1)
@@ -231,6 +234,8 @@ def _launch(uid: str, book_id: str, phases: list, title: str = "", force: bool =
         "4": lambda: process_book_phase4.delay(uid, book_id, chain=True, force=force),
         "5": lambda: process_book_phase5.delay(uid, book_id, chain=True, force=force),
         "6": lambda: process_book_phase6.delay(uid, book_id, force=force),
+        "podcast": lambda: process_book_phase6.delay(uid, book_id, force=force),
+        "repair":  lambda: process_book_phase2.delay(uid, book_id, chain=True, force=force), # repair as chain start
     }
     fn = dispatch.get(str(first))
     if fn:

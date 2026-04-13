@@ -79,7 +79,8 @@ async def trigger_phase3(
     if not book: raise HTTPException(404, "Book not found")
     
     from app.workers.queue_manager import enqueue as q_enqueue
-    q_enqueue(current_user.id, book_id, book.title, phases=["3"], force=force)
+    # Frontend P3 -> Backend P4 (Characters)
+    q_enqueue(current_user.id, book_id, book.title, phases=["4"], force=force)
     
     book.status = "queued"
     book.phase3_done = False
@@ -101,7 +102,8 @@ async def trigger_phase4(
     if not book: raise HTTPException(404, "Book not found")
     
     from app.workers.queue_manager import enqueue as q_enqueue
-    q_enqueue(current_user.id, book_id, book.title, phases=["4"], force=force)
+    # Frontend P4 -> Backend P5 (Global Summary)
+    q_enqueue(current_user.id, book_id, book.title, phases=["5"], force=force)
     
     book.status = "queued"
     book.has_global_summary = False
@@ -134,8 +136,6 @@ async def summarize_single_chapter(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
-    if not book.phase2_done:
-        raise HTTPException(400, "Phase 2 not complete")
 
     ch_result = await db.execute(
         select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id)
@@ -288,7 +288,7 @@ async def get_status(
         "chapters_total":       total_ch,
         "chapters_done":        done_ch,
         "podcast_audio_path":   book.podcast_audio_path,
-        "podcast_script":       bool(book.podcast_script),
+        "podcast_script":       book.podcast_script or "",
         "jobs": [
             {
                 "phase":    j.phase,

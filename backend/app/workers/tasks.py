@@ -16,15 +16,23 @@ from app.core.config import settings
 
 def _check_revocation(user_id: str, book_id: str):
     """Verifica si existe una orden de cancelación o si la cola ha sido limpiada."""
-    from app.workers.queue_manager import _r, _pk
+    from app.workers.queue_manager import _r
     r = _r()
     # 1. Chequeo de bandera explícita
     if r.get(f"btq:{user_id}:cancel_flag:{book_id}"):
         print(f"[WORKER] Detención detectada para {book_id}. Abortando.")
         return True
-    # 2. Chequeo de existencia (si se borró la cola completa)
-    if not r.hexists(_pk(user_id), book_id):
-        print(f"[WORKER] Datos de libro desaparecidos (limpieza de cola). Abortando {book_id}.")
+    # 2. Chequeo de existencia del slot activo
+    from app.workers.queue_manager import _ak
+    active = r.get(_ak(user_id))
+    if active and active != book_id:
+        print(f"[WORKER] Cambio de libro detectado (slot ocupado por {active}). Abortando {book_id}.")
+        return True
+    
+    # 3. Datos de info borrados (limpieza total)
+    from app.workers.queue_manager import _ik
+    if not r.exists(_ik(user_id, book_id)):
+        print(f"[WORKER] Datos de progreso borrados. Abortando {book_id}.")
         return True
     return False
 
@@ -58,22 +66,50 @@ async def _get_user_api_keys(user_id: str) -> dict:
     return {}
 
 async def _finalize_book_status(db, book):
-    """Evalúa que fases están hechas y actualiza el status del libro."""
-    missing = []
-    if not book.phase1_done: missing.append("F1")
-    if not book.phase2_done: missing.append("F2")
-    if not book.phase3_done: missing.append("F3")
-    if not book.phase4_done: missing.append("F4")
-    if not book.phase5_done: missing.append("F5")
-    if not book.phase6_done: missing.append("F6")
+    """Evalúa que fases están realmente hechas basándose en los datos y actualiza el status del libro."""
+    f1, f2 = bool(book.author and book.author_bio), book.phase2_done
+    res = await db.execute(select(Chapter).where(Chapter.book_id == book.id))
+    chaps = res.scalars().all()
+    f3 = len(chaps) > 0 and all(c.summary and len(c.summary) > 50 for c in chaps)
+    res_char = await db.execute(select(Character).where(Character.book_id == book.id))
+    f4 = len(res_char.scalars().all()) > 0
+    f5 = bool(book.global_summary and len(book.global_summary) > 100 and book.mindmap_data)
+    f6 = bool(book.podcast_script and book.podcast_audio_path and os.path.exists(book.podcast_audio_path))
 
-    if not missing:
-        book.status = "complete"
-    else:
-        book.status = "incomplete"
-    
+    book.phase1_done, book.phase2_done, book.phase3_done = f1, f2, f3
+    book.phase4_done, book.phase5_done, book.phase6_done = f4, f5, f6
+    book.status = "complete" if all([f1, f2, f3, f4, f5, f6]) else "incomplete"
     await db.commit()
-    print(f"[WORKER] Estado final para {book.id}: {book.status} (Faltan: {', '.join(missing)})")
+    missing = [p for p, d in [("F1",f1),("F2",f2),("F3",f3),("F4",f4),("F5",f5),("F6",f6)] if not d]
+    print(f"[WORKER] Sincronización final {book.id}: {book.status} (Faltan: {', '.join(missing)})")
+
+async def _dispatch_next(db, user_id, book_id, force=False):
+    """Decide cuál es la siguiente tarea basándose en el estado real del libro."""
+    from app.workers.queue_manager import on_done
+    book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+    if not book: 
+        on_done(user_id, book_id)
+        return
+
+    await _finalize_book_status(db, book)
+
+    # El orden lógico de las fases
+    if not book.phase1_done:
+        process_book_phase1.delay(user_id, book_id, chain=True, force=force)
+    elif not book.phase2_done:
+        process_book_phase2.delay(user_id, book_id, chain=True, force=force)
+    elif not book.phase3_done:
+        process_book_phase3.delay(user_id, book_id, chain=True, force=force)
+    elif not book.phase4_done:
+        process_book_phase4.delay(user_id, book_id, chain=True, force=force)
+    elif not book.phase5_done:
+        process_book_phase5.delay(user_id, book_id, chain=True, force=force)
+    elif not book.phase6_done:
+        process_book_phase6.delay(user_id, book_id, force=force)
+    else:
+        # ¡Todo completo!
+        print(f"[WORKER] Análisis finalizado con éxito para {book_id}")
+        on_done(user_id, book_id)
 
 def run_async(coro):
     try:
@@ -113,7 +149,7 @@ def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, fo
             book.status = "identified"
             await db.commit()
             
-            if chain: process_book_phase2.delay(user_id, book_id, chain=True)
+            if chain: await _dispatch_next(db, user_id, book_id, force=force)
             else: on_done(user_id, book_id)
     return run_async(_p1())
 
@@ -141,7 +177,7 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True, fo
             book.status = "structured"
             await db.commit()
             
-            if chain: process_book_phase3.delay(user_id, book_id, chain=True)
+            if chain: await _dispatch_next(db, user_id, book_id, force=force)
             else: on_done(user_id, book_id)
     return run_async(_p2())
 
@@ -162,25 +198,36 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
             keys = await _get_user_api_keys(user_id)
             for i, ch in enumerate(chaps):
                 # Solo analizamos si no tiene resumen o si forzamos el re-análisis
-                if ch.summary and len(ch.summary) > 20 and not force: continue
+                if ch.summary and len(ch.summary) > 50 and not force: continue
                 pct = int((i/len(chaps))*100)
-                update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando {ch.title}...", model="Buscando IA...")
+                update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando capítulo {i+1} de {len(chaps)} ({ch.title})", model="Buscando IA...")
                 if _check_revocation(user_id, book_id):
                     on_done(user_id, book_id)
                     return
 
                 res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
                 if res:
-                    ch.summary, ch.key_events, ch.summary_status = res.get("summary"), res.get("key_events", []), "done"
+                    ch.summary = res.get("summary")
+                    ch.key_events = res.get("key_events", [])
+                    # Validación de longitud estricta
+                    if ch.summary and len(ch.summary) > 50:
+                        ch.summary_status = "done"
+                    else:
+                        ch.summary_status = "pending"
                     await db.commit()
                 update_progress(user_id, book_id, "phase3", pct, f"F3: Resumido {ch.title}", model=model_used)
-                await asyncio.sleep(2) # Evitar saturación
+                await asyncio.sleep(1.5)
 
-            book.phase3_done = True
-            await db.commit()
-            
-            if chain: process_book_phase4.delay(user_id, book_id, chain=True)
-            else: on_done(user_id, book_id)
+            await _finalize_book_status(db, book)
+            if chain:
+                # Si a pesar del loop siguen faltando capítulos, reintentamos F3
+                if not book.phase3_done:
+                    print(f"[WORKER] F3 incompleta para {book_id}, reintentando...")
+                    process_book_phase3.delay(user_id, book_id, chain=True)
+                else:
+                    process_book_phase4.delay(user_id, book_id, chain=True)
+            else:
+                on_done(user_id, book_id)
     return run_async(_p3())
 
 # FASE 4: PERSONAJES
@@ -199,23 +246,32 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
             update_progress(user_id, book_id, "phase4", 5, "F4: Extrayendo personajes...", model="Buscando IA...")
             keys = await _get_user_api_keys(user_id)
             all_summaries = await _get_summaries_text(db, book_id)
-            await db.execute(delete(Character).where(Character.book_id == book_id))
-            
             char_list, m_list = await get_character_list(all_summaries, api_keys=keys)
+            
+            # Solo añadimos personajes que no existan ya (por nombre) si no es force
+            existing_res = await db.execute(select(Character).where(Character.book_id == book_id))
+            existing_names = {c.name.lower() for c in existing_res.scalars().all()}
+            
             for i, c in enumerate(char_list[:12]):
                 if _check_revocation(user_id, book_id):
                     on_done(user_id, book_id)
                     return
                 char_name = c["name"]
+                if char_name.lower() in existing_names and not force:
+                    continue
+                    
                 update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
                 detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
                 if detail:
+                    # Si ya existía y estamos en 'force', borrar el viejo
+                    if char_name.lower() in existing_names:
+                        await db.execute(delete(Character).where(Character.book_id == book_id, func.lower(Character.name) == char_name.lower()))
+                    
                     db.add(Character(book_id=book_id, **detail))
                     await db.commit()
             
-            book.phase4_done = True
-            await db.commit()
-            if chain: process_book_phase5.delay(user_id, book_id, chain=True)
+            await _finalize_book_status(db, book)
+            if chain: await _dispatch_next(db, user_id, book_id, force=force)
             else: on_done(user_id, book_id)
     return run_async(_p4())
 
@@ -246,9 +302,8 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
             book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys)
             update_progress(user_id, book_id, "phase5", 90, "F5: Mapa mental completado", model=m_mapa)
             
-            book.phase5_done = True
             await db.commit()
-            if chain: process_book_phase6.delay(user_id, book_id)
+            if chain: await _dispatch_next(db, user_id, book_id, force=force)
             else: on_done(user_id, book_id)
     return run_async(_p5())
 
@@ -275,6 +330,7 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
             
             script, _ = await generate_podcast_script(book.title, book.author, book.global_summary, chars, api_keys=keys)
             book.podcast_script = script
+            await db.commit() # Asegurar guardado inmediato del texto
             
             update_progress(user_id, book_id, "phase6", 50, "F6: Generando audio (TTS)...")
             audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
@@ -285,8 +341,13 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                 book.phase6_done = True
             except: pass
             
-            await _finalize_book_status(db, book)
-            on_done(user_id, book_id)
+            await dispatch_next_final(db, user_id, book_id)
+
+    async def dispatch_next_final(db, user_id, book_id):
+        await _finalize_book_status(db, book)
+        # Si al llegar aquí falta algo (por re-análisis forzado o error previo) 
+        # _dispatch_next encontrará la primera pieza rota.
+        await _dispatch_next(db, user_id, book_id, force=False)
     return run_async(_p6())
 
 # --- MANTENIMIENTO Y OTROS ---
@@ -305,25 +366,32 @@ def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
             res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
             
             if res:
-                ch.summary, ch.key_events, ch.summary_status = res.get("summary"), res.get("key_events", []), "done"
+                ch.summary = res.get("summary")
+                ch.key_events = res.get("key_events", [])
+                if ch.summary and len(ch.summary) > 50:
+                    ch.summary_status = "done"
+                else:
+                    ch.summary_status = "pending"
                 await db.commit()
                 update_progress(user_id, book_id, "phase3", 100, f"Completado: {ch.title}", model=model_used)
-                
-                # BUSCAR EL SIGUIENTE HUECO DE FORMA LINEAL
-                # Buscamos el primer capítulo de este libro que siga sin resumen
-                next_chap_stmt = select(Chapter).where(Chapter.book_id == book_id, Chapter.summary == None).order_by(Chapter.order).limit(1)
-                next_chap = (await db.execute(next_chap_stmt)).scalar_one_or_none()
-                
-                if next_chap:
-                    print(f"[WORKER] Continuando con siguiente capítulo pendiente: {next_chap.title}")
-                    # Llamada recursiva CONTROLADA: solo al siguiente capítulo
-                    summarize_chapter_task.delay(user_id, book_id, next_chap.id)
-                else:
-                    # Si ya no hay huecos, avanzamos a la siguiente fase (Personajes)
-                    print(f"[WORKER] Todos los capítulos resumidos. Avanzando a Fase 4.")
-                    process_book_phase4.delay(user_id, book_id, chain=True)
+            
+            # BUSCAR EL SIGUIENTE HUECO DE FORMA LINEAL
+            # Buscamos el primer capítulo de este libro que siga sin resumen válido
+            from sqlalchemy import or_
+            next_chap_stmt = select(Chapter).where(
+                Chapter.book_id == book_id, 
+                or_(Chapter.summary == None, func.octet_length(Chapter.summary) < 50)
+            ).order_by(Chapter.order).limit(1)
+            next_chap = (await db.execute(next_chap_stmt)).scalar_one_or_none()
+            
+            if next_chap:
+                print(f"[WORKER] Continuando con siguiente capítulo pendiente: {next_chap.title}")
+                summarize_chapter_task.delay(user_id, book_id, next_chap.id)
             else:
-                on_done(user_id, book_id)
+                # Todos los capítulos OK, dejar que el despachador decida qué sigue
+                await _dispatch_next(db, user_id, book_id, False)
+        else:
+            on_done(user_id, book_id)
                 
     return run_async(_sc())
 

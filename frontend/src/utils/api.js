@@ -73,13 +73,13 @@ export const taskAPI = {
 export const analysisAPI = {
   status: (bookId) => api.get(`/analysis/${bookId}/status`),
   triggerPhase1: (bookId, force = false) => api.post(`/analysis/${bookId}/phase1?force=${force}`),
-  triggerPhase2: (bookId) => api.post(`/analysis/${bookId}/phase2`),
-  triggerPhase3: (bookId) => api.post(`/analysis/${bookId}/phase3`),
+  triggerPhase2: (bookId, force = false) => api.post(`/analysis/${bookId}/phase2?force=${force}`),
+  triggerPhase3: (bookId, force = false) => api.post(`/analysis/${bookId}/phase3?force=${force}`),
   triggerPhase3b: (bookId) => api.post(`/analysis/${bookId}/phase3b`), // legacy alias
-  triggerPhase4: (bookId) => api.post(`/analysis/${bookId}/phase4`),
-  triggerPhase5: (bookId) => api.post(`/analysis/${bookId}/phase5`),
+  triggerPhase4: (bookId, force = false) => api.post(`/analysis/${bookId}/phase4?force=${force}`),
+  triggerPhase5: (bookId, force = false) => api.post(`/analysis/${bookId}/phase5?force=${force}`),
   cancel: (bookId) => api.post(`/analysis/${bookId}/cancel`),
-  triggerPodcast: (bookId) => api.post(`/analysis/${bookId}/podcast`),
+  triggerPodcast: (bookId, force = false) => api.post(`/analysis/${bookId}/podcast?force=${force}`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
   downloadUrl: (bookId) => `${BASE}/analysis/${bookId}/download`,
   repairAllEvents: () => api.post('/analysis/repair-all-events'),

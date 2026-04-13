@@ -303,7 +303,7 @@ function QueuePanel({ onClose, books }) {
   )
 }
 
-const PROCESSING_STATUSES = ['queued','identifying','analyzing_structure','summarizing','generating_podcast','uploaded']
+const PROCESSING_STATUSES = ['queued','identifying','analyzing_structure','analyzing','summarizing','generating_podcast','uploaded']
 
 // ── Página principal ──────────────────────────────────────────
 export default function LibraryPage() {

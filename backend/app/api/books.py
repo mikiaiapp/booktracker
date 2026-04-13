@@ -344,8 +344,13 @@ async def get_book(
             "phase1_done": book.phase1_done,
             "phase2_done": book.phase2_done,
             "phase3_done": book.phase3_done,
+            "phase4_done": book.phase4_done,
+            "phase5_done": book.phase5_done,
+            "phase6_done": book.phase6_done,
             "global_summary": book.global_summary or "",
-            "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []})
+            "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []}),
+            "podcast_script": book.podcast_script or "",
+            "podcast_audio_path": book.podcast_audio_path or ""
         },
         "parts": [p.__dict__ for p in parts_result.scalars().all()],
         "chapters": chapters_data,
