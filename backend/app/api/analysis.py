@@ -311,7 +311,7 @@ async def get_status(
         "phase3_done":          phase3_really_done,
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary and len(book.global_summary) > 50),
-        "has_mindmap":          bool(book.mindmap_data and len(book.mindmap_data) > 10),
+        "has_mindmap":          bool(book.mindmap_data and (isinstance(book.mindmap_data, dict) and len(str(book.mindmap_data)) > 20)),
         "podcast_done":         podcast_exists,
         "error_msg":            book.error_msg,
         "chapters_total":       total_ch,
