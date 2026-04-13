@@ -913,7 +913,7 @@ export default function BookPage() {
               (t.id === 'podcast' && statusInfo.status === 'generating_podcast')
             )
 
-            const showDone = isDone && (t.id !== 'chapters' || statusInfo.chapters_summarized)
+            const showDone = isDone && (t.id !== 'chapters' || statusInfo.chapters_done === statusInfo.chapters_total) && (t.id !== 'characters' || statusInfo.has_characters) && (t.id !== 'podcast' || statusInfo.podcast_done)
 
             if (t.statusKey || t.id === 'refs') {
               if (showDone && !isProcessingThis) {
@@ -1313,8 +1313,8 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
             <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
             <span className="ch-title">{ch.title}</span>
             <div className="ch-meta">
-              {ch.summary_status === 'done' ? <span className="badge badge-green">Resumido</span> : <button className="summarize-ch-btn" onClick={(e) => handleSummarize(e, ch)} disabled={summarizing[ch.id]}>{summarizing[ch.id] ? '…' : '+ Resumir'}</button>}
-              {ch.summary_status === 'done' && (
+              {ch.summary_status === 'done' && ch.summary && ch.summary.length > 50 ? <span className="badge badge-green">Resumido</span> : <button className="summarize-ch-btn" onClick={(e) => handleSummarize(e, ch)} disabled={summarizing[ch.id]}>{summarizing[ch.id] ? '…' : '+ Resumir'}</button>}
+              {ch.summary_status === 'done' && ch.summary && ch.summary.length > 50 && (
                 <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
                   {ttsChapter === ch.id && ttsPlaying ? <button className="ch-tts-btn pause" onClick={onPause}><Pause size={12} /></button> : <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)}><Play size={12} /></button>}
                 </div>
@@ -1356,7 +1356,7 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
                         <strong>Eventos clave:</strong>
                         <ul style={{ marginTop: '0.5rem' }}>
                           {ch.key_events.map((e, i) => (
-                            <li key={i} style={{ marginBottom: '0.4rem' }}>{e}</li>
+                            <li key={i} style={{ marginBottom: '0.4rem' }}>{typeof e === 'object' && e !== null ? e.event || JSON.stringify(e) : e}</li>
                           ))}
                         </ul>
                       </div>

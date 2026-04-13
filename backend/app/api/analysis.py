@@ -283,13 +283,13 @@ async def get_status(
         "chapters_summarized":  chapters_summarized,
         "has_global_summary":   bool(book.global_summary),
         "has_mindmap":          bool(book.mindmap_data),
-        "podcast_done":         bool(book.podcast_script) and bool(book.podcast_audio_path) and os.path.exists(book.podcast_audio_path or ""),
+        "podcast_done":         bool(book.podcast_script) and os.path.exists(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3")),
         "error_msg":            book.error_msg,
         "chapters_total":       total_ch,
         "chapters_done":        done_ch,
         "podcast_audio_path":   book.podcast_audio_path,
         "podcast_script":       book.podcast_script or "",
-        "podcast_duration":     book.podcast_duration,
+        "podcast_duration":     book.podcast_duration or (int(len(book.podcast_script.split()) / 2.5) if book.podcast_script else 0),
         "jobs": [
             {
                 "phase":    j.phase,
@@ -312,9 +312,17 @@ async def get_podcast_audio(
 ):
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
-    if not book or not book.podcast_audio_path:
+    
+    if not book:
         raise HTTPException(404, "Podcast not available")
-    return FileResponse(book.podcast_audio_path, media_type="audio/mpeg")
+
+    # Force check against active environment AUDIO_DIR
+    expected_path = os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3")
+    
+    if not os.path.exists(expected_path):
+        raise HTTPException(404, "Podcast not available")
+        
+    return FileResponse(expected_path, media_type="audio/mpeg")
 
 
 # ── Descarga del archivo original ────────────────────────────
