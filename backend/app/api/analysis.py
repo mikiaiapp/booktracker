@@ -276,14 +276,25 @@ async def get_status(
     has_characters = len(char_count_res.scalars().all()) > 0
     phase3_really_done = book.phase3_done or has_characters
 
-    real_audio_path = os.path.join(settings.AUDIO_DIR, current_user.id, f"{book_id}.mp3")
-    podcast_exists = bool(book.podcast_script) and os.path.exists(real_audio_path)
+    # Detección robusta de audio para libros antiguos/legado
+    possible_audio_paths = [
+        book.podcast_audio_path,
+        os.path.join(settings.AUDIO_DIR, current_user.id, f"{book_id}.mp3"),
+        os.path.join(settings.AUDIO_DIR, f"{book_id}.mp3")
+    ]
+    real_audio_found = None
+    for p in possible_audio_paths:
+        if p and os.path.exists(p):
+            real_audio_found = p
+            break
+
+    podcast_exists = bool(book.podcast_script) and real_audio_found is not None
     
     real_duration = book.podcast_duration
     if podcast_exists and not real_duration:
         try:
             from mutagen.mp3 import MP3
-            audio = MP3(real_audio_path)
+            audio = MP3(real_audio_found)
             real_duration = int(audio.info.length)
         except Exception:
             if book.podcast_script:
@@ -333,13 +344,37 @@ async def get_podcast_audio(
     if not book:
         raise HTTPException(404, "Podcast not available")
 
-    # Force check against active environment AUDIO_DIR
-    expected_path = os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3")
+    # 1. Intentar ruta guardada en DB (si existe)
+    paths_to_try = []
+    if book.podcast_audio_path:
+        paths_to_try.append(book.podcast_audio_path)
     
-    if not os.path.exists(expected_path):
-        raise HTTPException(404, "Podcast not available")
-        
-    return FileResponse(expected_path, media_type="audio/mpeg")
+    # 2. Intentar ruta estándar actual
+    paths_to_try.append(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3"))
+    
+    # 3. Intentar ruta legado (sin subcarpeta de usuario)
+    paths_to_try.append(os.path.join(settings.AUDIO_DIR, f"{book.id}.mp3"))
+
+    final_path = None
+    for p in paths_to_try:
+        if p and os.path.exists(p):
+            final_path = p
+            break
+    
+    if not final_path:
+        # Último recurso: buscar cualquier mp3 que empiece por el ID en la carpeta del usuario
+        import glob
+        user_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
+        if os.path.exists(user_dir):
+            matches = glob.glob(os.path.join(user_dir, f"{book.id}*.mp3"))
+            if matches:
+                final_path = matches[0]
+
+    if not final_path:
+        print(f"[API] Podcast no encontrado para {book.id}. Intentamos: {paths_to_try}")
+        raise HTTPException(404, "El archivo de audio del podcast no se encuentra en el servidor.")
+
+    return FileResponse(final_path, media_type="audio/mpeg")
 
 
 # ── Descarga del archivo original ────────────────────────────
