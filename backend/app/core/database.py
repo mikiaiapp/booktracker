@@ -80,10 +80,12 @@ _user_sessions: dict = {}
 
 
 def get_user_db_path(user_id: str) -> str:
+    user_id = user_id.lower().strip()
     return os.path.join(settings.DATABASE_DIR, f"user_{user_id}.db")
 
 
 async def get_user_engine(user_id: str):
+    user_id = user_id.lower().strip()
     if user_id not in _user_engines:
         db_path = get_user_db_path(user_id)
         engine = create_async_engine(
@@ -150,6 +152,7 @@ async def get_user_engine(user_id: str):
 
 
 async def get_user_db(user_id: str) -> AsyncGenerator[AsyncSession, None]:
+    user_id = user_id.lower().strip()
     await get_user_engine(user_id)
     async with _user_sessions[user_id]() as session:
         yield session

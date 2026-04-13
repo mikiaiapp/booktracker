@@ -263,13 +263,21 @@ async def get_book(
         result = await db.execute(select(Book).where(Book.id == book_id))
         book = result.scalar_one_or_none()
         
-        print(f"[API] get_book({book_id}) -> {'ENCONTRADO' if book else 'NO ENCONTRADO'}")
+        if not book:
+            print(f"[API ERROR] ID {book_id} no encontrado por búsqueda directa. Probando búsqueda nuclear...")
+            all_b_res = await db.execute(select(Book))
+            all_b = all_b_res.scalars().all()
+            for b in all_b:
+                if str(b.id).strip().lower() == str(book_id).strip().lower():
+                    print(f"[API] ¡Encontrado por búsqueda nuclear! ID Real: '{b.id}' vs Solicitado: '{book_id}'")
+                    book = b
+                    break
         
         if not book:
             # Debug: Mostrar qué hay en la DB
             all_ids = (await db.execute(select(Book.id))).scalars().all()[:5]
             print(f"      IDs en DB (primeros 5): {all_ids}")
-            raise HTTPException(404, f"Libro {book_id} no existe en la base de datos de usuario")
+            raise HTTPException(404, f"El libro con ID '{book_id}' no existe en tu base de datos.")
 
         # 2. Capítulos
         ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
