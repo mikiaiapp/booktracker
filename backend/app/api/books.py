@@ -258,107 +258,96 @@ async def get_book(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Book).where(Book.id == book_id))
-    book = result.scalar_one_or_none()
-    if not book:
-        raise HTTPException(404, "Book not found")
+    try:
+        # 1. Obtener el libro base
+        result = await db.execute(select(Book).where(Book.id == book_id))
+        book = result.scalar_one_or_none()
+        if not book:
+            raise HTTPException(404, "Libro no encontrado en la base de datos")
 
-    parts_result = await db.execute(
-        select(BookPart).where(BookPart.book_id == book_id).order_by(BookPart.order)
-    )
-    chapters_result = await db.execute(
-        select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order)
-    )
-    chars_result = await db.execute(
-        select(Character).where(Character.book_id == book_id)
-    )
+        # 2. Capítulos
+        ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
+        chapters = ch_result.scalars().all()
 
-    # Otros libros del mismo autor (ordenados por año desc)
-    other_books = []
-    if book.author:
-        from sqlalchemy import case
-        others_result = await db.execute(
-            select(Book)
-            .where(Book.author == book.author, Book.id != book_id)
-            .order_by(case((Book.year == None, 0), else_=1).desc(), Book.year.desc(), Book.title)
-        )
-        other_books = [
-            {
-                "id": b.id, "title": b.title, "isbn": b.isbn,
-                "cover_local": b.cover_local, "year": b.year,
-                "status": b.status, "phase3_done": b.phase3_done,
-                "synopsis": b.synopsis,
-            }
-            for b in others_result.scalars().all()
-        ]
+        # 3. Personajes
+        char_result = await db.execute(select(Character).where(Character.book_id == book_id))
+        characters = char_result.scalars().all()
 
-    def _safe_json(val, default=[]):
-        if not val: return default
-        if isinstance(val, (list, dict)): return val
-        try:
-            import json
-            return json.loads(val)
-        except: return default
+        # 4. Otros libros del autor (con seguridad ante nulos)
+        other_books = []
+        if book.author:
+            others_result = await db.execute(
+                select(Book)
+                .where(Book.author == book.author, Book.id != book_id)
+                .order_by(Book.year.desc().nullslast(), Book.title)
+            )
+            for b in others_result.scalars().all():
+                try:
+                    other_books.append({
+                        "id": b.id, "title": b.title, "isbn": b.isbn,
+                        "cover_local": b.cover_local, "year": b.year,
+                        "status": b.status, 
+                        "phase3_done": getattr(b, 'phase3_done', False),
+                        "synopsis": b.synopsis,
+                    })
+                except Exception: continue
 
-    # Limpiar y normalizar capítulos
-    chapters_data = []
-    for c in chapters_result.scalars().all():
-        summary_text = (c.summary or "").strip()
-        # Un resumen de menos de 50 caracteres probablemente es un error o basura
-        is_done = len(summary_text) > 50
-        
-        cd = {
-            "id": c.id,
-            "title": c.title or "Sin título",
-            "order": c.order,
-            "summary": summary_text,
-            "key_events": _safe_json(c.key_events, []),
-            "summary_status": "done" if is_done else "pending"
+        def _safe_json(val, default=[]):
+            if not val: return default
+            if isinstance(val, (list, dict)): return val
+            try:
+                import json
+                return json.loads(val)
+            except: return default
+
+        return {
+            "book": {
+                "id": book.id,
+                "title": book.title,
+                "author": book.author,
+                "isbn": book.isbn,
+                "synopsis": book.synopsis or "",
+                "author_bio": book.author_bio or "",
+                "genre": book.genre or "",
+                "year": book.year,
+                "status": book.status,
+                "phase1_done": book.phase1_done,
+                "phase2_done": book.phase2_done,
+                "phase3_done": book.phase3_done,
+                "phase4_done": book.phase4_done,
+                "phase5_done": book.phase5_done,
+                "phase6_done": book.phase6_done,
+                "global_summary": book.global_summary or "",
+                "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []}),
+                "podcast_script": book.podcast_script or "",
+                "podcast_audio_path": book.podcast_audio_path or "",
+                "cover_local": book.cover_local,
+            },
+            "chapters": [
+                {
+                    "id": c.id, "title": c.title, "order": c.order, 
+                    "summary": c.summary or "", "summary_status": c.summary_status,
+                    "key_events": _safe_json(c.key_events, [])
+                }
+                for c in chapters
+            ],
+            "characters": [
+                {
+                    "id": c.id, "name": c.name, "role": c.role, 
+                    "description": c.description, "personality": c.personality,
+                    "arc": c.arc, "relationships": _safe_json(c.relationships, {}),
+                    "key_moments": _safe_json(c.key_moments, []),
+                    "quotes": _safe_json(c.quotes, [])
+                }
+                for c in characters
+            ],
+            "others": other_books
         }
-        chapters_data.append(cd)
-
-    # Limpiar y normalizar personajes
-    chars_data = []
-    for c in chars_result.scalars().all():
-        chars_data.append({
-            "id": c.id,
-            "name": c.name or "Desconocido",
-            "role": c.role or "",
-            "description": c.description or "",
-            "personality": c.personality or "",
-            "arc": c.arc or "",
-            "relationships": _safe_json(c.relationships, {}),
-            "key_moments": _safe_json(c.key_moments, []),
-            "quotes": _safe_json(c.quotes, [])
-        })
-
-    return {
-        "book": {
-            "id": book.id,
-            "title": book.title,
-            "author": book.author,
-            "isbn": book.isbn,
-            "synopsis": book.synopsis or "",
-            "author_bio": book.author_bio or "",
-            "genre": book.genre or "",
-            "year": book.year,
-            "status": book.status,
-            "phase1_done": book.phase1_done,
-            "phase2_done": book.phase2_done,
-            "phase3_done": book.phase3_done,
-            "phase4_done": book.phase4_done,
-            "phase5_done": book.phase5_done,
-            "phase6_done": book.phase6_done,
-            "global_summary": book.global_summary or "",
-            "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []}),
-            "podcast_script": book.podcast_script or "",
-            "podcast_audio_path": book.podcast_audio_path or ""
-        },
-        "parts": [p.__dict__ for p in parts_result.scalars().all()],
-        "chapters": chapters_data,
-        "characters": chars_data,
-        "other_books": other_books,
-    }
+    except Exception as e:
+        print(f"[API ERROR] get_book({book_id}): {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Error cargando detalle del libro: {str(e)}")
 
 
 # ── Update reading status ─────────────────────────────────────────────────────
