@@ -219,20 +219,24 @@ async def list_books(
         # Detectar si el libro está realmente en proceso
         is_analyzing = b.status in ("queued", "identifying", "analyzing", "structuring", "summarizing")
         
-        # Lógica de estados sincronizada con los campos reales
-        status = b.status
-        is_complete = (
-            b.phase1_done and b.phase2_done and b.phase3_done and 
-            (b.global_summary and len(b.global_summary) > 100) and 
-            b.mindmap_data and 
-            b.podcast_audio_path
-        )
+        # Detección inteligente de fases (para libros antiguos con banderas desincronizadas)
+        p1_done = b.phase1_done or (b.title and b.author and b.status != "shell")
+        has_chapters = ch_counts.get(b.id, 0) > 0
+        p2_done = b.phase2_done or has_chapters
+        p3_done = b.phase3_done or has_chapters # Si hay capítulos en lista, suele estar hecha la estructura
+        p4_done = b.phase4_done or (char_counts.get(b.id, 0) > 0)
+        p5_done = b.phase5_done or (b.global_summary and len(b.global_summary) > 50) or (b.mindmap_data and len(str(b.mindmap_data)) > 50)
+        p6_done = b.phase6_done or (b.podcast_audio_path is not None)
+
+        # Estado global calculado
+        is_complete = p1_done and p2_done and p3_done and p5_done and p6_done
         
+        status = b.status
         if is_complete:
             status = "complete"
         elif is_analyzing:
             status = "analyzing"
-        elif any([b.phase1_done, b.phase2_done, b.phase3_done, b.global_summary, b.mindmap_data]):
+        elif any([p1_done, p2_done, p3_done, p4_done, p5_done, p6_done]):
             status = "incomplete"
 
         response.append({
@@ -240,11 +244,11 @@ async def list_books(
             "cover_local": b.cover_local, "cover_url": b.cover_url,
             "isbn": b.isbn, "status": status,
             "read_status": b.read_status, "rating": b.rating,
-            "phase1_done": b.phase1_done, "phase2_done": b.phase2_done,
-            "phase3_done": b.phase3_done, "phase4_done": b.phase4_done,
-            "phase5_done": b.phase5_done, "phase6_done": b.phase6_done,
+            "phase1_done": p1_done, "phase2_done": p2_done,
+            "phase3_done": p3_done, "phase4_done": p4_done,
+            "phase5_done": p5_done, "phase6_done": p6_done,
             "created_at": b.created_at,
-            "has_chapters": ch_counts.get(b.id, 0) > 0,
+            "has_chapters": has_chapters,
             "has_characters": char_counts.get(b.id, 0) > 0
         })
     

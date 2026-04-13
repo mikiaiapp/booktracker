@@ -140,7 +140,7 @@ async def get_user_engine(user_id: str):
                 await conn.execute(text("UPDATE books SET phase2_done = 1 WHERE phase2_done = 0 AND id IN (SELECT book_id FROM chapters)"))
                 await conn.execute(text("UPDATE books SET phase3_done = 1 WHERE phase3_done = 0 AND id IN (SELECT book_id FROM chapters WHERE summary IS NOT NULL AND length(summary) > 50)"))
                 await conn.execute(text("UPDATE books SET phase4_done = 1 WHERE phase4_done = 0 AND id IN (SELECT book_id FROM characters)"))
-                await conn.execute(text("UPDATE books SET phase5_done = 1 WHERE phase5_done = 0 AND global_summary IS NOT NULL AND length(global_summary) > 100"))
+                await conn.execute(text("UPDATE books SET phase5_done = 1 WHERE phase5_done = 0 AND ((global_summary IS NOT NULL AND length(global_summary) > 100) OR (mindmap_data IS NOT NULL AND length(cast(mindmap_data as text)) > 100))"))
                 await conn.execute(text("UPDATE books SET phase6_done = 1 WHERE phase6_done = 0 AND podcast_script IS NOT NULL AND podcast_audio_path IS NOT NULL"))
                 
                 # LIMPIEZA: Resetear banderas de fase para libros shell (fichas) que se pillaron por el backfill anterior
