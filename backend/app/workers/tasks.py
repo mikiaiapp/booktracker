@@ -14,6 +14,20 @@ from app.core.config import settings
 
 # --- Helpers de Estado ---
 
+def _check_revocation(user_id: str, book_id: str):
+    """Verifica si existe una orden de cancelación o si la cola ha sido limpiada."""
+    from app.workers.queue_manager import _r, _pk
+    r = _r()
+    # 1. Chequeo de bandera explícita
+    if r.get(f"btq:{user_id}:cancel_flag:{book_id}"):
+        print(f"[WORKER] Detención detectada para {book_id}. Abortando.")
+        return True
+    # 2. Chequeo de existencia (si se borró la cola completa)
+    if not r.hexists(_pk(user_id), book_id):
+        print(f"[WORKER] Datos de libro desaparecidos (limpieza de cola). Abortando {book_id}.")
+        return True
+    return False
+
 def _sanitize_model_name(m_name: str) -> str:
     """Corrige nombres legados o typos antes de mostrarlos al usuario."""
     if not m_name: return "gemini-1.5-flash"
@@ -151,6 +165,10 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
                 if ch.summary and len(ch.summary) > 20 and not force: continue
                 pct = int((i/len(chaps))*100)
                 update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando {ch.title}...", model="Buscando IA...")
+                if _check_revocation(user_id, book_id):
+                    on_done(user_id, book_id)
+                    return
+
                 res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
                 if res:
                     ch.summary, ch.key_events, ch.summary_status = res.get("summary"), res.get("key_events", []), "done"
@@ -184,7 +202,10 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
             await db.execute(delete(Character).where(Character.book_id == book_id))
             
             char_list, m_list = await get_character_list(all_summaries, api_keys=keys)
-            for i, c in enumerate(char_list[:12]): # Optimizado para costo y tiempo
+            for i, c in enumerate(char_list[:12]):
+                if _check_revocation(user_id, book_id):
+                    on_done(user_id, book_id)
+                    return
                 char_name = c["name"]
                 update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
                 detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
@@ -212,10 +233,16 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
             all_summaries = await _get_summaries_text(db, book_id)
             
             # Ensayo magistral
+            if _check_revocation(user_id, book_id):
+                on_done(user_id, book_id)
+                return
             book.global_summary, m_ensayo = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys)
             update_progress(user_id, book_id, "phase5", 50, "F5: Ensayo completado", model=m_ensayo)
             
             # Mapa mental JSON
+            if _check_revocation(user_id, book_id):
+                on_done(user_id, book_id)
+                return
             book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys)
             update_progress(user_id, book_id, "phase5", 90, "F5: Mapa mental completado", model=m_mapa)
             
@@ -238,8 +265,11 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                 return
 
             update_progress(user_id, book_id, "phase6", 10, "F6: Creando guion de podcast...")
+            if _check_revocation(user_id, book_id):
+                on_done(user_id, book_id)
+                return
+                
             keys = await _get_user_api_keys(user_id)
-            # Solo los 5 personajes más importantes para el podcast
             char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(5))
             chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
             

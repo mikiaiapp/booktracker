@@ -123,13 +123,20 @@ def cancel(uid: str, book_id: str) -> str:
         except Exception:
             pass
 
-    # Activo → retornar task_id para que el API lo revoque y limpiar Redis
+    # Activo → marcar flag de aborto para el worker
     if r.get(_ak(uid)) == book_id:
-        tid = r.hget(_ik(uid, book_id), "task_id")
-        r.delete(_ak(uid))
-        r.delete(_ik(uid, book_id))
-        _pump(uid)
-        return tid if tid else "cancelled"
+        task_id = r.hget(_ik(uid, book_id), "task_id")
+        if not task_id:
+            r.delete(_ak(uid))
+            r.delete(_ik(uid, book_id))
+            _pump(uid)
+            return "cancelled"
+            
+        try:
+            _r().setex(f"btq:{uid}:cancel_flag:{book_id}", 3600, "1")
+            return task_id
+        except Exception:
+            return "cancelled"
 
     return "not_found"
 

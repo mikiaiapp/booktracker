@@ -15,6 +15,23 @@ async def lifespan(app: FastAPI):
     os.makedirs(settings.AUDIO_DIR, exist_ok=True)
     os.makedirs(settings.COVERS_DIR, exist_ok=True)
     os.makedirs(settings.DATABASE_DIR, exist_ok=True)
+    
+    # --- Monitor de Latidos (Caja Negra) ---
+    import threading, time, datetime
+    def heartbeat():
+        log_path = os.path.join("/data", "heartbeat.log")
+        while True:
+            try:
+                with open(log_path, "a") as f:
+                    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"[{now}] API viva. PID: {os.getpid()}\n")
+            except: pass
+            time.sleep(30)
+    
+    monitor_thread = threading.Thread(target=heartbeat, daemon=True)
+    monitor_thread.start()
+    print("[INIT] Monitor de latidos iniciado en /data/heartbeat.log")
+    
     yield
 
 
