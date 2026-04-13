@@ -16,6 +16,7 @@ services:
       dockerfile: Dockerfile
       args:
         - CACHE_BUST=v2.2.6
+    image: booktracker-api:v2.3
     container_name: booktracker-api
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
@@ -45,6 +46,7 @@ services:
       dockerfile: Dockerfile
       args:
         - CACHE_BUST=v2.2.6
+    image: booktracker-worker:v2.3
     container_name: booktracker-worker
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
@@ -82,6 +84,7 @@ services:
       dockerfile: Dockerfile
       args:
         - CACHE_BUST=v2.2.6
+    image: booktracker-ui:v2.3
     container_name: booktracker-ui
     restart: unless-stopped
     depends_on:
