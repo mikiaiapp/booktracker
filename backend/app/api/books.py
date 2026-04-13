@@ -210,8 +210,8 @@ async def list_books(
 
     response = []
     for b in books:
-        # APLICAR TU FILTRO: No mostrar libros que son solo ficha (shell) sin archivo
-        if b.status == "shell" and not b.file_path:
+        # FILTRO ESTRICTO: No mostrar libros que son solo ficha (shell) o no tienen archivo físico
+        if b.status == "shell" or not b.file_path or b.file_path.lower() in ("none", ""):
             continue
 
         # Detectar si el libro está realmente en proceso

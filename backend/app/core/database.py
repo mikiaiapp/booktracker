@@ -131,6 +131,14 @@ async def get_user_engine(user_id: str):
                                 await conn.execute(text(stmt))
                             except Exception as alt_e:
                                 print(f"Error adding {column.name} to {table_name}: {alt_e}")
+                
+                # Backfill logic for old books (mark phases as done if they have data)
+                await conn.execute(text("UPDATE books SET phase1_done = 1 WHERE phase1_done = 0 AND title IS NOT NULL AND author IS NOT NULL"))
+                await conn.execute(text("UPDATE books SET phase2_done = 1 WHERE phase2_done = 0 AND id IN (SELECT book_id FROM chapters)"))
+                await conn.execute(text("UPDATE books SET phase3_done = 1 WHERE phase3_done = 0 AND id IN (SELECT book_id FROM chapters WHERE summary IS NOT NULL AND length(summary) > 50)"))
+                await conn.execute(text("UPDATE books SET phase4_done = 1 WHERE phase4_done = 0 AND id IN (SELECT book_id FROM characters)"))
+                await conn.execute(text("UPDATE books SET phase5_done = 1 WHERE phase5_done = 0 AND global_summary IS NOT NULL AND length(global_summary) > 100"))
+                await conn.execute(text("UPDATE books SET phase6_done = 1 WHERE phase6_done = 0 AND podcast_script IS NOT NULL AND podcast_audio_path IS NOT NULL"))
 
             except Exception as e:
                 print(f"Error checking schema: {e}")

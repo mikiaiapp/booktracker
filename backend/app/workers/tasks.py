@@ -67,17 +67,30 @@ async def _get_user_api_keys(user_id: str) -> dict:
 
 async def _finalize_book_status(db, book):
     """Evalúa que fases están realmente hechas basándose en los datos y actualiza el status del libro."""
-    f1, f2 = bool(book.author and book.author_bio), book.phase2_done
-    res = await db.execute(select(Chapter).where(Chapter.book_id == book.id))
-    chaps = res.scalars().all()
+    # F1: Identificación (Básico: tiene título y autor)
+    f1 = bool(book.title and book.author)
+    
+    # F2: Estructura
+    res_ch = await db.execute(select(Chapter).where(Chapter.book_id == book.id))
+    chaps = res_ch.scalars().all()
+    f2 = len(chaps) > 0
+    
+    # F3: Resúmenes
     f3 = len(chaps) > 0 and all(c.summary and len(c.summary) > 50 for c in chaps)
+    
+    # F4: Personajes
     res_char = await db.execute(select(Character).where(Character.book_id == book.id))
     f4 = len(res_char.scalars().all()) > 0
-    f5 = bool(book.global_summary and len(book.global_summary) > 100 and book.mindmap_data)
-    f6 = bool(book.podcast_script and book.podcast_audio_path and os.path.exists(book.podcast_audio_path))
+    
+    # F5: Mindmap / Global
+    f5 = bool(book.global_summary and len(book.global_summary) > 100)
+    
+    # F6: Podcast
+    f6 = bool(book.podcast_script and book.podcast_audio_path)
 
     book.phase1_done, book.phase2_done, book.phase3_done = f1, f2, f3
     book.phase4_done, book.phase5_done, book.phase6_done = f4, f5, f6
+    
     book.status = "complete" if all([f1, f2, f3, f4, f5, f6]) else "incomplete"
     await db.commit()
     missing = [p for p, d in [("F1",f1),("F2",f2),("F3",f3),("F4",f4),("F5",f5),("F6",f6)] if not d]

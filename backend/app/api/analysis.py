@@ -276,7 +276,7 @@ async def get_status(
     has_characters = len(char_count_res.scalars().all()) > 0
     phase3_really_done = book.phase3_done or has_characters
 
-    real_audio_path = os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3")
+    real_audio_path = os.path.join(settings.AUDIO_DIR, current_user.id, f"{book_id}.mp3")
     podcast_exists = bool(book.podcast_script) and os.path.exists(real_audio_path)
     
     real_duration = book.podcast_duration
@@ -286,7 +286,10 @@ async def get_status(
             audio = MP3(real_audio_path)
             real_duration = int(audio.info.length)
         except Exception:
-            real_duration = int(len(book.podcast_script.split()) / 2.5) if book.podcast_script else 0
+            if book.podcast_script:
+                real_duration = int(len(book.podcast_script.split()) / 2.5)
+            else:
+                real_duration = 0
 
     return {
         "status":               book.status,
@@ -313,6 +316,7 @@ async def get_status(
             for j in jobs
         ],
     }
+
 
 
 # ── Audio podcast ─────────────────────────────────────────────
