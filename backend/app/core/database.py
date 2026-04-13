@@ -97,24 +97,48 @@ async def get_user_engine(user_id: str):
         from app.models.book import BookBase
         async with engine.begin() as conn:
             await conn.run_sync(BookBase.metadata.create_all)
-            try:
-                from sqlalchemy import text
-                await conn.execute(text("ALTER TABLE chat_messages ADD COLUMN model TEXT"))
-            except: pass
-
-            # Migraciones manuales para fases 4, 5 y 6
-            for i in range(4, 7):
-                try:
-                    from sqlalchemy import text
-                    await conn.execute(text(f"ALTER TABLE books ADD COLUMN phase{i}_done BOOLEAN DEFAULT 0"))
-                except:
-                    pass # Ya existe
             
+            # Safe schema migrations using PRAGMA to avoid transaction invalidation
             try:
                 from sqlalchemy import text
-                await conn.execute(text("ALTER TABLE books ADD COLUMN podcast_duration INTEGER"))
-            except:
-                pass
+                
+                # Check chat_messages
+                res_chat = await conn.execute(text("PRAGMA table_info(chat_messages)"))
+                chat_cols = [row[1] for row in res_chat.fetchall()]
+                if "model" not in chat_cols:
+                    await conn.execute(text("ALTER TABLE chat_messages ADD COLUMN model TEXT"))
+                
+                # Check books
+                res_books = await conn.execute(text("PRAGMA table_info(books)"))
+                book_cols = [row[1] for row in res_books.fetchall()]
+                
+                missing_book_cols = {
+                    "cover_local": "TEXT",
+                    "podcast_audio_path": "TEXT",
+                    "podcast_script": "TEXT",
+                    "podcast_duration": "INTEGER",
+                    "phase4_done": "BOOLEAN DEFAULT 0",
+                    "phase5_done": "BOOLEAN DEFAULT 0",
+                    "phase6_done": "BOOLEAN DEFAULT 0"
+                }
+                for col, ctype in missing_book_cols.items():
+                    if col not in book_cols:
+                        await conn.execute(text(f"ALTER TABLE books ADD COLUMN {col} {ctype}"))
+                
+                # Check chapters
+                res_chaps = await conn.execute(text("PRAGMA table_info(chapters)"))
+                chap_cols = [row[1] for row in res_chaps.fetchall()]
+                
+                missing_chap_cols = {
+                    "page_start": "INTEGER",
+                    "page_end": "INTEGER"
+                }
+                for col, ctype in missing_chap_cols.items():
+                    if col not in chap_cols:
+                        await conn.execute(text(f"ALTER TABLE chapters ADD COLUMN {col} {ctype}"))
+
+            except Exception as e:
+                print(f"Error checking schema: {e}")
     return _user_engines[user_id]
 
 
