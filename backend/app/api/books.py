@@ -196,12 +196,15 @@ async def list_books(
 
     # Pre-cargar conteos de capítulos y personajes para "curar" estados atascados
     # (Agrupados por book_id para eficiencia)
-    ch_counts_res = await db.execute(
-        select(Chapter.book_id, func.count(Chapter.id))
-        .where(Chapter.book_id.in_([b.id for b in books]))
-        .group_by(Chapter.book_id)
-    )
     ch_counts = {r[0]: r[1] for r in ch_counts_res.all()}
+
+    # Conteo de personajes
+    char_counts_res = await db.execute(
+        select(Character.book_id, func.count(Character.id))
+        .where(Character.book_id.in_([b.id for b in books]))
+        .group_by(Character.book_id)
+    )
+    char_counts = {r[0]: r[1] for r in char_counts_res.all()}
 
     response = []
     for b in books:
