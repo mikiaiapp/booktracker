@@ -156,7 +156,12 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         except Exception as e:
             last_err = str(e)
             print(f"[IA] Fallo en {m}: {last_err}")
-            await asyncio.sleep(2)
+            
+            # Si es un error de cuota (429), esperar un poco más
+            if "429" in last_err or "quota" in last_err.lower():
+                await asyncio.sleep(5)
+            else:
+                await asyncio.sleep(1)
             continue
 
     raise ValueError(f"Todos los modelos de IA fallaron. Último error: {last_err}")
@@ -199,7 +204,7 @@ Responde ESTRICTAMENTE con un JSON con las claves 'summary' (un texto largo y an
 async def get_character_list(all_summaries, api_keys=None) -> list:
     if not all_summaries: return [], "Error"
     system = "Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true}]"
-    context = _compress_text(all_summaries, 100000)
+    context = _compress_text(all_summaries, 50000)
     try:
         raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys)
         data = _parse_json(raw)
@@ -228,12 +233,12 @@ Responde ESTRICTAMENTE con este esquema JSON:
 
 async def generate_global_summary(summaries, book, author, api_keys=None):
     system = "Académico literario y ensayista. Escribe un ensayo magistral, profundo y estructurado en español sobre la obra completa."
-    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 35000)}"
+    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 18000)}"
     return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys)
 
 async def generate_mindmap(summaries, book, api_keys=None):
     system = "Experto en análisis. Responde SOLO con JSON de ramas y niños."
-    user = f"Mapa mental JSON para {book}. Contexto:\n{_compress_text(summaries, 15000)}"
+    user = f"Mapa mental JSON para {book}. Contexto:\n{_compress_text(summaries, 12000)}"
     try:
         raw, m = await _call_ai_with_retry(system, user, 4000, is_fast_task=True, api_keys=api_keys)
         return (_parse_json(raw) or {"center": book, "branches": []}), m
