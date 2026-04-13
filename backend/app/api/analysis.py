@@ -261,7 +261,8 @@ async def get_status(
     ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
     chapters  = ch_result.scalars().all()
     total_ch  = len(chapters)
-    done_ch   = sum(1 for c in chapters if c.summary_status == "done")
+    # Solo contamos como hecho si tiene un resumen válido de más de 50 caracteres
+    done_ch   = sum(1 for c in chapters if c.summary_status == "done" and c.summary and len(c.summary) > 50)
 
     # Inteligencia de detección de fases completadas (auto-recuperación de estados inconsistentes)
     chapters_summarized = total_ch > 0 and done_ch == total_ch
@@ -293,8 +294,8 @@ async def get_status(
         "phase2_done":          phase2_really_done,
         "phase3_done":          phase3_really_done,
         "chapters_summarized":  chapters_summarized,
-        "has_global_summary":   bool(book.global_summary),
-        "has_mindmap":          bool(book.mindmap_data),
+        "has_global_summary":   bool(book.global_summary and len(book.global_summary) > 50),
+        "has_mindmap":          bool(book.mindmap_data and len(book.mindmap_data) > 10),
         "podcast_done":         podcast_exists,
         "error_msg":            book.error_msg,
         "chapters_total":       total_ch,
