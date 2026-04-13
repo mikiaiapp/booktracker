@@ -27,6 +27,7 @@ services:
       - /volume1/docker/booktracker/data/audio:/data/audio
       - /volume1/docker/booktracker/data/covers:/data/covers
     environment:
+      - PYTHONPATH=/app
       - DATABASE_DIR=/data/databases
       - UPLOADS_DIR=/data/uploads
       - AUDIO_DIR=/data/audio
@@ -59,6 +60,7 @@ services:
       - /volume1/docker/booktracker/data/audio:/data/audio
       - /volume1/docker/booktracker/data/covers:/data/covers
     environment:
+      - PYTHONPATH=/app
       - DATABASE_DIR=/data/databases
       - UPLOADS_DIR=/data/uploads
       - AUDIO_DIR=/data/audio
