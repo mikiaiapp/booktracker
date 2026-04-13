@@ -1316,9 +1316,30 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
               <div className="chapter-body-inner">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '2rem' }}>
                   <div style={{ flex: 1 }}>
-                    <p style={{ whiteSpace: 'pre-wrap' }}>
-                      {ch.summary || (ch.summary_status === 'pending' ? 'Este capítulo está pendiente de resumen.' : 'Contenido no disponible.')}
-                    </p>
+                    {(!ch.summary || ch.summary.length < 50) ? (
+                      <div className="empty-chapter-warning" style={{ 
+                        display: 'flex', 
+                        gap: '1rem', 
+                        padding: '1.5rem', 
+                        background: 'rgba(239, 68, 68, 0.05)', 
+                        border: '1px solid rgba(239, 68, 68, 0.2)', 
+                        borderRadius: '12px',
+                        marginBottom: '1rem' 
+                      }}>
+                        <AlertCircle size={24} style={{ color: '#ef4444', flexShrink: 0 }} />
+                        <div>
+                          <strong style={{ display: 'block', color: '#ef4444', marginBottom: '0.25rem' }}>🤖 Capitulo sin resumen válido</strong>
+                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--mist)' }}>
+                            La IA parece haber fallado al procesar este capítulo (resumen demasiado corto o vacío). 
+                            Pulsa el botón de la derecha para intentar reanalizarlo.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p style={{ whiteSpace: 'pre-wrap', color: 'var(--mist)', lineHeight: '1.6' }}>
+                        {ch.summary}
+                      </p>
+                    )}
                     {Array.isArray(ch.key_events) && ch.key_events.length > 0 && (
                       <div className="key-events" style={{ marginTop: '1.5rem' }}>
                         <strong>Eventos clave:</strong>

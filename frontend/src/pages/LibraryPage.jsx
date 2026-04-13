@@ -41,10 +41,10 @@ const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
 const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
 
 const ANALYSIS_GROUPS = {
-  analyzed:   { label: 'Analizados', statuses: ['complete', 'analyzed', 'structured'] },
+  analyzed:   { label: 'Analizados', statuses: ['complete'] },
   incomplete: { label: 'A medias',   statuses: ['incomplete'] },
   processing: { label: 'Procesando', statuses: ['identifying', 'analyzing_structure', 'analyzing', 'summarizing', 'generating_podcast', 'uploaded', 'queued'] },
-  identified: { label: 'Identificados', statuses: ['identified'] },
+  identified: { label: 'Identificados', statuses: ['identified', 'structured'] },
   pending:    { label: 'Pendientes',  statuses: ['duplicate', 'error'] },
 }
 
@@ -380,12 +380,6 @@ export default function LibraryPage() {
     .filter(b => filter === 'all' || b.read_status === filter)
     .filter(b => {
       if (analysisFilter === 'all') return true
-      if (analysisFilter === 'analyzed') {
-        return ['complete', 'analyzed', 'structured'].includes(b.status) || (b.status === 'incomplete' && b.global_summary);
-      }
-      if (analysisFilter === 'incomplete') {
-        return b.status === 'incomplete' && !b.global_summary;
-      }
       const group = ANALYSIS_GROUPS[analysisFilter]
       if (group) return group.statuses.includes(b.status)
       return true
@@ -455,15 +449,7 @@ export default function LibraryPage() {
 
           {/* Filtros dinámicos basados en los libros actuales */}
           {Object.entries(ANALYSIS_GROUPS).map(([key, group]) => {
-            const count = allBooks.filter(b => {
-              if (key === 'analyzed') {
-                return group.statuses.includes(b.status) || (b.status === 'incomplete' && b.global_summary)
-              }
-              if (key === 'incomplete') {
-                return b.status === 'incomplete' && !b.global_summary
-              }
-              return group.statuses.includes(b.status)
-            }).length
+            const count = allBooks.filter(b => group.statuses.includes(b.status)).length
             if (count === 0) return null
             return (
               <button
@@ -522,7 +508,7 @@ export default function LibraryPage() {
                     title="Cambiar portada"
                   >✏</button>
                   <div className="cover-status">
-                    {(['complete', 'analyzed', 'structured'].includes(book.status) || (book.status === 'incomplete' && book.global_summary)) ? (
+                    {book.status === 'complete' ? (
                       <span className="cover-badge analyzed">✦ Analizado</span>
                     ) : book.status === 'queued' ? (
                       <span className="cover-badge queued">En cola</span>
@@ -530,7 +516,7 @@ export default function LibraryPage() {
                       <span className="cover-badge shell">Solo ficha</span>
                     ) : book.status === 'incomplete' ? (
                       <span className="cover-badge processing" style={{background: 'var(--rust)', color: 'white'}}>A medias</span>
-                    ) : ['summarizing','analyzing_structure','identifying'].includes(book.status) ? (
+                    ) : ['summarizing','analyzing_structure','identifying', 'analyzing', 'generating_podcast'].includes(book.status) ? (
                       <span className="cover-badge processing">Procesando…</span>
                     ) : book.phase1_done ? (
                       <span className="cover-badge identified">Identificado</span>
