@@ -276,10 +276,11 @@ async def get_book(
         # 4. Otros libros del autor (con seguridad ante nulos)
         other_books = []
         if book.author:
+            from sqlalchemy import desc
             others_result = await db.execute(
                 select(Book)
                 .where(Book.author == book.author, Book.id != book_id)
-                .order_by(Book.year.desc().nullslast(), Book.title)
+                .order_by(desc(Book.year).nulls_last(), Book.title)
             )
             for b in others_result.scalars().all():
                 try:
