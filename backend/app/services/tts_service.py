@@ -11,18 +11,19 @@ from typing import List, Tuple
 from app.core.config import settings
 
 
-async def synthesize_podcast(script: str, output_path: str):
+async def synthesize_podcast(script: str, output_path: str, api_keys: dict = None):
     """Parse script and generate multi-voice audio."""
     lines = parse_script(script)
     if not lines:
         raise ValueError("Empty or unparseable podcast script")
 
-    provider = settings.TTS_PROVIDER.lower()
-    if provider == "elevenlabs":
-        await synthesize_elevenlabs(lines, output_path)
-    else:
-        # Default: OpenAI TTS (cheapest at $15/1M chars)
-        await synthesize_openai(lines, output_path)
+    # Obtener llave de OpenAI para TTS
+    openai_key = api_keys.get("openai") if api_keys else None
+    if not openai_key:
+        raise ValueError("Se requiere una API Key de OpenAI para generar el audio del podcast.")
+
+    # Por ahora usamos siempre OpenAI como proveedor por defecto (más económico)
+    await synthesize_openai(lines, output_path, openai_key)
 
 
 def parse_script(script: str) -> List[Tuple[str, str]]:
@@ -41,12 +42,12 @@ def parse_script(script: str) -> List[Tuple[str, str]]:
     return lines
 
 
-async def synthesize_openai(lines: List[Tuple[str, str]], output_path: str):
+async def synthesize_openai(lines: List[Tuple[str, str]], output_path: str, api_key: str):
     """Use OpenAI TTS API with tts-1 (cheapest model)."""
     from openai import AsyncOpenAI
     import struct
 
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    client = AsyncOpenAI(api_key=api_key)
 
     # Voice mapping: ANA = shimmer (female), CARLOS = echo (male)
     voice_map = {

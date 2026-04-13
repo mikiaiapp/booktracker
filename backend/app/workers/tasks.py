@@ -336,10 +336,12 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
             audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
             os.makedirs(os.path.dirname(audio_path), exist_ok=True)
             try:
-                await synthesize_podcast(script, audio_path)
+                await synthesize_podcast(script, audio_path, api_keys=keys)
                 book.podcast_audio_path = audio_path
                 book.phase6_done = True
-            except: pass
+            except Exception as e:
+                print(f"[WORKER] Error en TTS: {e}")
+                book.error_msg = f"Error en generación de audio: {str(e)}"
             
             await dispatch_next_final(db, user_id, book_id)
 

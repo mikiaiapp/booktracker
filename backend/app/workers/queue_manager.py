@@ -211,10 +211,9 @@ def _pump(uid: str):
     title   = entry.get("title", "")
     force   = entry.get("force", False)
 
-    from app.core.config import settings
     # TTL de seguridad: si el worker muere, el slot se libera en 2 horas
     r.set(_ak(uid), book_id, ex=7200)
-    _set_info(uid, book_id, "starting", 5, "Iniciando…", title, model=settings.AI_MODEL)
+    _set_info(uid, book_id, "starting", 5, "Iniciando…", title, model="")
 
     _launch(uid, book_id, phases, title=title, force=force)
 
@@ -241,8 +240,7 @@ def _launch(uid: str, book_id: str, phases: list, title: str = "", force: bool =
     if fn:
         res = fn()
         if hasattr(res, "id"):
-            from app.core.config import settings
-            _set_info(uid, book_id, f"phase{first}", 5, f"Estación {first} iniciada…", title, task_id=res.id, model=settings.AI_MODEL)
+            _set_info(uid, book_id, f"phase{first}", 5, f"Estación {first} iniciada…", title, task_id=res.id, model="")
 
 
 def _set_info(uid, book_id, phase, pct, msg, title="", task_id=None, model=""):
