@@ -260,7 +260,8 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
             from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
             _r().expire(_ak(user_id), wait_sec + 3600) # Bloquear slot durante la espera
-            update_progress(user_id, book_id, "phase3", 0, f"Pausa cuota: {ve}", model="Agotado")
+            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
+            update_progress(user_id, book_id, "phase3", 0, clean_msg, model="Agotado")
             print(f"[WORKER] Reintentando F3 en {wait_sec}s por cuota.")
             raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
@@ -314,7 +315,8 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
             from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
             _r().expire(_ak(user_id), wait_sec + 3600)
-            update_progress(user_id, book_id, "phase4", 0, f"Pausa cuota: {ve}", model="Agotado")
+            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
+            update_progress(user_id, book_id, "phase4", 0, clean_msg, model="Agotado")
             print(f"[WORKER] Reintentando F4 en {wait_sec}s por cuota.")
             raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
@@ -359,7 +361,8 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
             from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
             _r().expire(_ak(user_id), wait_sec + 3600)
-            update_progress(user_id, book_id, "phase5", 0, f"Pausa cuota: {ve}", model="Agotado")
+            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
+            update_progress(user_id, book_id, "phase5", 0, clean_msg, model="Agotado")
             print(f"[WORKER] Reintentando F5 en {wait_sec}s por cuota.")
             raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
@@ -418,7 +421,8 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
             from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
             _r().expire(_ak(user_id), wait_sec + 3600)
-            update_progress(user_id, book_id, "phase6", 0, f"Pausa cuota: {ve}", model="Agotado")
+            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
+            update_progress(user_id, book_id, "phase6", 0, clean_msg, model="Agotado")
             print(f"[WORKER] Reintentando F6 en {wait_sec}s por cuota.")
             raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
