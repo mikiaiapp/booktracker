@@ -21,6 +21,7 @@ _MODEL_CACHE = {
     "last_update": 0,
     "keys_hash": ""
 }
+_BLACKLISTED_PROVIDERS = {} # {provider: expiry_timestamp}
 
 async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[str, str]]:
     """Obtiene y clasifica los modelos disponibles dinámicamente."""
@@ -128,6 +129,14 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     # 3. Ejecución Secuencial
     last_err = ""
     for prov, m in active_queue:
+        # Saltar si el proveedor está temporalmente bloqueado por cuota (10 min)
+        if prov in _BLACKLISTED_PROVIDERS:
+            if time.time() < _BLACKLISTED_PROVIDERS[prov]:
+                print(f"[IA] Saltando {prov} (bloqueado por cuota hasta {time.strftime('%H:%M:%S', time.localtime(_BLACKLISTED_PROVIDERS[prov]))})")
+                continue
+            else:
+                del _BLACKLISTED_PROVIDERS[prov]
+
         token = current_keys.get(prov)
         if not token: continue
         
@@ -157,11 +166,14 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             last_err = str(e)
             print(f"[IA] Fallo en {m}: {last_err}")
             
-            # Si es un error de cuota (429), esperar un poco más
-            if "429" in last_err or "quota" in last_err.lower():
-                await asyncio.sleep(5)
-            else:
+            # Si es un error de cuota (429/Daily limit), bloquear proveedor por 10 minutos
+            if any(x in last_err.lower() for x in ["429", "quota", "daily limit", "exceeded"]):
+                # Solo bloquear si parece ser un error de cuota real, no un transitorio corregible
+                _BLACKLISTED_PROVIDERS[prov] = time.time() + 600 
+                print(f"[IA] Proveedor {prov} marcado como agotado. Reintentando con el siguiente...")
                 await asyncio.sleep(1)
+            else:
+                await asyncio.sleep(2)
             continue
 
     raise ValueError(f"Todos los modelos de IA fallaron. Último error: {last_err}")
@@ -204,7 +216,7 @@ Responde ESTRICTAMENTE con un JSON con las claves 'summary' (un texto largo y an
 async def get_character_list(all_summaries, api_keys=None) -> list:
     if not all_summaries: return [], "Error"
     system = "Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true}]"
-    context = _compress_text(all_summaries, 50000)
+    context = _compress_text(all_summaries, 20000)
     try:
         raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys)
         data = _parse_json(raw)
@@ -225,7 +237,7 @@ Debes profundizar en:
 
 Responde ESTRICTAMENTE con este esquema JSON:
 {{"name":"{name}","role":"...","description":"Análisis amplio de su papel","personality":"Estudio psicológico detallado","arc":"Su evolución del inicio al fin","relationships":{{"personaje":"tipo de relación"}},"key_moments":["momento 1", "momento 2"],"quotes":["cita memorable"]}}"""
-    user = f"Contexto del libro '{book}' para analizar a '{name}':\n{_compress_text(all_summaries, 40000)}"
+    user = f"Contexto del libro '{book}' para analizar a '{name}':\n{_compress_text(all_summaries, 15000)}"
     try:
         raw, m = await _call_ai_with_retry(system, user, 3500, api_keys=api_keys)
         return _parse_json(raw), m
@@ -233,7 +245,7 @@ Responde ESTRICTAMENTE con este esquema JSON:
 
 async def generate_global_summary(summaries, book, author, api_keys=None):
     system = "Académico literario y ensayista. Escribe un ensayo magistral, profundo y estructurado en español sobre la obra completa."
-    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 18000)}"
+    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 15000)}"
     return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys)
 
 async def generate_mindmap(summaries, book, api_keys=None):
