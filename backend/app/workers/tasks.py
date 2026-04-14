@@ -47,6 +47,18 @@ def _sanitize_model_name(m_name: str) -> str:
     }
     return mapping.get(m_low, m_low)
 
+def _extract_wait_seconds(msg: str) -> int:
+    """Extrae segundos de espera de un mensaje de error o devuelve 600 por defecto."""
+    try:
+        import re
+        # Buscar "Reset en 15:30" o "XXs" o "YYm"
+        match = re.search(r"en ([\d\.]+)s|en (\d+)m", msg)
+        if match:
+            if match.group(1): return int(float(match.group(1))) + 5
+            if match.group(2): return (int(match.group(2)) * 60) + 5
+    except: pass
+    return 600 # 10 minutos por defecto
+
 async def _get_user_api_keys(user_id: str) -> dict:
     from app.core.database import get_global_db
     from app.models.user import User
@@ -245,8 +257,12 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
                     else: process_book_phase4.delay(user_id, book_id, chain=True)
                 else: on_done(user_id, book_id)
         except ValueError as ve:
-            update_progress(user_id, book_id, "phase3", 0, f"Pausa: {ve}", model="Agotado")
-            on_done(user_id, book_id)
+            from app.workers.queue_manager import _r, _ak
+            wait_sec = _extract_wait_seconds(str(ve))
+            _r().expire(_ak(user_id), wait_sec + 3600) # Bloquear slot durante la espera
+            update_progress(user_id, book_id, "phase3", 0, f"Pausa cuota: {ve}", model="Agotado")
+            print(f"[WORKER] Reintentando F3 en {wait_sec}s por cuota.")
+            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F3: {err_msg}")
@@ -295,8 +311,12 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
                 if chain: await _dispatch_next(db, user_id, book_id, force=force)
                 else: on_done(user_id, book_id)
         except ValueError as ve:
-            update_progress(user_id, book_id, "phase4", 0, f"Pausa: {ve}", model="Agotado")
-            on_done(user_id, book_id)
+            from app.workers.queue_manager import _r, _ak
+            wait_sec = _extract_wait_seconds(str(ve))
+            _r().expire(_ak(user_id), wait_sec + 3600)
+            update_progress(user_id, book_id, "phase4", 0, f"Pausa cuota: {ve}", model="Agotado")
+            print(f"[WORKER] Reintentando F4 en {wait_sec}s por cuota.")
+            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F4: {err_msg}")
@@ -336,8 +356,12 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
                 if chain: await _dispatch_next(db, user_id, book_id, force=force)
                 else: on_done(user_id, book_id)
         except ValueError as ve:
-            update_progress(user_id, book_id, "phase5", 0, f"Pausa: {ve}", model="Agotado")
-            on_done(user_id, book_id)
+            from app.workers.queue_manager import _r, _ak
+            wait_sec = _extract_wait_seconds(str(ve))
+            _r().expire(_ak(user_id), wait_sec + 3600)
+            update_progress(user_id, book_id, "phase5", 0, f"Pausa cuota: {ve}", model="Agotado")
+            print(f"[WORKER] Reintentando F5 en {wait_sec}s por cuota.")
+            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F5: {err_msg}")
@@ -391,8 +415,12 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                 
                 await dispatch_next_final(db, user_id, book_id, book)
         except ValueError as ve:
-            update_progress(user_id, book_id, "phase6", 0, f"Pausa: {ve}", model="Agotado")
-            on_done(user_id, book_id)
+            from app.workers.queue_manager import _r, _ak
+            wait_sec = _extract_wait_seconds(str(ve))
+            _r().expire(_ak(user_id), wait_sec + 3600)
+            update_progress(user_id, book_id, "phase6", 0, f"Pausa cuota: {ve}", model="Agotado")
+            print(f"[WORKER] Reintentando F6 en {wait_sec}s por cuota.")
+            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F6: {err_msg}")
