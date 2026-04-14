@@ -163,14 +163,21 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 if not resp.choices[0].message.content: raise ValueError("Respuesta vacía del API")
                 return resp.choices[0].message.content, m
         except Exception as e:
-            last_err = str(e)
+            last_err = str(e).lower()
             print(f"[IA] Fallo en {m}: {last_err}")
             
-            # Si es un error de cuota (429/Daily limit), bloquear proveedor por 10 minutos
-            if any(x in last_err.lower() for x in ["429", "quota", "daily limit", "exceeded"]):
-                # Solo bloquear si parece ser un error de cuota real, no un transitorio corregible
-                _BLACKLISTED_PROVIDERS[prov] = time.time() + 600 
-                print(f"[IA] Proveedor {prov} marcado como agotado. Reintentando con el siguiente...")
+            # Gestión inteligente de cuotas (429)
+            if "429" in last_err or "quota" in last_err or "limit" in last_err:
+                # Caso A: Límite diario (Gemini suele indicarlo)
+                if "daily" in last_err:
+                    _BLACKLISTED_PROVIDERS[prov] = time.time() + 3600 # 1 hora
+                    print(f"[IA] Proveedor {prov} AGOTADO POR HOY (Daily Limit).")
+                # Caso B: Límite por minuto (Groq/Gemini TPM)
+                else:
+                    wait_time = 30 if prov == "groq" else 60
+                    _BLACKLISTED_PROVIDERS[prov] = time.time() + wait_time
+                    print(f"[IA] Proveedor {prov} saturado (TPM/RPM). Esperando {wait_time}s...")
+                
                 await asyncio.sleep(1)
             else:
                 await asyncio.sleep(2)
