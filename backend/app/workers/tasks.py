@@ -199,48 +199,45 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True, fo
 def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p3():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            if book.phase3_done and not force:
-                if chain: process_book_phase4.delay(user_id, book_id, chain=True)
-                else: on_done(user_id, book_id)
-                return
-
-            chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
-            keys = await _get_user_api_keys(user_id)
-            for i, ch in enumerate(chaps):
-                # Solo analizamos si no tiene resumen o si forzamos el re-análisis
-                if ch.summary and len(ch.summary) > 50 and not force: continue
-                pct = int((i/len(chaps))*100)
-                update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando capítulo {i+1} de {len(chaps)} ({ch.title})", model="Buscando IA...")
-                if _check_revocation(user_id, book_id):
-                    on_done(user_id, book_id)
+        try:
+            async for db in get_user_db(user_id):
+                book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+                if not book: return
+                if book.phase3_done and not force:
+                    if chain: process_book_phase4.delay(user_id, book_id, chain=True)
+                    else: on_done(user_id, book_id)
                     return
 
-                res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
-                if res:
-                    ch.summary = res.get("summary")
-                    ch.key_events = res.get("key_events", [])
-                    # Validación de longitud estricta
-                    if ch.summary and len(ch.summary) > 50:
-                        ch.summary_status = "done"
-                    else:
-                        ch.summary_status = "pending"
-                    await db.commit()
-                update_progress(user_id, book_id, "phase3", pct, f"F3: Resumido {ch.title}", model=model_used)
-                await asyncio.sleep(1.5)
+                chaps = (await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))).scalars().all()
+                keys = await _get_user_api_keys(user_id)
+                for i, ch in enumerate(chaps):
+                    if ch.summary and len(ch.summary) > 50 and not force: continue
+                    pct = int((i/len(chaps))*100)
+                    update_progress(user_id, book_id, "phase3", pct, f"F3: Analizando capítulo {i+1} de {len(chaps)} ({ch.title})", model="Buscando IA...")
+                    if _check_revocation(user_id, book_id):
+                        on_done(user_id, book_id)
+                        return
 
-            await _finalize_book_status(db, book)
-            if chain:
-                # Si a pesar del loop siguen faltando capítulos, reintentamos F3
-                if not book.phase3_done:
-                    print(f"[WORKER] F3 incompleta para {book_id}, reintentando...")
-                    process_book_phase3.delay(user_id, book_id, chain=True)
-                else:
-                    process_book_phase4.delay(user_id, book_id, chain=True)
-            else:
-                on_done(user_id, book_id)
+                    res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
+                    if res:
+                        ch.summary = res.get("summary")
+                        ch.key_events = res.get("key_events", [])
+                        ch.summary_status = "done" if (ch.summary and len(ch.summary) > 50) else "pending"
+                        await db.commit()
+                    update_progress(user_id, book_id, "phase3", pct, f"F3: Resumido {ch.title}", model=model_used)
+                    await asyncio.sleep(1)
+
+                await _finalize_book_status(db, book)
+                if chain:
+                    if not book.phase3_done: process_book_phase3.delay(user_id, book_id, chain=True)
+                    else: process_book_phase4.delay(user_id, book_id, chain=True)
+                else: on_done(user_id, book_id)
+        except ValueError as ve:
+            update_progress(user_id, book_id, "phase3", 0, f"Pausa: {ve}", model="Agotado")
+            on_done(user_id, book_id)
+        except Exception as e:
+            print(f"[WORKER] Error F3: {e}")
+            on_done(user_id, book_id)
     return run_async(_p3())
 
 # FASE 4: PERSONAJES
@@ -248,44 +245,47 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
 def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p4():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            if book.phase4_done and not force:
-                if chain: process_book_phase5.delay(user_id, book_id, chain=True)
-                else: on_done(user_id, book_id)
-                return
-
-            update_progress(user_id, book_id, "phase4", 5, "F4: Extrayendo personajes...", model="Buscando IA...")
-            keys = await _get_user_api_keys(user_id)
-            all_summaries = await _get_summaries_text(db, book_id)
-            char_list, m_list = await get_character_list(all_summaries, api_keys=keys)
-            
-            # Solo añadimos personajes que no existan ya (por nombre) si no es force
-            existing_res = await db.execute(select(Character).where(Character.book_id == book_id))
-            existing_names = {c.name.lower() for c in existing_res.scalars().all()}
-            
-            for i, c in enumerate(char_list[:12]):
-                if _check_revocation(user_id, book_id):
-                    on_done(user_id, book_id)
+        try:
+            async for db in get_user_db(user_id):
+                book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+                if not book: return
+                if book.phase4_done and not force:
+                    if chain: process_book_phase5.delay(user_id, book_id, chain=True)
+                    else: on_done(user_id, book_id)
                     return
-                char_name = c["name"]
-                if char_name.lower() in existing_names and not force:
-                    continue
-                    
-                update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
-                detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
-                if detail:
-                    # Si ya existía y estamos en 'force', borrar el viejo
-                    if char_name.lower() in existing_names:
-                        await db.execute(delete(Character).where(Character.book_id == book_id, func.lower(Character.name) == char_name.lower()))
-                    
-                    db.add(Character(book_id=book_id, **detail))
-                    await db.commit()
-            
-            await _finalize_book_status(db, book)
-            if chain: await _dispatch_next(db, user_id, book_id, force=force)
-            else: on_done(user_id, book_id)
+
+                update_progress(user_id, book_id, "phase4", 5, "F4: Extrayendo personajes...", model="Buscando IA...")
+                keys = await _get_user_api_keys(user_id)
+                all_summaries = await _get_summaries_text(db, book_id)
+                char_list, m_list = await get_character_list(all_summaries, api_keys=keys)
+                
+                existing_res = await db.execute(select(Character).where(Character.book_id == book_id))
+                existing_names = {c.name.lower() for c in existing_res.scalars().all()}
+                
+                for i, c in enumerate(char_list[:12]):
+                    if _check_revocation(user_id, book_id):
+                        on_done(user_id, book_id)
+                        return
+                    char_name = c["name"]
+                    if char_name.lower() in existing_names and not force: continue
+                        
+                    update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
+                    detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
+                    if detail:
+                        if char_name.lower() in existing_names:
+                            await db.execute(delete(Character).where(Character.book_id == book_id, func.lower(Character.name) == char_name.lower()))
+                        db.add(Character(book_id=book_id, **detail))
+                        await db.commit()
+                
+                await _finalize_book_status(db, book)
+                if chain: await _dispatch_next(db, user_id, book_id, force=force)
+                else: on_done(user_id, book_id)
+        except ValueError as ve:
+            update_progress(user_id, book_id, "phase4", 0, f"Pausa: {ve}", model="Agotado")
+            on_done(user_id, book_id)
+        except Exception as e:
+            print(f"[WORKER] Error F4: {e}")
+            on_done(user_id, book_id)
     return run_async(_p4())
 
 # FASE 5: MAPA MENTAL Y RESUMEN GLOBAL
@@ -293,31 +293,38 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
 def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p5():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            
-            update_progress(user_id, book_id, "phase5", 10, "F5: Iniciando ensayo y mapa...", model="Buscando IA...")
-            keys = await _get_user_api_keys(user_id)
-            all_summaries = await _get_summaries_text(db, book_id)
-            
-            # Ensayo magistral
-            if _check_revocation(user_id, book_id):
-                on_done(user_id, book_id)
-                return
-            book.global_summary, m_ensayo = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys)
-            update_progress(user_id, book_id, "phase5", 50, "F5: Ensayo completado", model=m_ensayo)
-            
-            # Mapa mental JSON
-            if _check_revocation(user_id, book_id):
-                on_done(user_id, book_id)
-                return
-            book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys)
-            update_progress(user_id, book_id, "phase5", 90, "F5: Mapa mental completado", model=m_mapa)
-            
-            await db.commit()
-            if chain: await _dispatch_next(db, user_id, book_id, force=force)
-            else: on_done(user_id, book_id)
+        try:
+            async for db in get_user_db(user_id):
+                book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+                if not book: return
+                
+                update_progress(user_id, book_id, "phase5", 10, "F5: Iniciando ensayo y mapa...", model="Buscando IA...")
+                keys = await _get_user_api_keys(user_id)
+                all_summaries = await _get_summaries_text(db, book_id)
+                
+                # Ensayo magistral
+                if _check_revocation(user_id, book_id):
+                    on_done(user_id, book_id)
+                    return
+                book.global_summary, m_ensayo = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys)
+                update_progress(user_id, book_id, "phase5", 50, "F5: Ensayo completado", model=m_ensayo)
+                
+                # Mapa mental JSON
+                if _check_revocation(user_id, book_id):
+                    on_done(user_id, book_id)
+                    return
+                book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys)
+                update_progress(user_id, book_id, "phase5", 90, "F5: Mapa mental completado", model=m_mapa)
+                
+                await db.commit()
+                if chain: await _dispatch_next(db, user_id, book_id, force=force)
+                else: on_done(user_id, book_id)
+        except ValueError as ve:
+            update_progress(user_id, book_id, "phase5", 0, f"Pausa: {ve}", model="Agotado")
+            on_done(user_id, book_id)
+        except Exception as e:
+            print(f"[WORKER] Error F5: {e}")
+            on_done(user_id, book_id)
     return run_async(_p5())
 
 # FASE 6: PODCAST

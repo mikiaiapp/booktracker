@@ -21,7 +21,8 @@ _MODEL_CACHE = {
     "last_update": 0,
     "keys_hash": ""
 }
-_BLACKLISTED_PROVIDERS = {} # {provider: expiry_timestamp}
+_BLACKLISTED_PROVIDERS = {} # {provider: (expiry_timestamp, reason_msg)}
+_GLOBAL_EXHAUSTION_MSG = "" 
 
 async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[str, str]]:
     """Obtiene y clasifica los modelos disponibles dinámicamente."""
@@ -163,28 +164,46 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 if not resp.choices[0].message.content: raise ValueError("Respuesta vacía del API")
                 return resp.choices[0].message.content, m
         except Exception as e:
-            last_err = str(e).lower()
+            last_err_raw = str(e).lower()
+            last_err = last_err_raw
             print(f"[IA] Fallo en {m}: {last_err}")
             
             # Gestión inteligente de cuotas (429)
             if "429" in last_err or "quota" in last_err or "limit" in last_err:
+                # Extraer tiempo de espera si está en el mensaje (solo Groq/Gemini suelen darlo)
+                import re
+                wait_seconds = 60
+                match = re.search(r"in ([\d\.]+)s|in (\d+)m", last_err)
+                if match:
+                    if match.group(1): wait_seconds = int(float(match.group(1)))
+                    elif match.group(2): wait_seconds = int(match.group(2)) * 60
+
                 # Límite DIARIO (Gemini "daily", Groq "tpd" o "tokens per day")
                 if any(x in last_err for x in ["daily", "tpd", "tokens per day"]):
-                    _BLACKLISTED_PROVIDERS[prov] = time.time() + 3600 # 1 hora
-                    print(f"[IA] Proveedor {prov} AGOTADO POR HOY (Límite diario).")
-                # Límite MOMENTÁNEO (TPM/RPM)
+                    reset_time = time.time() + 3600 # Fallback 1h
+                    # Si Groq nos dio un tiempo mayor, lo usamos
+                    if wait_seconds > 60: reset_time = time.time() + wait_seconds
+                    
+                    timestr = time.strftime('%H:%M', time.localtime(reset_time))
+                    msg = f"Agotada cuota diaria. Reset estimado: {timestr}"
+                    _BLACKLISTED_PROVIDERS[prov] = (reset_time, msg)
+                    print(f"[IA] Provider {prov} AGOTADO: {msg}")
                 else:
-                    wait_time = 30 if prov == "groq" else 60
-                    _BLACKLISTED_PROVIDERS[prov] = time.time() + wait_time
-                    print(f"[IA] Proveedor {prov} saturado (TPM/RPM). Esperando {wait_time}s...")
+                    # Límite MOMENTÁNEO (TPM/RPM)
+                    wait_time = max(wait_seconds, 30 if prov == "groq" else 60)
+                    timestr = time.strftime('%H:%M:%S', time.localtime(time.time() + wait_time))
+                    _BLACKLISTED_PROVIDERS[prov] = (time.time() + wait_time, f"Saturado hasta {timestr}")
+                    print(f"[IA] Provider {prov} saturado. Reintentar en {wait_time}s")
                 
-                await asyncio.sleep(2) # Pausa de seguridad antes de probar el siguiente modelo
+                await asyncio.sleep(2)
             else:
                 await asyncio.sleep(3)
             continue
 
-    # Si llegamos aquí, es que hemos agotado el intento con todos los modelos
-    raise ValueError(f"Agostadas todas las opciones de IA por ahora. (Último error: {last_err})")
+    # Si llegamos aquí, avisamos de la situación global
+    all_msgs = [f"{p}: {m[1]}" for p, m in _BLACKLISTED_PROVIDERS.items() if time.time() < m[0]]
+    err_final = " | ".join(all_msgs) if all_msgs else last_err
+    raise ValueError(f"Sin IA disponible: {err_final}")
 
 async def _call_ai_with_retry(system, user, max_tokens=2000, max_retries=3, is_fast_task=False, api_keys=None):
     for i in range(max_retries):
@@ -224,7 +243,7 @@ Responde ESTRICTAMENTE con un JSON con las claves 'summary' (un texto largo y an
 async def get_character_list(all_summaries, api_keys=None) -> list:
     if not all_summaries: return [], "Error"
     system = "Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true}]"
-    context = _compress_text(all_summaries, 20000)
+    context = _compress_text(all_summaries, 12000)
     try:
         raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys)
         data = _parse_json(raw)
@@ -245,7 +264,7 @@ Debes profundizar en:
 
 Responde ESTRICTAMENTE con este esquema JSON:
 {{"name":"{name}","role":"...","description":"Análisis amplio de su papel","personality":"Estudio psicológico detallado","arc":"Su evolución del inicio al fin","relationships":{{"personaje":"tipo de relación"}},"key_moments":["momento 1", "momento 2"],"quotes":["cita memorable"]}}"""
-    user = f"Contexto del libro '{book}' para analizar a '{name}':\n{_compress_text(all_summaries, 15000)}"
+    user = f"Contexto del libro '{book}' para analizar a '{name}':\n{_compress_text(all_summaries, 10000)}"
     try:
         raw, m = await _call_ai_with_retry(system, user, 3500, api_keys=api_keys)
         return _parse_json(raw), m
@@ -253,7 +272,7 @@ Responde ESTRICTAMENTE con este esquema JSON:
 
 async def generate_global_summary(summaries, book, author, api_keys=None):
     system = "Académico literario y ensayista. Escribe un ensayo magistral, profundo y estructurado en español sobre la obra completa."
-    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 15000)}"
+    user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 12000)}"
     return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys)
 
 async def generate_mindmap(summaries, book, api_keys=None):
@@ -268,7 +287,7 @@ Responde ÚNICAMENTE en formato JSON con esta estructura exacta:
     }
   ]
 }"""
-    user = f"Contexto para el mapa mental de {book}:\n{_compress_text(summaries, 12000)}"
+    user = f"Contexto para el mapa mental de {book}:\n{_compress_text(summaries, 10000)}"
     try:
         raw, m = await _call_ai_with_retry(system, user, 4000, is_fast_task=True, api_keys=api_keys)
         return (_parse_json(raw) or {"center": book, "branches": []}), m
