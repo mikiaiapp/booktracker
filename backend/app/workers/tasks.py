@@ -144,26 +144,32 @@ def process_book_phase1(self, user_id: str, book_id: str, chain: bool = True, fo
     from app.services.book_identifier import identify_book
     from app.workers.queue_manager import update_progress, on_done
     async def _p1():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            if book.phase1_done and not force:
-                if chain: process_book_phase2.delay(user_id, book_id, chain=True)
-                else: on_done(user_id, book_id)
-                return
+        try:
+            async for db in get_user_db(user_id):
+                book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+                if not book: return
+                if book.phase1_done and not force:
+                    if chain: process_book_phase2.delay(user_id, book_id, chain=True)
+                    else: on_done(user_id, book_id)
+                    return
 
-            update_progress(user_id, book_id, "phase1", 5, "F1: Identificando libro y autor...")
-            keys = await _get_user_api_keys(user_id)
-            meta = await identify_book(book.file_path, book.file_type, book.title, os.path.join(settings.COVERS_DIR, user_id), book_id, api_keys=keys)
-            for k, v in meta.items():
-                if hasattr(book, k) and v: setattr(book, k, v)
-            
-            book.phase1_done = True
-            book.status = "identified"
-            await db.commit()
-            
-            if chain: await _dispatch_next(db, user_id, book_id, force=force)
-            else: on_done(user_id, book_id)
+                update_progress(user_id, book_id, "phase1", 5, "F1: Identificando libro y autor...")
+                keys = await _get_user_api_keys(user_id)
+                meta = await identify_book(book.file_path, book.file_type, book.title, os.path.join(settings.COVERS_DIR, user_id), book_id, api_keys=keys)
+                for k, v in meta.items():
+                    if hasattr(book, k) and v: setattr(book, k, v)
+                
+                book.phase1_done = True
+                book.status = "identified"
+                await db.commit()
+                
+                if chain: await _dispatch_next(db, user_id, book_id, force=force)
+                else: on_done(user_id, book_id)
+        except Exception as e:
+            err_msg = str(e)
+            print(f"[WORKER] Error F1: {err_msg}")
+            update_progress(user_id, book_id, "phase1", 0, f"Error: {err_msg}", model="Error")
+            on_done(user_id, book_id)
     return run_async(_p1())
 
 # FASE 2: ESTRUCTURA
@@ -172,26 +178,32 @@ def process_book_phase2(self, user_id: str, book_id: str, chain: bool = True, fo
     from app.services.book_parser import parse_book_structure
     from app.workers.queue_manager import update_progress, on_done
     async def _p2():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            if book.phase2_done and not force:
-                if chain: process_book_phase3.delay(user_id, book_id, chain=True)
-                else: on_done(user_id, book_id)
-                return
+        try:
+            async for db in get_user_db(user_id):
+                book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+                if not book: return
+                if book.phase2_done and not force:
+                    if chain: process_book_phase3.delay(user_id, book_id, chain=True)
+                    else: on_done(user_id, book_id)
+                    return
 
-            update_progress(user_id, book_id, "phase2", 5, "F2: Detectando partes y capítulos...")
-            struct = await parse_book_structure(book.file_path, book.file_type)
-            await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
-            for i, chap in enumerate(struct.get("chapters", [])):
-                db.add(Chapter(book_id=book_id, title=chap["title"], order=i, raw_text=chap.get("text", "")[:50000]))
-            
-            book.phase2_done = True
-            book.status = "structured"
-            await db.commit()
-            
-            if chain: await _dispatch_next(db, user_id, book_id, force=force)
-            else: on_done(user_id, book_id)
+                update_progress(user_id, book_id, "phase2", 5, "F2: Detectando partes y capítulos...")
+                struct = await parse_book_structure(book.file_path, book.file_type)
+                await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
+                for i, chap in enumerate(struct.get("chapters", [])):
+                    db.add(Chapter(book_id=book_id, title=chap["title"], order=i, raw_text=chap.get("text", "")[:50000]))
+                
+                book.phase2_done = True
+                book.status = "structured"
+                await db.commit()
+                
+                if chain: await _dispatch_next(db, user_id, book_id, force=force)
+                else: on_done(user_id, book_id)
+        except Exception as e:
+            err_msg = str(e)
+            print(f"[WORKER] Error F2: {err_msg}")
+            update_progress(user_id, book_id, "phase2", 0, f"Error: {err_msg}", model="Error")
+            on_done(user_id, book_id)
     return run_async(_p2())
 
 # FASE 3: RESUMENES DE CAPITULOS
@@ -218,7 +230,7 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
                         on_done(user_id, book_id)
                         return
 
-                    res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
+                    res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys, user_id=user_id, book_id=book_id)
                     if res:
                         ch.summary = res.get("summary")
                         ch.key_events = res.get("key_events", [])
@@ -236,7 +248,9 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
             update_progress(user_id, book_id, "phase3", 0, f"Pausa: {ve}", model="Agotado")
             on_done(user_id, book_id)
         except Exception as e:
-            print(f"[WORKER] Error F3: {e}")
+            err_msg = str(e)
+            print(f"[WORKER] Error F3: {err_msg}")
+            update_progress(user_id, book_id, "phase3", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
     return run_async(_p3())
 
@@ -257,7 +271,7 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
                 update_progress(user_id, book_id, "phase4", 5, "F4: Extrayendo personajes...", model="Buscando IA...")
                 keys = await _get_user_api_keys(user_id)
                 all_summaries = await _get_summaries_text(db, book_id)
-                char_list, m_list = await get_character_list(all_summaries, api_keys=keys)
+                char_list, m_list = await get_character_list(all_summaries, api_keys=keys, user_id=user_id, book_id=book_id)
                 
                 existing_res = await db.execute(select(Character).where(Character.book_id == book_id))
                 existing_names = {c.name.lower() for c in existing_res.scalars().all()}
@@ -270,7 +284,7 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
                     if char_name.lower() in existing_names and not force: continue
                         
                     update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
-                    detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys)
+                    detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys, user_id=user_id, book_id=book_id)
                     if detail:
                         if char_name.lower() in existing_names:
                             await db.execute(delete(Character).where(Character.book_id == book_id, func.lower(Character.name) == char_name.lower()))
@@ -284,7 +298,9 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
             update_progress(user_id, book_id, "phase4", 0, f"Pausa: {ve}", model="Agotado")
             on_done(user_id, book_id)
         except Exception as e:
-            print(f"[WORKER] Error F4: {e}")
+            err_msg = str(e)
+            print(f"[WORKER] Error F4: {err_msg}")
+            update_progress(user_id, book_id, "phase4", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
     return run_async(_p4())
 
@@ -306,14 +322,14 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
                 if _check_revocation(user_id, book_id):
                     on_done(user_id, book_id)
                     return
-                book.global_summary, m_ensayo = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys)
+                book.global_summary, m_ensayo = await generate_global_summary(all_summaries, book.title, book.author, api_keys=keys, user_id=user_id, book_id=book_id)
                 update_progress(user_id, book_id, "phase5", 50, "F5: Ensayo completado", model=m_ensayo)
                 
                 # Mapa mental JSON
                 if _check_revocation(user_id, book_id):
                     on_done(user_id, book_id)
                     return
-                book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys)
+                book.mindmap_data, m_mapa = await generate_mindmap(all_summaries, book.title, api_keys=keys, user_id=user_id, book_id=book_id)
                 update_progress(user_id, book_id, "phase5", 90, "F5: Mapa mental completado", model=m_mapa)
                 
                 await db.commit()
@@ -323,7 +339,9 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
             update_progress(user_id, book_id, "phase5", 0, f"Pausa: {ve}", model="Agotado")
             on_done(user_id, book_id)
         except Exception as e:
-            print(f"[WORKER] Error F5: {e}")
+            err_msg = str(e)
+            print(f"[WORKER] Error F5: {err_msg}")
+            update_progress(user_id, book_id, "phase5", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
     return run_async(_p5())
 
@@ -332,42 +350,54 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
 def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
     from app.workers.queue_manager import update_progress, on_done
     async def _p6():
-        async for db in get_user_db(user_id):
-            book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-            if not book: return
-            if book.phase6_done and not force:
-                on_done(user_id, book_id)
-                return
+        try:
+            async for db in get_user_db(user_id):
+                book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+                if not book: return
+                if book.phase6_done and not force:
+                    on_done(user_id, book_id)
+                    return
 
-            update_progress(user_id, book_id, "phase6", 10, "F6: Creando guion de podcast...")
-            if _check_revocation(user_id, book_id):
-                on_done(user_id, book_id)
-                return
+                update_progress(user_id, book_id, "phase6", 10, "F6: Creando guion de podcast...")
+                if _check_revocation(user_id, book_id):
+                    on_done(user_id, book_id)
+                    return
+                    
+                keys = await _get_user_api_keys(user_id)
+                char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(5))
+                chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
                 
-            keys = await _get_user_api_keys(user_id)
-            char_res = await db.execute(select(Character).where(Character.book_id == book_id).limit(5))
-            chars = [{"name": c.name, "personality": c.personality} for c in char_res.scalars().all()]
-            
-            script, _ = await generate_podcast_script(book.title, book.author, book.global_summary, chars, api_keys=keys)
-            book.podcast_script = script
-            await db.commit() # Asegurar guardado inmediato del texto
-            
-            update_progress(user_id, book_id, "phase6", 50, "F6: Generando audio (TTS)...")
-            audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
-            os.makedirs(os.path.dirname(audio_path), exist_ok=True)
-            try:
-                await synthesize_podcast(script, audio_path, api_keys=keys)
-                book.podcast_audio_path = audio_path
-                book.phase6_done = True
+                script, m_script = await generate_podcast_script(book.title, book.author, book.global_summary, chars, api_keys=keys, user_id=user_id, book_id=book_id)
+                book.podcast_script = script
+                await db.commit() # Asegurar guardado inmediato del texto
+                update_progress(user_id, book_id, "phase6", 40, "F6: Guion finalizado", model=m_script)
                 
-                # Estimación de duración (aprox 150 ppm)
-                words = len(script.split())
-                book.podcast_duration = int(words / 2.5)
-            except Exception as e:
-                print(f"[WORKER] Error en TTS: {e}")
-                book.error_msg = f"Error en generación de audio: {str(e)}"
-            
-            await dispatch_next_final(db, user_id, book_id, book)
+                update_progress(user_id, book_id, "phase6", 50, "F6: Generando audio (TTS)...")
+                audio_path = os.path.join(settings.AUDIO_DIR, user_id, f"{book_id}.mp3")
+                os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+                try:
+                    # El TTS no suele fallar por IA normal, pero si falla lo capturamos
+                    await synthesize_podcast(script, audio_path, api_keys=keys)
+                    book.podcast_audio_path = audio_path
+                    book.phase6_done = True
+                    
+                    # Estimación de duración (aprox 150 ppm)
+                    words = len(script.split())
+                    book.podcast_duration = int(words / 2.5)
+                except Exception as e:
+                    print(f"[WORKER] Error en TTS: {e}")
+                    book.error_msg = f"Error en generación de audio: {str(e)}"
+                    update_progress(user_id, book_id, "phase6", 50, f"Error Audio: {e}", model="Error")
+                
+                await dispatch_next_final(db, user_id, book_id, book)
+        except ValueError as ve:
+            update_progress(user_id, book_id, "phase6", 0, f"Pausa: {ve}", model="Agotado")
+            on_done(user_id, book_id)
+        except Exception as e:
+            err_msg = str(e)
+            print(f"[WORKER] Error F6: {err_msg}")
+            update_progress(user_id, book_id, "phase6", 0, f"Error: {err_msg}", model="Error")
+            on_done(user_id, book_id)
 
     async def dispatch_next_final(db, user_id, book_id, book):
         await _finalize_book_status(db, book)
@@ -389,7 +419,7 @@ def summarize_chapter_task(user_id: str, book_id: str, chapter_id: str):
 
             update_progress(user_id, book_id, "phase3", 50, f"Analizando {ch.title}...", model="Buscando IA...")
             keys = await _get_user_api_keys(user_id)
-            res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys)
+            res, model_used = await summarize_chapter(ch.title, ch.raw_text, book.title, book.author, api_keys=keys, user_id=user_id, book_id=book_id)
             
             if res:
                 ch.summary = res.get("summary")

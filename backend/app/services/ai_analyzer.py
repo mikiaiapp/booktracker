@@ -12,6 +12,15 @@ def _compress_text(text: str, limit: int = 15000) -> str:
     clean = re.sub(r'\s+', ' ', text).strip()
     return clean[:limit]
 
+def _ui_log(user_id, book_id, model, msg=None):
+    """Helper para enviar feedback a la UI desde los servicios."""
+    if not (user_id and book_id): return
+    try:
+        from app.workers.queue_manager import update_progress
+        # Intentamos no sobreescribir el mensaje principal si no se provee
+        update_progress(user_id, book_id, None, None, message=msg, model=model)
+    except: pass
+
 import time
 from typing import List, Dict, Tuple
 
@@ -94,7 +103,7 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     print(f"[IA] Catálogo actualizado: {len(final_list)} modelos encontrados.")
     return final_list
 
-async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False) -> tuple[str, str]:
+async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task: bool = False, api_keys: dict = None, skip_fallback: bool = False, user_id: str = None, book_id: str = None) -> tuple[str, str]:
     # 1. Limpieza de llaves
     def ck(v): return str(v or "").strip().strip('"').strip("'")
     current_keys = {
@@ -126,16 +135,24 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         raise ValueError("No hay modelos disponibles con las API Keys proporcionadas.")
 
     print(f"[IA] Cola dinámica activa: {' -> '.join([m[1] for m in active_queue])}")
+    _ui_log(user_id, book_id, "Iniciando...", f"Cola: {len(active_queue)} modelos")
 
     # 3. Ejecución Secuencial
     last_err = ""
     for prov, m in active_queue:
+        _ui_log(user_id, book_id, m, f"Consultando {m}...")
         # Saltar si el proveedor está temporalmente bloqueado por cuota (10 min)
         if prov in _BLACKLISTED_PROVIDERS:
-            if time.time() < _BLACKLISTED_PROVIDERS[prov]:
-                print(f"[IA] Saltando {prov} (bloqueado por cuota hasta {time.strftime('%H:%M:%S', time.localtime(_BLACKLISTED_PROVIDERS[prov]))})")
-                continue
-            else:
+            try:
+                entry = _BLACKLISTED_PROVIDERS[prov]
+                # Soportar tanto float (legacy) como tuple (nuevo)
+                expiry_timestamp = entry[0] if isinstance(entry, (tuple, list)) else entry
+                if time.time() < expiry_timestamp:
+                    print(f"[IA] Saltando {prov} (bloqueado por cuota)")
+                    continue
+                else:
+                    del _BLACKLISTED_PROVIDERS[prov]
+            except:
                 del _BLACKLISTED_PROVIDERS[prov]
 
         token = current_keys.get(prov)
@@ -168,8 +185,8 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             last_err = last_err_raw
             print(f"[IA] Fallo en {m}: {last_err}")
             
-            # Gestión inteligente de cuotas (429)
             if "429" in last_err or "quota" in last_err or "limit" in last_err:
+                _ui_log(user_id, book_id, "Límite API", "Agotado temporalmente, rotando...")
                 # Extraer tiempo de espera si está en el mensaje (solo Groq/Gemini suelen darlo)
                 import re
                 wait_seconds = 60
@@ -201,15 +218,24 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             continue
 
     # Si llegamos aquí, avisamos de la situación global
-    all_msgs = [f"{p}: {m[1]}" for p, m in _BLACKLISTED_PROVIDERS.items() if time.time() < m[0]]
+    all_msgs = []
+    for p, m in _BLACKLISTED_PROVIDERS.items():
+        try:
+            exp = m[0] if isinstance(m, (tuple, list)) else m
+            if time.time() < exp:
+                msg = m[1] if isinstance(m, (tuple, list)) else "Saturado"
+                all_msgs.append(f"{p}: {msg}")
+        except: pass
+    
     err_final = " | ".join(all_msgs) if all_msgs else last_err
     raise ValueError(f"Sin IA disponible: {err_final}")
 
-async def _call_ai_with_retry(system, user, max_tokens=2000, max_retries=3, is_fast_task=False, api_keys=None):
+async def _call_ai_with_retry(system, user, max_tokens=2000, max_retries=3, is_fast_task=False, api_keys=None, user_id=None, book_id=None):
     for i in range(max_retries):
-        try: return await _call_ai(system, user, max_tokens, is_fast_task, api_keys)
+        try: return await _call_ai(system, user, max_tokens, is_fast_task, api_keys, user_id=user_id, book_id=book_id)
         except Exception as e:
             if i == max_retries-1: raise
+            _ui_log(user_id, book_id, "Reintentando", f"Fallo {i+1}/{max_retries}. Pausa...")
             await asyncio.sleep(2*(i+1))
 
 def _parse_json(text: str):
@@ -225,7 +251,7 @@ def _parse_json(text: str):
 
 # --- FUNCIONES DE ALTO NIVEL ---
 
-async def summarize_chapter(title, text, book, author, api_keys=None) -> tuple[dict, str]:
+async def summarize_chapter(title, text, book, author, api_keys=None, user_id=None, book_id=None) -> tuple[dict, str]:
     system = """Actúa como un experto crítico literario. Analiza con gran detalle y profundidad el capítulo.
 No te limites a un resumen superficial. Tu respuesta debe incluir:
 1. Análisis detallado de la trama y eventos clave.
@@ -236,25 +262,23 @@ No te limites a un resumen superficial. Tu respuesta debe incluir:
 Responde ESTRICTAMENTE con un JSON con las claves 'summary' (un texto largo y analítico) y 'key_events' (una lista de puntos críticos)."""
     user = f"Capítulo: '{title}' del libro '{book}' de {author}.\n\nTexto para analizar:\n{_compress_text(text, 30000)}"
     try:
-        raw, m = await _call_ai_with_retry(system, user, 3000, is_fast_task=True, api_keys=api_keys)
+        raw, m = await _call_ai_with_retry(system, user, 3000, is_fast_task=True, api_keys=api_keys, user_id=user_id, book_id=book_id)
         return _parse_json(raw), m
-    except: return None, "Error"
+    except Exception as e:
+        print(f"[AI] Error en resumen capitulo: {e}")
+        raise e
 
-async def get_character_list(all_summaries, api_keys=None) -> list:
+async def get_character_list(all_summaries, api_keys=None, user_id=None, book_id=None) -> list:
     if not all_summaries: return [], "Error"
     system = "Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{\"name\": \"...\", \"is_main\": true}]"
     context = _compress_text(all_summaries, 12000)
-    try:
-        raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys)
-        data = _parse_json(raw)
-        char_list = ([c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else [])
-        print(f"[AI] Detectados {len(char_list)} personajes usando {m}")
-        return char_list, m
-    except Exception as e:
-        print(f"[AI] Error detectando personajes: {e}")
-        return [], "Error"
+    raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys, user_id=user_id, book_id=book_id)
+    data = _parse_json(raw)
+    char_list = ([c for c in data if isinstance(c, dict) and c.get("name")] if isinstance(data, list) else [])
+    print(f"[AI] Detectados {len(char_list)} personajes usando {m}")
+    return char_list, m
 
-async def analyze_single_character(name, is_main, all_summaries, book, api_keys=None) -> dict:
+async def analyze_single_character(name, is_main, all_summaries, book, api_keys=None, user_id=None, book_id=None) -> dict:
     t = "PRINCIPAL" if is_main else "SECUNDARIO"
     system = f"""Actúa como un psicólogo narratológico y crítico literario. Realiza un estudio exhaustivo del personaje {t}.
 Debes profundizar en:
@@ -266,16 +290,18 @@ Responde ESTRICTAMENTE con este esquema JSON:
 {{"name":"{name}","role":"...","description":"Análisis amplio de su papel","personality":"Estudio psicológico detallado","arc":"Su evolución del inicio al fin","relationships":{{"personaje":"tipo de relación"}},"key_moments":["momento 1", "momento 2"],"quotes":["cita memorable"]}}"""
     user = f"Contexto del libro '{book}' para analizar a '{name}':\n{_compress_text(all_summaries, 10000)}"
     try:
-        raw, m = await _call_ai_with_retry(system, user, 3500, api_keys=api_keys)
+        raw, m = await _call_ai_with_retry(system, user, 3500, api_keys=api_keys, user_id=user_id, book_id=book_id)
         return _parse_json(raw), m
-    except: return None, "Error"
+    except Exception as e:
+        print(f"[AI] Error en análisis personaje: {e}")
+        raise e
 
-async def generate_global_summary(summaries, book, author, api_keys=None):
+async def generate_global_summary(summaries, book, author, api_keys=None, user_id=None, book_id=None):
     system = "Académico literario y ensayista. Escribe un ensayo magistral, profundo y estructurado en español sobre la obra completa."
     user = f"Libro: '{book}' de {author}. Ensayo analítico basado en los resúmenes:\n{_compress_text(summaries, 12000)}"
-    return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys)
+    return await _call_ai_with_retry(system, user, 4000, api_keys=api_keys, user_id=user_id, book_id=book_id)
 
-async def generate_mindmap(summaries, book, api_keys=None):
+async def generate_mindmap(summaries, book, api_keys=None, user_id=None, book_id=None):
     system = """Experto en análisis visual. Genera un mapa mental profundo del libro.
 Responde ÚNICAMENTE en formato JSON con esta estructura exacta:
 {
@@ -289,14 +315,16 @@ Responde ÚNICAMENTE en formato JSON con esta estructura exacta:
 }"""
     user = f"Contexto para el mapa mental de {book}:\n{_compress_text(summaries, 10000)}"
     try:
-        raw, m = await _call_ai_with_retry(system, user, 4000, is_fast_task=True, api_keys=api_keys)
+        raw, m = await _call_ai_with_retry(system, user, 4000, is_fast_task=True, api_keys=api_keys, user_id=user_id, book_id=book_id)
         return (_parse_json(raw) or {"center": book, "branches": []}), m
-    except: return {"center": book, "branches": []}, "Error"
+    except Exception as e:
+        print(f"[AI] Error en mapa mental: {e}")
+        raise e
 
-async def generate_podcast_script(title, author, summary, chars, api_keys=None):
+async def generate_podcast_script(title, author, summary, chars, api_keys=None, user_id=None, book_id=None):
     system = "Guionista de podcast. ANA y CARLOS dialogan. Formato ANA: ... / CARLOS: ..."
     user = f"Podcast de {title}. Contexto:\n{_compress_text(summary, 10000)}"
-    return await _call_ai_with_retry(system, user, 6000, is_fast_task=True, api_keys=api_keys)
+    return await _call_ai_with_retry(system, user, 6000, is_fast_task=True, api_keys=api_keys, user_id=user_id, book_id=book_id)
 
 async def talk_to_book(title, author, context, msg, mode="default", history=None, api_keys=None):
     system = f"Experto en {title}. Contexto:\n{_compress_text(context, 20000)}"
