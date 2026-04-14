@@ -168,22 +168,23 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
             
             # Gestión inteligente de cuotas (429)
             if "429" in last_err or "quota" in last_err or "limit" in last_err:
-                # Caso A: Límite diario (Gemini suele indicarlo)
-                if "daily" in last_err:
+                # Límite DIARIO (Gemini "daily", Groq "tpd" o "tokens per day")
+                if any(x in last_err for x in ["daily", "tpd", "tokens per day"]):
                     _BLACKLISTED_PROVIDERS[prov] = time.time() + 3600 # 1 hora
-                    print(f"[IA] Proveedor {prov} AGOTADO POR HOY (Daily Limit).")
-                # Caso B: Límite por minuto (Groq/Gemini TPM)
+                    print(f"[IA] Proveedor {prov} AGOTADO POR HOY (Límite diario).")
+                # Límite MOMENTÁNEO (TPM/RPM)
                 else:
                     wait_time = 30 if prov == "groq" else 60
                     _BLACKLISTED_PROVIDERS[prov] = time.time() + wait_time
                     print(f"[IA] Proveedor {prov} saturado (TPM/RPM). Esperando {wait_time}s...")
                 
-                await asyncio.sleep(1)
+                await asyncio.sleep(2) # Pausa de seguridad antes de probar el siguiente modelo
             else:
-                await asyncio.sleep(2)
+                await asyncio.sleep(3)
             continue
 
-    raise ValueError(f"Todos los modelos de IA fallaron. Último error: {last_err}")
+    # Si llegamos aquí, es que hemos agotado el intento con todos los modelos
+    raise ValueError(f"Agostadas todas las opciones de IA por ahora. (Último error: {last_err})")
 
 async def _call_ai_with_retry(system, user, max_tokens=2000, max_retries=3, is_fast_task=False, api_keys=None):
     for i in range(max_retries):
