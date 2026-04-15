@@ -14,6 +14,14 @@ from app.core.config import settings
 
 # --- Helpers de Estado ---
 
+class QuotaRetry(Exception):
+    """Excepción interna para señalizar que el worker debe reintentar por cuota."""
+    def __init__(self, message, wait_seconds):
+        self.message = message
+        self.wait_seconds = wait_seconds
+        super().__init__(self.message)
+
+
 def _check_revocation(user_id: str, book_id: str):
     """Verifica si existe una orden de cancelación o si la cola ha sido limpiada."""
     from app.workers.queue_manager import _r
@@ -51,11 +59,35 @@ def _extract_wait_seconds(msg: str) -> int:
     """Extrae segundos de espera de un mensaje de error o devuelve 600 por defecto."""
     try:
         import re
-        # Buscar "Reset en 15:30" o "XXs" o "YYm"
-        match = re.search(r"en ([\d\.]+)s|en (\d+)m", msg)
-        if match:
-            if match.group(1): return int(float(match.group(1))) + 5
-            if match.group(2): return (int(match.group(2)) * 60) + 5
+        # Buscar "Reset en 15:30" o "XXs" o "YYm" o formato HH:MM
+        msg_low = msg.lower()
+        
+        # Caso HH:MM (Reset estimado: 18:18)
+        match_time = re.search(r"reset estimado: (\d{1,2}):(\d{2})", msg_low)
+        if match_time:
+            from datetime import datetime
+            now = datetime.now()
+            target = now.replace(hour=int(match_time.group(1)), minute=int(match_time.group(2)), second=0)
+            diff = (target - now).total_seconds()
+            if diff < 0: diff += 86400 # Siguiente día
+            return int(diff) + 30
+
+        # Caso "en XXs" o "en YYm"
+        match_rel = re.search(r"en ([\d\.]+)s|en (\d+)m", msg_low)
+        if match_rel:
+            if match_rel.group(1): return int(float(match_rel.group(1))) + 10
+            if match_rel.group(2): return (int(match_rel.group(2)) * 60) + 10
+            
+        # Caso "saturado hasta HH:MM:SS"
+        match_sat = re.search(r"saturado hasta (\d{1,2}):(\d{2}):(\d{2})", msg_low)
+        if match_sat:
+            from datetime import datetime
+            now = datetime.now()
+            target = now.replace(hour=int(match_sat.group(1)), minute=int(match_sat.group(2)), second=int(match_sat.group(3)))
+            diff = (target - now).total_seconds()
+            if diff < 0: diff += 60 # Probablemente un desfase pequeño
+            return int(max(diff, 60)) + 5
+
     except: pass
     return 600 # 10 minutos por defecto
 
@@ -257,19 +289,23 @@ def process_book_phase3(self, user_id: str, book_id: str, chain: bool = True, fo
                     else: process_book_phase4.delay(user_id, book_id, chain=True)
                 else: on_done(user_id, book_id)
         except ValueError as ve:
-            from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
-            _r().expire(_ak(user_id), wait_sec + 3600) # Bloquear slot durante la espera
-            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
-            update_progress(user_id, book_id, "phase3", 0, clean_msg, model="Agotado")
-            print(f"[WORKER] Reintentando F3 en {wait_sec}s por cuota.")
-            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
+            update_progress(user_id, book_id, "phase3", 0, str(ve).replace("Sin IA disponible: ", ""), model="Agotado")
+            raise QuotaRetry(str(ve), wait_sec)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F3: {err_msg}")
             update_progress(user_id, book_id, "phase3", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
-    return run_async(_p3())
+
+    try:
+        return run_async(_p3())
+    except QuotaRetry as qr:
+        print(f"[WORKER] Reintentando F3 en {qr.wait_seconds}s por cuota.")
+        raise self.retry(exc=qr, countdown=qr.wait_seconds, max_retries=40)
+    except Exception as e:
+        if "Retry" in str(type(e)): raise
+        raise e
 
 # FASE 4: PERSONAJES
 @celery_app.task(name="process_book_phase4", bind=True)
@@ -293,6 +329,9 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
                 existing_res = await db.execute(select(Character).where(Character.book_id == book_id))
                 existing_names = {c.name.lower() for c in existing_res.scalars().all()}
                 
+                # Optimización: Reducir contexto para fichas de personajes individuales
+                char_context = all_summaries[:7000] # Suficiente para personalidad/rol
+                
                 for i, c in enumerate(char_list[:12]):
                     if _check_revocation(user_id, book_id):
                         on_done(user_id, book_id)
@@ -301,30 +340,37 @@ def process_book_phase4(self, user_id: str, book_id: str, chain: bool = True, fo
                     if char_name.lower() in existing_names and not force: continue
                         
                     update_progress(user_id, book_id, "phase4", int((i/len(char_list))*100), f"F4: Ficha de {char_name}", model=m_list)
-                    detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), all_summaries, book.title, api_keys=keys, user_id=user_id, book_id=book_id)
+                    detail, m_detail = await analyze_single_character(char_name, c.get("is_main"), char_context, book.title, api_keys=keys, user_id=user_id, book_id=book_id)
                     if detail:
                         if char_name.lower() in existing_names:
                             await db.execute(delete(Character).where(Character.book_id == book_id, func.lower(Character.name) == char_name.lower()))
                         db.add(Character(book_id=book_id, **detail))
                         await db.commit()
+                    
+                    # Pausa entre personajes para no saturar RPM en tier gratuito
+                    await asyncio.sleep(5)
                 
                 await _finalize_book_status(db, book)
                 if chain: await _dispatch_next(db, user_id, book_id, force=force)
                 else: on_done(user_id, book_id)
         except ValueError as ve:
-            from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
-            _r().expire(_ak(user_id), wait_sec + 3600)
-            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
-            update_progress(user_id, book_id, "phase4", 0, clean_msg, model="Agotado")
-            print(f"[WORKER] Reintentando F4 en {wait_sec}s por cuota.")
-            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
+            update_progress(user_id, book_id, "phase4", 0, str(ve).replace("Sin IA disponible: ", ""), model="Agotado")
+            raise QuotaRetry(str(ve), wait_sec)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F4: {err_msg}")
             update_progress(user_id, book_id, "phase4", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
-    return run_async(_p4())
+
+    try:
+        return run_async(_p4())
+    except QuotaRetry as qr:
+        print(f"[WORKER] Reintentando F4 en {qr.wait_seconds}s por cuota.")
+        raise self.retry(exc=qr, countdown=qr.wait_seconds, max_retries=40)
+    except Exception as e:
+        if "Retry" in str(type(e)): raise
+        raise e
 
 # FASE 5: MAPA MENTAL Y RESUMEN GLOBAL
 @celery_app.task(name="process_book_phase5", bind=True)
@@ -358,19 +404,23 @@ def process_book_phase5(self, user_id: str, book_id: str, chain: bool = True, fo
                 if chain: await _dispatch_next(db, user_id, book_id, force=force)
                 else: on_done(user_id, book_id)
         except ValueError as ve:
-            from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
-            _r().expire(_ak(user_id), wait_sec + 3600)
-            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
-            update_progress(user_id, book_id, "phase5", 0, clean_msg, model="Agotado")
-            print(f"[WORKER] Reintentando F5 en {wait_sec}s por cuota.")
-            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
+            update_progress(user_id, book_id, "phase5", 0, str(ve).replace("Sin IA disponible: ", ""), model="Agotado")
+            raise QuotaRetry(str(ve), wait_sec)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F5: {err_msg}")
             update_progress(user_id, book_id, "phase5", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
-    return run_async(_p5())
+
+    try:
+        return run_async(_p5())
+    except QuotaRetry as qr:
+        print(f"[WORKER] Reintentando F5 en {qr.wait_seconds}s por cuota.")
+        raise self.retry(exc=qr, countdown=qr.wait_seconds, max_retries=40)
+    except Exception as e:
+        if "Retry" in str(type(e)): raise
+        raise e
 
 # FASE 6: PODCAST
 @celery_app.task(name="process_book_phase6", bind=True)
@@ -418,25 +468,23 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                 
                 await dispatch_next_final(db, user_id, book_id, book)
         except ValueError as ve:
-            from app.workers.queue_manager import _r, _ak
             wait_sec = _extract_wait_seconds(str(ve))
-            _r().expire(_ak(user_id), wait_sec + 3600)
-            clean_msg = str(ve).replace("Sin IA disponible: ", "").replace("Pausa: ", "")
-            update_progress(user_id, book_id, "phase6", 0, clean_msg, model="Agotado")
-            print(f"[WORKER] Reintentando F6 en {wait_sec}s por cuota.")
-            raise self.retry(exc=ve, countdown=wait_sec, max_retries=20)
+            update_progress(user_id, book_id, "phase6", 0, str(ve).replace("Sin IA disponible: ", ""), model="Agotado")
+            raise QuotaRetry(str(ve), wait_sec)
         except Exception as e:
             err_msg = str(e)
             print(f"[WORKER] Error F6: {err_msg}")
             update_progress(user_id, book_id, "phase6", 0, f"Error: {err_msg}", model="Error")
             on_done(user_id, book_id)
 
-    async def dispatch_next_final(db, user_id, book_id, book):
-        await _finalize_book_status(db, book)
-        # Si al llegar aquí falta algo (por re-análisis forzado o error previo) 
-        # _dispatch_next encontrará la primera pieza rota.
-        await _dispatch_next(db, user_id, book_id, force=False)
-    return run_async(_p6())
+    try:
+        return run_async(_p6())
+    except QuotaRetry as qr:
+        print(f"[WORKER] Reintentando F6 en {qr.wait_seconds}s por cuota.")
+        raise self.retry(exc=qr, countdown=qr.wait_seconds, max_retries=40)
+    except Exception as e:
+        if "Retry" in str(type(e)): raise
+        raise e
 
 # --- MANTENIMIENTO Y OTROS ---
 

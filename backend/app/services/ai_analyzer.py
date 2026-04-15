@@ -190,21 +190,22 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 # Extraer tiempo de espera si está en el mensaje (solo Groq/Gemini suelen darlo)
                 import re
                 wait_seconds = 60
-                match = re.search(r"in ([\d\.]+)s|in (\d+)m", last_err)
+                match = re.search(r"in ([\d\.]+)s|in (\d+)m|in (\d+) seconds", last_err)
                 if match:
                     if match.group(1): wait_seconds = int(float(match.group(1)))
                     elif match.group(2): wait_seconds = int(match.group(2)) * 60
+                    elif match.group(3): wait_seconds = int(match.group(3))
 
-                # Límite DIARIO (Gemini "daily", Groq "tpd" o "tokens per day")
-                if any(x in last_err for x in ["daily", "tpd", "tokens per day"]):
-                    reset_time = time.time() + 3600 # Fallback 1h
-                    # Si Groq nos dio un tiempo mayor, lo usamos
-                    if wait_seconds > 60: reset_time = time.time() + wait_seconds
+                # Límite DIARIO (Gemini "daily", Groq "tpd" o "tokens per day", o error 429 persistente)
+                # Gemini free suele decir: "quota_id: ...daily..."
+                if any(x in last_err for x in ["daily", "tpd", "tokens per day", "exhausted"]):
+                    # Si no hay tiempo explícito, asumimos que es un reset diario (usamos 1h como ventana de seguridad para reintentar)
+                    reset_time = time.time() + max(wait_seconds, 3600) 
                     
                     timestr = time.strftime('%H:%M', time.localtime(reset_time))
                     msg = f"Agotada cuota diaria. Reset estimado: {timestr}"
                     _BLACKLISTED_PROVIDERS[prov] = (reset_time, msg)
-                    print(f"[IA] Provider {prov} AGOTADO: {msg}")
+                    print(f"[IA] Provider {prov} AGOTADO DIARIAMENTE: {msg}")
                 else:
                     # Límite MOMENTÁNEO (TPM/RPM)
                     wait_time = max(wait_seconds, 30 if prov == "groq" else 60)
@@ -212,7 +213,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                     _BLACKLISTED_PROVIDERS[prov] = (time.time() + wait_time, f"Saturado hasta {timestr}")
                     print(f"[IA] Provider {prov} saturado. Reintentar en {wait_time}s")
                 
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
             else:
                 await asyncio.sleep(3)
             continue
