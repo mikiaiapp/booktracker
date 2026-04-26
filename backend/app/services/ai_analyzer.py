@@ -228,36 +228,39 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         try:
             print(f"[IA] Utilizando {m}...")
             if prov == "gemini":
-                import google.generativeai as genai
-                genai.configure(api_key=token)
+                # Usamos la interfaz compatible con OpenAI de Gemini, que suele ser más estable
+                from openai import AsyncOpenAI
                 
-                # Para Gemini, si falla con 404 (modelo no encontrado), probamos variantes comunes
-                # Esto es vital porque según la región/cuenta el nombre exacto puede variar.
-                g_variants = [m]
-                if "latest" not in m: g_variants.append(f"{m}-latest")
-                if m.startswith("models/"): g_variants.append(m.replace("models/", ""))
-                else: g_variants.append(f"models/{m}")
+                # Variantes a probar (Gemini via OpenAI API no suele llevar el prefijo models/)
+                clean_m = m.replace("models/", "")
+                g_variants = [clean_m]
+                if "-latest" not in clean_m: g_variants.append(f"{clean_m}-latest")
                 
                 last_g_err = None
                 for g_m in g_variants:
                     try:
-                        print(f"[IA] Gemini: Probando variante {g_m}...")
-                        mdl = genai.GenerativeModel(g_m)
-                        safety = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
-                        response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
-                        if not response or not response.text: raise ValueError("Sin respuesta o bloqueado por seguridad")
-                        return response.text, g_m
+                        print(f"[IA] Gemini (OpenAI-mode): Probando {g_m}...")
+                        client = AsyncOpenAI(
+                            api_key=token,
+                            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+                        )
+                        resp = await client.chat.completions.create(
+                            model=g_m,
+                            messages=[
+                                {"role": "system", "content": system},
+                                {"role": "user", "content": user}
+                            ],
+                            max_tokens=max_tokens
+                        )
+                        if not resp.choices[0].message.content: raise ValueError("Respuesta vacía")
+                        return resp.choices[0].message.content, g_m
                     except Exception as ge:
                         last_g_err = ge
                         ge_msg = str(ge).lower()
-                        print(f"[IA] Gemini fallo variante {g_m}: {ge_msg}")
-                        # Solo seguimos probando variantes si el error es de "modelo no encontrado" (404)
-                        if "404" in ge_msg or "not found" in ge_msg or "not_found" in ge_msg:
-                            continue
-                        else:
-                            break
-                # Si llegamos aquí, lanzamos el último error de Gemini con más contexto
-                raise ValueError(f"Gemini falló tras probar variantes. Último error: {last_g_err}")
+                        print(f"[IA] Gemini (OpenAI-mode) fallo en {g_m}: {ge_msg}")
+                        if "404" in ge_msg or "not found" in ge_msg: continue
+                        else: break
+                raise ValueError(f"Gemini (OpenAI-mode) falló. Último error: {last_g_err}")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
