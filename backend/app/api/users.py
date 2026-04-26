@@ -107,12 +107,22 @@ async def test_api_endpoint(
     if not key_to_test:
         raise HTTPException(status_code=400, detail="No hay clave de API para probar")
 
-    # Si no se especifica modelo, elegimos uno sensato para probar la conexión
+    # Si no se especifica modelo, usamos el descubrimiento dinámico
     model = data.model
     if not model:
-        if data.provider == "gemini": model = "gemini-1.5-flash"
-        elif data.provider == "groq": model = "llama-3.3-70b-versatile"
-        elif data.provider == "openai": model = "gpt-4o-mini"
+        # Intentamos descubrir el mejor modelo disponible
+        keys = {"gemini": "", "openai": "", "groq": ""}
+        keys[data.provider] = key_to_test
+        hierarchy = await _get_dynamic_hierarchy(keys, force=True)
+        
+        if hierarchy:
+            # El primero de la lista es el de mayor score
+            model = hierarchy[0][1]
+        else:
+            # Fallback seguro por si falla el descubrimiento
+            if data.provider == "gemini": model = "gemini-1.5-flash"
+            elif data.provider == "groq": model = "llama-3.3-70b-versatile"
+            elif data.provider == "openai": model = "gpt-4o-mini"
     
     try:
         success = await test_api_key(data.provider, key_to_test, model)

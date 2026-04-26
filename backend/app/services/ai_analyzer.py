@@ -206,9 +206,9 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 # Usamos la interfaz compatible con OpenAI de Gemini, que suele ser más estable
                 from openai import AsyncOpenAI
                 
-                # Variantes a probar (Gemini via OpenAI API no suele llevar el prefijo models/)
+                # Variantes a probar (Gemini via OpenAI API a veces requiere prefijo, a veces no)
                 clean_m = m.replace("models/", "")
-                g_variants = [clean_m]
+                g_variants = [clean_m, m] # Probamos ambas: con y sin prefijo
                 if "-latest" not in clean_m: g_variants.append(f"{clean_m}-latest")
                 
                 last_g_err = None
@@ -403,8 +403,16 @@ async def talk_to_book(title, author, context, msg, mode="default", history=None
     return await _call_ai_with_retry(system, f"Usuario: {msg}", 2000, api_keys=api_keys)
 
 async def test_api_key(provider, key, model=None):
-    ks = {provider: key, "preferred_model": model}
+    # Forzamos las llaves actuales para esta llamada específica
+    ks = {"gemini": "", "groq": "", "openai": "", "preferred_model": model}
+    ks[provider] = key
+    
+    print(f"[IA] Probando API de {provider} con modelo {model}...")
     try:
-        r, _ = await _call_ai("Responde OK.", "Test.", 10, api_keys=ks, skip_fallback=True)
+        # Usamos _call_ai directamente para que intente las variantes si es Gemini
+        r, m_used = await _call_ai("Responde solo la palabra 'OK'", "Test de conexión.", 10, api_keys=ks, skip_fallback=True)
+        print(f"[IA] Test exitoso usando {m_used}")
         return True if r else False
-    except Exception as e: raise e
+    except Exception as e:
+        print(f"[IA] Test fallido: {e}")
+        raise e
