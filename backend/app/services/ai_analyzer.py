@@ -90,6 +90,9 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                 # Si llegamos aquí, realmente no hay nada disponible o la clave es inválida
                 print("[IA] Gemini: No se encontró ningún modelo disponible.")
 
+        except Exception as e:
+            print(f"[IA] Error descubriendo Gemini: {e}")
+
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
         try:
