@@ -49,6 +49,7 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
 
     # 1. DESCUBRIR GEMINI (Filtro estricto)
     if keys.get("gemini"):
+        gemini_count = 0
         try:
             import google.generativeai as genai
             genai.configure(api_key=keys["gemini"])
@@ -67,11 +68,19 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                     
                     if score > 0:
                         discovered.append(("gemini", name, score))
+                        gemini_count += 1
         except Exception as e:
             print(f"[IA] Error descubriendo Gemini: {e}")
+        
+        # Fallback si el API no permite listar pero hay clave (común en algunas regiones/cuotas)
+        if gemini_count == 0:
+            print("[IA] Fallback: Añadiendo modelos Gemini estándar (Discovery falló)")
+            discovered.append(("gemini", "gemini-1.5-flash", 90))
+            discovered.append(("gemini", "gemini-1.5-pro", 80))
 
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
+        groq_count = 0
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=keys["groq"], base_url="https://api.groq.com/openai/v1")
@@ -86,11 +95,18 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                 
                 if score > 0:
                     discovered.append(("groq", m.id, score))
+                    groq_count += 1
         except Exception as e:
             print(f"[IA] Error descubriendo Groq: {e}")
+        
+        if groq_count == 0:
+            print("[IA] Fallback: Añadiendo modelos Groq estándar")
+            discovered.append(("groq", "llama-3.3-70b-versatile", 105))
+            discovered.append(("groq", "mixtral-8x7b-32768", 85))
 
     # 3. DESCUBRIR OPENAI
     if keys.get("openai"):
+        openai_count = 0
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=keys["openai"])
@@ -100,8 +116,13 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                 if mid in ["gpt-4o", "gpt-4o-mini"]:
                     score = 95 if mid == "gpt-4o" else 75
                     discovered.append(("openai", m.id, score))
+                    openai_count += 1
         except Exception as e:
             print(f"[IA] Error descubriendo OpenAI: {e}")
+        
+        if openai_count == 0:
+            discovered.append(("openai", "gpt-4o-mini", 75))
+            discovered.append(("openai", "gpt-4o", 95))
 
     # ORDENAR POR PUNTUACIÓN (MAYOR A MENOR)
     discovered.sort(key=lambda x: x[2], reverse=True)
