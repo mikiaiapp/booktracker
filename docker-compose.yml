@@ -11,7 +11,7 @@ services:
 
   # 🚀 BACKEND (FastAPI)
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
       args:
@@ -40,7 +40,7 @@ services:
 
   # ⚙️ WORKER (Procesamiento de fondo)
   worker:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
       args:
