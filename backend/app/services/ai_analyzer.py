@@ -160,17 +160,33 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
     active_queue = []
     
-    # - El preferido siempre va primero si está disponible en la jerarquía
+    # - El preferido siempre va primero
     if pref_model:
+        found_in_hierarchy = False
         for prov, m_id in dynamic_hierarchy:
             if normalize_m(m_id) == normalize_m(pref_model):
                 active_queue.append((prov, m_id))
+                found_in_hierarchy = True
                 break
+        
+        # Si estamos en modo TEST (skip_fallback), forzamos el modelo preferido
+        # aunque no se haya "descubierto", para poder ver el error real del proveedor
+        # (ej: "API Key invalid" en lugar de "No hay modelos")
+        if not found_in_hierarchy and skip_fallback:
+            prov_guess = "openai"
+            if "gemini" in pref_model: prov_guess = "gemini"
+            elif "llama" in pref_model or "mixtral" in pref_model: prov_guess = "groq"
+            
+            # Asegurar prefijo para Gemini
+            m_to_test = pref_model
+            if prov_guess == "gemini" and not m_to_test.startswith("models/"):
+                m_to_test = f"models/{m_to_test}"
+                
+            active_queue.append((prov_guess, m_to_test))
 
-    # - Añadir el resto de la jerarquía técnica
+    # - Añadir el resto de la jerarquía técnica si no es un test específico
     if not skip_fallback:
         for prov, m_id in dynamic_hierarchy:
-            # Evitar duplicar el preferido
             is_already_queued = any(normalize_m(m[1]) == normalize_m(m_id) for m in active_queue)
             if not is_already_queued:
                 active_queue.append((prov, m_id))
