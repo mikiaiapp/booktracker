@@ -69,4 +69,4 @@ Si en el futuro quieres que la app de Windows también envíe correos (como en e
 
 ---
 *Desarrollado con ❤️ para amantes de la lectura y la tecnología.*
-<!-- Last Sync: 04/13/2026 17:35:52 -->
+<!-- Last Sync: 2026-04-26 11:17:00 -->
