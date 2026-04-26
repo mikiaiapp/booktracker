@@ -73,17 +73,22 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                     found_any = True
             
             if not found_any:
-                print("[IA] Gemini: list_models no devolvió ningún modelo compatible.")
-                # Si no devolvió NADA, el API Key podría estar restringida pero ser válida.
-                # En este caso excepcional, y SOLO si no hay nada más, añadimos los básicos
-                # para que el usuario no se quede bloqueado si su clave funciona por ID directo.
-                discovered.append(("gemini", "models/gemini-1.5-flash", 90))
-                discovered.append(("gemini", "models/gemini-1.5-pro", 80))
+                print("[IA] Gemini: list_models no devolvió ningún modelo. Intentando verificación directa...")
+                # Algunos API Keys restringidos no permiten list_models pero sí uso directo.
+                # Intentamos verificar un modelo estándar.
+                try:
+                    # get_model es síncrono en la mayoría de versiones de la lib
+                    m_verify = genai.get_model("models/gemini-1.5-flash")
+                    if m_verify:
+                        print(f"[IA] Gemini: Verificación directa exitosa para {m_verify.name}")
+                        discovered.append(("gemini", m_verify.name, 90))
+                        found_any = True
+                except Exception as e_verify:
+                    print(f"[IA] Gemini: Falló verificación directa: {e_verify}")
 
-        except Exception as e:
-            print(f"[IA] Error descubriendo Gemini: {e}")
-            # Si hay error (ej. red), metemos fallbacks para no romper la UI
-            discovered.append(("gemini", "models/gemini-1.5-flash", 90))
+            if not found_any:
+                # Si llegamos aquí, realmente no hay nada disponible o la clave es inválida
+                print("[IA] Gemini: No se encontró ningún modelo disponible.")
 
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
