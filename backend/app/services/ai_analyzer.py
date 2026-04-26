@@ -47,58 +47,35 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     print("[IA] Descubriendo catálogo de modelos disponible...")
     discovered = []
 
-    # 1. DESCUBRIR GEMINI (Filtro estricto)
+    # 1. DESCUBRIR GEMINI (OpenAI Compatible)
     if keys.get("gemini"):
         try:
-            import google.generativeai as genai
-            genai.configure(api_key=keys["gemini"])
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(
+                api_key=keys["gemini"],
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+            )
+            models_res = await client.models.list()
             found_any = False
-            for m in genai.list_models():
-                name = m.name 
-                # Solo modelos que soporten generación de contenido
-                if "generateContent" in m.supported_generation_methods:
-                    # Filtro más relajado: queremos ver qué hay disponible realmente
-                    # Solo quitamos los que sabemos que NO son para esto (embeddings, tts)
-                    if any(x in name.lower() for x in ["embedding", "tts", "aqa"]): continue
-                    
-                    # Prioridad por nombre
-                    score = 10
-                    if "2.0-flash" in name.lower(): score = 100
-                    elif "1.5-flash" in name.lower(): score = 90
-                    elif "1.5-pro" in name.lower(): score = 80
-                    elif "gemini-pro" in name.lower(): score = 70
-                    
-                    print(f"[IA] Gemini descubierto: {name} (Score: {score})")
-                    discovered.append(("gemini", name, score))
-                    found_any = True
+            for m in models_res.data:
+                mid = m.id
+                # El ID que devuelve list() suele ser el que espera el API
+                score = 10
+                if "1.5-flash" in mid.lower(): score = 90
+                elif "1.5-pro" in mid.lower(): score = 80
+                elif "gemini-pro" in mid.lower(): score = 70
+                
+                print(f"[IA] Gemini (OpenAI-mode) descubierto: {mid} (Score: {score})")
+                discovered.append(("gemini", mid, score))
+                found_any = True
             
             if not found_any:
-                print("[IA] Gemini: list_models no devolvió ningún modelo. Probando variantes conocidas...")
-                # Algunos API Keys restringidos no permiten list_models pero sí uso directo.
-                # Probamos variantes comunes hasta que una funcione.
-                variants = [
-                    "models/gemini-1.5-flash", 
-                    "models/gemini-1.5-flash-latest",
-                    "models/gemini-pro",
-                    "models/gemini-1.5-pro"
-                ]
-                for v_name in variants:
-                    try:
-                        m_verify = genai.get_model(v_name)
-                        if m_verify:
-                            print(f"[IA] Gemini: Variante encontrada: {v_name}")
-                            discovered.append(("gemini", v_name, 90))
-                            found_any = True
-                            # Si encontramos uno, ya no probamos más variantes por ahora
-                            break
-                    except Exception:
-                        continue
-
-            if not found_any:
-                print("[IA] Gemini: No se encontró ningún modelo tras probar variantes.")
+                # Fallback por si list() viene vacío pero la key es válida
+                discovered.append(("gemini", "gemini-1.5-flash", 90))
 
         except Exception as e:
-            print(f"[IA] Error descubriendo Gemini: {e}")
+            print(f"[IA] Error descubriendo Gemini (OpenAI-mode): {e}")
+            discovered.append(("gemini", "gemini-1.5-flash", 90))
 
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
