@@ -51,47 +51,45 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     if keys.get("gemini"):
         try:
             from openai import AsyncOpenAI
-            client = AsyncOpenAI(
-                api_key=keys["gemini"],
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-            )
-            models_res = await client.models.list()
-            found_any = False
-            for m in models_res.data:
-                mid = m.id
-                # El ID que devuelve list() suele ser el que espera el API
-                score = 10
-                if "1.5-flash" in mid.lower(): score = 90
-                elif "1.5-pro" in mid.lower(): score = 80
-                elif "gemini-pro" in mid.lower(): score = 70
+            async with AsyncOpenAI(api_key=keys["gemini"], base_url="https://generativelanguage.googleapis.com/v1beta/openai/") as client:
+                models_res = await client.models.list()
+                found_any = False
+                for m in models_res.data:
+                    mid = m.id
+                    score = 10
+                    if "1.5-flash" in mid.lower(): score = 90
+                    elif "1.5-pro" in mid.lower(): score = 80
+                    elif "gemini-pro" in mid.lower(): score = 70
+                    
+                    print(f"[IA] Gemini (OpenAI-mode) descubierto: {mid} (Score: {score})")
+                    discovered.append(("gemini", mid, score))
+                    found_any = True
                 
-                print(f"[IA] Gemini (OpenAI-mode) descubierto: {mid} (Score: {score})")
-                discovered.append(("gemini", mid, score))
-                found_any = True
-            
-            if not found_any:
-                # Fallback por si list() viene vacío pero la key es válida
-                discovered.append(("gemini", "gemini-1.5-flash", 90))
+                if not found_any:
+                    print(f"[IA] Gemini list() regresó vacío. Usando fallbacks...")
+                    discovered.append(("gemini", "gemini-1.5-flash", 90))
+                    discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
 
         except Exception as e:
             print(f"[IA] Error descubriendo Gemini (OpenAI-mode): {e}")
             discovered.append(("gemini", "gemini-1.5-flash", 90))
+            discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
 
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
         try:
             from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=keys["groq"], base_url="https://api.groq.com/openai/v1")
-            models_res = await client.models.list()
-            for m in models_res.data:
-                mid = m.id.lower()
-                score = 10
-                if "llama-3.3-70b" in mid: score = 105
-                elif "mixtral-8x7b" in mid: score = 85
-                elif "llama-3.1-8b" in mid: score = 70
-                
-                print(f"[IA] Groq descubierto: {m.id} (Score: {score})")
-                discovered.append(("groq", m.id, score))
+            async with AsyncOpenAI(api_key=keys["groq"], base_url="https://api.groq.com/openai/v1") as client:
+                models_res = await client.models.list()
+                for m in models_res.data:
+                    mid = m.id.lower()
+                    score = 10
+                    if "llama-3.3-70b" in mid: score = 105
+                    elif "mixtral-8x7b" in mid: score = 85
+                    elif "llama-3.1-8b" in mid: score = 70
+                    
+                    print(f"[IA] Groq descubierto: {m.id} (Score: {score})")
+                    discovered.append(("groq", m.id, score))
         except Exception as e:
             print(f"[IA] Error descubriendo Groq: {e}")
             discovered.append(("groq", "llama-3.3-70b-versatile", 105))
@@ -100,14 +98,14 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     if keys.get("openai"):
         try:
             from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=keys["openai"])
-            models_res = await client.models.list()
-            for m in models_res.data:
-                mid = m.id.lower()
-                if mid in ["gpt-4o", "gpt-4o-mini"]:
-                    score = 95 if mid == "gpt-4o" else 75
-                    print(f"[IA] OpenAI descubierto: {m.id}")
-                    discovered.append(("openai", m.id, score))
+            async with AsyncOpenAI(api_key=keys["openai"]) as client:
+                models_res = await client.models.list()
+                for m in models_res.data:
+                    mid = m.id.lower()
+                    if mid in ["gpt-4o", "gpt-4o-mini"]:
+                        score = 95 if mid == "gpt-4o" else 75
+                        print(f"[IA] OpenAI descubierto: {m.id}")
+                        discovered.append(("openai", m.id, score))
         except Exception as e:
             print(f"[IA] Error descubriendo OpenAI: {e}")
             discovered.append(("openai", "gpt-4o-mini", 75))
@@ -237,7 +235,10 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         print(f"[IA] Gemini (OpenAI-mode) fallo en {g_m}: {ge_msg}")
                         if "404" in ge_msg or "not found" in ge_msg: continue
                         else: break
-                raise ValueError(f"[NUEVA-CONEXION-V3] Gemini (OpenAI-mode) falló. Último error: {last_g_err}")
+                # Si llegamos aquí, fallaron todos. Vamos a intentar ver qué modelos se descubrieron
+                hierarchy = await self._get_dynamic_hierarchy("gemini", api_key)
+                discovered = hierarchy.get("gemini", [])
+                raise ValueError(f"[NUEVA-CONEXION-V3] Gemini falló. Reintentados: {variants}. Disponibles en tu cuenta: {discovered}. Último error: {last_g_err}")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
