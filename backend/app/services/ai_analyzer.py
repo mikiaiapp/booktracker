@@ -203,42 +203,46 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         try:
             print(f"[IA] Utilizando {m}...")
             if prov == "gemini":
-                # Usamos la interfaz compatible con OpenAI de Gemini, que suele ser más estable
+                # Usamos la interfaz compatible con OpenAI de Gemini
                 from openai import AsyncOpenAI
                 
-                # Variantes a probar (Gemini via OpenAI API a veces requiere prefijo, a veces no)
+                # 1. Obtener modelos descubiertos para este proveedor
+                hierarchy = await _get_dynamic_hierarchy(current_keys)
+                discovered_models = [h[1] for h in hierarchy if h[0] == "gemini"]
+                
+                # 2. Construir lista de candidatos (el solicitado + variantes + todos los descubiertos)
+                candidates = []
+                # Añadir solicitado y sus variantes
                 clean_m = m.replace("models/", "")
-                g_variants = [clean_m, m] # Probamos ambas: con y sin prefijo
-                if "-latest" not in clean_m: g_variants.append(f"{clean_m}-latest")
+                candidates.extend([clean_m, m])
+                if "-latest" not in clean_m: candidates.append(f"{clean_m}-latest")
+                
+                # Añadir todos los descubiertos que no estén ya en la lista
+                for dm in discovered_models:
+                    if dm not in candidates: candidates.append(dm)
                 
                 last_g_err = None
-                for g_m in g_variants:
+                for g_m in candidates:
                     try:
-                        print(f"[IA] Gemini (OpenAI-mode): Probando {g_m}...")
-                        client = AsyncOpenAI(
-                            api_key=token,
-                            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-                        )
-                        resp = await client.chat.completions.create(
-                            model=g_m,
-                            messages=[
-                                {"role": "system", "content": system},
-                                {"role": "user", "content": user}
-                            ],
-                            max_tokens=max_tokens
-                        )
-                        if not resp.choices[0].message.content: raise ValueError("Respuesta vacía")
-                        return resp.choices[0].message.content, g_m
+                        print(f"[IA] Probando Gemini: {g_m}...")
+                        async with AsyncOpenAI(api_key=token, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") as client:
+                            resp = await client.chat.completions.create(
+                                model=g_m,
+                                messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                                max_tokens=max_tokens
+                            )
+                            if resp.choices[0].message.content:
+                                return resp.choices[0].message.content, g_m
                     except Exception as ge:
                         last_g_err = ge
                         ge_msg = str(ge).lower()
-                        print(f"[IA] Gemini (OpenAI-mode) fallo en {g_m}: {ge_msg}")
-                        if "404" in ge_msg or "not found" in ge_msg: continue
-                        else: break
-                # Si llegamos aquí, fallaron todos. Vamos a intentar ver qué modelos se descubrieron
-                hierarchy = await _get_dynamic_hierarchy(current_keys)
-                discovered = [h[1] for h in hierarchy if h[0] == "gemini"]
-                raise ValueError(f"[NUEVA-CONEXION-V4] Gemini falló. Reintentados: {g_variants}. Disponibles en tu cuenta: {discovered}. Último error: {last_g_err}")
+                        print(f"[IA] Gemini falló en {g_m}: {ge_msg}")
+                        if "404" in ge_msg or "not found" in ge_msg:
+                            continue # Probar el siguiente candidato
+                        else:
+                            break # Error fatal (ej: API Key mala), no seguir probando
+                
+                raise ValueError(f"[NUEVA-CONEXION-V5] Gemini falló tras probar {len(candidates)} modelos. Último error: {last_g_err}")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
