@@ -54,7 +54,7 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
             import google.generativeai as genai
             genai.configure(api_key=keys["gemini"])
             for m in genai.list_models():
-                name = m.name.replace("models/", "")
+                name = m.name # Mantenemos el prefijo 'models/' completo
                 # Filtrar solo modelos generativos reales y modernos
                 if "generateContent" in m.supported_generation_methods:
                     # Ignorar explícitamente modelos que no son para texto puro o son muy viejos
@@ -75,8 +75,8 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
         # Fallback si el API no permite listar pero hay clave (común en algunas regiones/cuotas)
         if gemini_count == 0:
             print("[IA] Fallback: Añadiendo modelos Gemini estándar (Discovery falló)")
-            discovered.append(("gemini", "gemini-1.5-flash", 90))
-            discovered.append(("gemini", "gemini-1.5-pro", 80))
+            discovered.append(("gemini", "models/gemini-1.5-flash", 90))
+            discovered.append(("gemini", "models/gemini-1.5-pro", 80))
 
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
@@ -151,13 +151,16 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     dynamic_hierarchy = await _get_dynamic_hierarchy(current_keys)
     pref_model = ck(api_keys.get("preferred_model")).lower() if api_keys else ""
     
+    def normalize_m(name):
+        return name.replace("models/", "").lower().strip()
+
     active_queue = []
     
     # - El preferido siempre va primero si está disponible
     if pref_model:
         found_pref = False
         for prov, m_id in dynamic_hierarchy:
-            if m_id.lower() == pref_model:
+            if normalize_m(m_id) == normalize_m(pref_model):
                 active_queue.append((prov, m_id))
                 found_pref = True
                 break
@@ -167,15 +170,20 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
         if not found_pref and skip_fallback and pref_model:
             # Adivinar el proveedor basado en el nombre del modelo si no se conoce
             prov = "openai"
-            if "gemini" in pref_model: prov = "gemini"
-            elif "llama" in pref_model or "mixtral" in pref_model: prov = "groq"
-            active_queue.append((prov, pref_model))
+            if "gemini" in pref_model: 
+                prov = "gemini"
+                # Para Gemini, si no tiene el prefijo y vamos a probar, se lo ponemos por si acaso
+                full_m = pref_model if pref_model.startswith("models/") else f"models/{pref_model}"
+                active_queue.append((prov, full_m))
+            else:
+                if "llama" in pref_model or "mixtral" in pref_model: prov = "groq"
+                active_queue.append((prov, pref_model))
 
     # - Añadir el resto de la jerarquía técnica
     if not skip_fallback:
         for prov, m_id in dynamic_hierarchy:
             # Evitar duplicar el preferido
-            is_already_queued = any(m[1].lower() == m_id.lower() for m in active_queue)
+            is_already_queued = any(normalize_m(m[1]) == normalize_m(m_id) for m in active_queue)
             if not is_already_queued:
                 active_queue.append((prov, m_id))
 
