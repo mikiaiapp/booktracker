@@ -184,13 +184,13 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     for prov, m in active_queue:
         _ui_log(user_id, book_id, m, f"Consultando {m}...")
         # Saltar si el proveedor está temporalmente bloqueado por cuota (10 min)
-        if prov in _BLACKLISTED_PROVIDERS:
+        if prov in _BLACKLISTED_PROVIDERS and not skip_fallback:
             try:
                 entry = _BLACKLISTED_PROVIDERS[prov]
                 # Soportar tanto float (legacy) como tuple (nuevo)
                 expiry_timestamp = entry[0] if isinstance(entry, (tuple, list)) else entry
                 if time.time() < expiry_timestamp:
-                    print(f"[IA] Saltando {prov} (bloqueado por cuota)")
+                    print(f"[IA] Saltando {prov} (bloqueado por cuota: {entry[1]})")
                     continue
                 else:
                     del _BLACKLISTED_PROVIDERS[prov]
@@ -271,21 +271,22 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                     elif match.group(2): wait_seconds = int(match.group(2)) * 60
                     elif match.group(3): wait_seconds = int(match.group(3))
 
-                # Límite DIARIO (Gemini "daily", Groq "tpd" o "tokens per day", o error 429 persistente)
-                # Gemini free suele decir: "quota_id: ...daily..."
-                if any(x in last_err for x in ["daily", "tpd", "tokens per day", "exhausted"]):
-                    # Si no hay tiempo explícito, asumimos que es un reset diario (usamos 1h como ventana de seguridad para reintentar)
+                # Límite DIARIO real (Gemini "daily", Groq "tpd" o "tokens per day")
+                is_daily = any(x in last_err for x in ["daily", "tpd", "tokens per day"])
+                
+                if is_daily:
+                    # Si es diario, bloqueamos 1h (ventana de seguridad hasta reset)
                     reset_time = time.time() + max(wait_seconds, 3600) 
-                    
                     timestr = time.strftime('%H:%M', time.localtime(reset_time))
                     msg = f"Agotada cuota diaria. Reset estimado: {timestr}"
                     _BLACKLISTED_PROVIDERS[prov] = (reset_time, msg)
                     print(f"[IA] Provider {prov} AGOTADO DIARIAMENTE: {msg}")
                 else:
-                    # Límite MOMENTÁNEO (TPM/RPM)
+                    # Límite MOMENTÁNEO (TPM/RPM) - Bloqueamos solo el tiempo solicitado + pequeño margen
                     wait_time = max(wait_seconds, 30 if prov == "groq" else 60)
-                    timestr = time.strftime('%H:%M:%S', time.localtime(time.time() + wait_time))
-                    _BLACKLISTED_PROVIDERS[prov] = (time.time() + wait_time, f"Saturado hasta {timestr}")
+                    reset_time = time.time() + wait_time
+                    timestr = time.strftime('%H:%M:%S', time.localtime(reset_time))
+                    _BLACKLISTED_PROVIDERS[prov] = (reset_time, f"Saturado momentáneamente hasta {timestr}")
                     print(f"[IA] Provider {prov} saturado. Reintentar en {wait_time}s")
                 
                 await asyncio.sleep(1)
@@ -410,6 +411,10 @@ async def test_api_key(provider, key, model=None):
     # Forzamos las llaves actuales para esta llamada específica
     ks = {"gemini": "", "groq": "", "openai": "", "preferred_model": model}
     ks[provider] = key
+    
+    # IMPORTANTE: Limpiar cualquier bloqueo previo para este proveedor antes de testear
+    if provider in _BLACKLISTED_PROVIDERS:
+        del _BLACKLISTED_PROVIDERS[provider]
     
     print(f"[IA] Probando API de {provider} con modelo {model}...")
     try:
