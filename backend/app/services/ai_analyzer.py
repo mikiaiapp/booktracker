@@ -237,7 +237,7 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         print(f"[IA] Gemini (OpenAI-mode) fallo en {g_m}: {ge_msg}")
                         if "404" in ge_msg or "not found" in ge_msg: continue
                         else: break
-                raise ValueError(f"Gemini (OpenAI-mode) falló. Último error: {last_g_err}")
+                raise ValueError(f"[NUEVA-CONEXION-V3] Gemini (OpenAI-mode) falló. Último error: {last_g_err}")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
