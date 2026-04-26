@@ -236,9 +236,9 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         if "404" in ge_msg or "not found" in ge_msg: continue
                         else: break
                 # Si llegamos aquí, fallaron todos. Vamos a intentar ver qué modelos se descubrieron
-                hierarchy = await self._get_dynamic_hierarchy("gemini", api_key)
-                discovered = hierarchy.get("gemini", [])
-                raise ValueError(f"[NUEVA-CONEXION-V3] Gemini falló. Reintentados: {variants}. Disponibles en tu cuenta: {discovered}. Último error: {last_g_err}")
+                hierarchy = await _get_dynamic_hierarchy(current_keys)
+                discovered = [h[1] for h in hierarchy if h[0] == "gemini"]
+                raise ValueError(f"[NUEVA-CONEXION-V4] Gemini falló. Reintentados: {g_variants}. Disponibles en tu cuenta: {discovered}. Último error: {last_g_err}")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
