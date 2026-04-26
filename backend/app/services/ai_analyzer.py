@@ -73,22 +73,29 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                     found_any = True
             
             if not found_any:
-                print("[IA] Gemini: list_models no devolvió ningún modelo. Intentando verificación directa...")
+                print("[IA] Gemini: list_models no devolvió ningún modelo. Probando variantes conocidas...")
                 # Algunos API Keys restringidos no permiten list_models pero sí uso directo.
-                # Intentamos verificar un modelo estándar.
-                try:
-                    # get_model es síncrono en la mayoría de versiones de la lib
-                    m_verify = genai.get_model("models/gemini-1.5-flash")
-                    if m_verify:
-                        print(f"[IA] Gemini: Verificación directa exitosa para {m_verify.name}")
-                        discovered.append(("gemini", m_verify.name, 90))
-                        found_any = True
-                except Exception as e_verify:
-                    print(f"[IA] Gemini: Falló verificación directa: {e_verify}")
+                # Probamos variantes comunes hasta que una funcione.
+                variants = [
+                    "models/gemini-1.5-flash", 
+                    "models/gemini-1.5-flash-latest",
+                    "models/gemini-pro",
+                    "models/gemini-1.5-pro"
+                ]
+                for v_name in variants:
+                    try:
+                        m_verify = genai.get_model(v_name)
+                        if m_verify:
+                            print(f"[IA] Gemini: Variante encontrada: {v_name}")
+                            discovered.append(("gemini", v_name, 90))
+                            found_any = True
+                            # Si encontramos uno, ya no probamos más variantes por ahora
+                            break
+                    except Exception:
+                        continue
 
             if not found_any:
-                # Si llegamos aquí, realmente no hay nada disponible o la clave es inválida
-                print("[IA] Gemini: No se encontró ningún modelo disponible.")
+                print("[IA] Gemini: No se encontró ningún modelo tras probar variantes.")
 
         except Exception as e:
             print(f"[IA] Error descubriendo Gemini: {e}")
