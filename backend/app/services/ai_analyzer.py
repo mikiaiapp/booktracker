@@ -155,15 +155,28 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
     
     # - El preferido siempre va primero si está disponible
     if pref_model:
+        found_pref = False
         for prov, m_id in dynamic_hierarchy:
             if m_id.lower() == pref_model:
                 active_queue.append((prov, m_id))
+                found_pref = True
                 break
+        
+        # Si no se encontró en la jerarquía pero estamos en modo test (skip_fallback), 
+        # forzamos su inclusión para probar la clave directamente.
+        if not found_pref and skip_fallback and pref_model:
+            # Adivinar el proveedor basado en el nombre del modelo si no se conoce
+            prov = "openai"
+            if "gemini" in pref_model: prov = "gemini"
+            elif "llama" in pref_model or "mixtral" in pref_model: prov = "groq"
+            active_queue.append((prov, pref_model))
 
     # - Añadir el resto de la jerarquía técnica
     if not skip_fallback:
         for prov, m_id in dynamic_hierarchy:
-            if m_id.lower() != pref_model:
+            # Evitar duplicar el preferido
+            is_already_queued = any(m[1].lower() == m_id.lower() for m in active_queue)
+            if not is_already_queued:
                 active_queue.append((prov, m_id))
 
     if not active_queue:
