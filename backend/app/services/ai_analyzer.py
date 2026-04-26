@@ -244,26 +244,20 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         print(f"[IA] Gemini: Probando variante {g_m}...")
                         mdl = genai.GenerativeModel(g_m)
                         safety = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
-                        # Forzamos v1 en lugar de v1beta si es posible
-                        from google.generativeai.types import RequestOptions
-                        response = await asyncio.to_thread(
-                            mdl.generate_content, 
-                            f"{system}\n\n{user}", 
-                            safety_settings=safety,
-                            request_options=RequestOptions(api_version="v1")
-                        )
+                        response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
                         if not response or not response.text: raise ValueError("Sin respuesta o bloqueado por seguridad")
                         return response.text, g_m
                     except Exception as ge:
                         last_g_err = ge
                         ge_msg = str(ge).lower()
+                        print(f"[IA] Gemini fallo variante {g_m}: {ge_msg}")
                         # Solo seguimos probando variantes si el error es de "modelo no encontrado" (404)
                         if "404" in ge_msg or "not found" in ge_msg or "not_found" in ge_msg:
                             continue
                         else:
-                            # Es otro tipo de error (clave, cuota, etc.), no perdemos tiempo con variantes
                             break
-                raise last_g_err
+                # Si llegamos aquí, lanzamos el último error de Gemini con más contexto
+                raise ValueError(f"Gemini falló tras probar variantes. Último error: {last_g_err}")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
