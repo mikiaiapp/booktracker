@@ -123,20 +123,38 @@ export default function APISettingsPage() {
     if (!key && !settings[`has_${provider}`]) {
       return toast.error(`Introduce una clave de ${providerCfg.label} primero`)
     }
+    
+    // Usamos el primer modelo disponible del proveedor para la prueba
+    const testModel = providerCfg.models[0]
+    
     setTesting(prev => ({ ...prev, [provider]: 'loading' }))
     const tId = toast.loading(`Probando ${providerCfg.label}...`)
+    
     try {
-      const { data } = await api.post('/users/test-api', { provider, api_key: key })
+      const { data } = await api.post('/users/test-api', { 
+        provider, 
+        api_key: key,
+        model: testModel
+      })
+      
       if (data.status === 'success') {
         setTesting(prev => ({ ...prev, [provider]: 'ok' }))
         toast.success(data.message, { id: tId })
       } else {
         setTesting(prev => ({ ...prev, [provider]: 'error' }))
-        toast.error(data.message, { id: tId })
+        toast.error(data.message || 'Error desconocido', { id: tId })
       }
     } catch (err) {
       setTesting(prev => ({ ...prev, [provider]: 'error' }))
-      const msg = err.response?.data?.detail || 'Error en la prueba'
+      let msg = 'Error en la prueba'
+      
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail
+        msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? detail[0]?.msg : JSON.stringify(detail))
+      } else if (err.message) {
+        msg = err.message
+      }
+      
       toast.error(msg, { id: tId })
     }
     setTimeout(() => setTesting(prev => ({ ...prev, [provider]: null })), 5000)

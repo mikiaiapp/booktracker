@@ -17,7 +17,7 @@ class UserSettingsUpdate(BaseModel):
 
 class TestAPIRequest(BaseModel):
     provider: str
-    model: str
+    model: Optional[str] = None
     api_key: Optional[str] = None
 
 @router.get("/profile")
@@ -106,9 +106,16 @@ async def test_api_endpoint(
     
     if not key_to_test:
         raise HTTPException(status_code=400, detail="No hay clave de API para probar")
+
+    # Si no se especifica modelo, elegimos uno sensato para probar la conexión
+    model = data.model
+    if not model:
+        if data.provider == "gemini": model = "gemini-1.5-flash"
+        elif data.provider == "groq": model = "llama-3.3-70b-versatile"
+        elif data.provider == "openai": model = "gpt-4o-mini"
     
     try:
-        success = await test_api_key(data.provider, key_to_test, data.model)
+        success = await test_api_key(data.provider, key_to_test, model)
         if success:
             return {"status": "success", "message": f"Conexión con {data.provider.title()} establecida correctamente ✓"}
         else:

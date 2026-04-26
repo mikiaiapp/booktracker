@@ -89,6 +89,20 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
         except Exception as e:
             print(f"[IA] Error descubriendo Groq: {e}")
 
+    # 3. DESCUBRIR OPENAI
+    if keys.get("openai"):
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=keys["openai"])
+            models_res = await client.models.list()
+            for m in models_res.data:
+                mid = m.id.lower()
+                if mid in ["gpt-4o", "gpt-4o-mini"]:
+                    score = 95 if mid == "gpt-4o" else 75
+                    discovered.append(("openai", m.id, score))
+        except Exception as e:
+            print(f"[IA] Error descubriendo OpenAI: {e}")
+
     # ORDENAR POR PUNTUACIÓN (MAYOR A MENOR)
     discovered.sort(key=lambda x: x[2], reverse=True)
     
