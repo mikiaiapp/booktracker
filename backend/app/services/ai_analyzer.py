@@ -49,64 +49,63 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
 
     # 1. DESCUBRIR GEMINI (Filtro estricto)
     if keys.get("gemini"):
-        gemini_count = 0
         try:
             import google.generativeai as genai
             genai.configure(api_key=keys["gemini"])
+            found_any = False
             for m in genai.list_models():
-                name = m.name # Mantenemos el prefijo 'models/' completo
-                # Filtrar solo modelos generativos reales y modernos
+                name = m.name 
+                # Solo modelos que soporten generación de contenido
                 if "generateContent" in m.supported_generation_methods:
-                    # Ignorar explícitamente modelos que no son para texto puro o son muy viejos
-                    if any(x in name for x in ["tts", "embedding", "vision", "3.1", "3.0", "experimental"]): continue
+                    # Filtro más relajado: queremos ver qué hay disponible realmente
+                    # Solo quitamos los que sabemos que NO son para esto (embeddings, tts)
+                    if any(x in name.lower() for x in ["embedding", "tts", "aqa"]): continue
                     
-                    # Prioridad: Flash 2.0 > Flash 1.5 > Pro
-                    score = 0
-                    if "2.0-flash" in name: score = 100
-                    elif "1.5-flash" in name: score = 90
-                    elif "1.5-pro" in name: score = 80
+                    # Prioridad por nombre
+                    score = 10
+                    if "2.0-flash" in name.lower(): score = 100
+                    elif "1.5-flash" in name.lower(): score = 90
+                    elif "1.5-pro" in name.lower(): score = 80
+                    elif "gemini-pro" in name.lower(): score = 70
                     
-                    if score > 0:
-                        discovered.append(("gemini", name, score))
-                        gemini_count += 1
+                    print(f"[IA] Gemini descubierto: {name} (Score: {score})")
+                    discovered.append(("gemini", name, score))
+                    found_any = True
+            
+            if not found_any:
+                print("[IA] Gemini: list_models no devolvió ningún modelo compatible.")
+                # Si no devolvió NADA, el API Key podría estar restringida pero ser válida.
+                # En este caso excepcional, y SOLO si no hay nada más, añadimos los básicos
+                # para que el usuario no se quede bloqueado si su clave funciona por ID directo.
+                discovered.append(("gemini", "models/gemini-1.5-flash", 90))
+                discovered.append(("gemini", "models/gemini-1.5-pro", 80))
+
         except Exception as e:
             print(f"[IA] Error descubriendo Gemini: {e}")
-        
-        # Fallback si el API no permite listar pero hay clave (común en algunas regiones/cuotas)
-        if gemini_count == 0:
-            print("[IA] Fallback: Añadiendo modelos Gemini estándar (Discovery falló)")
+            # Si hay error (ej. red), metemos fallbacks para no romper la UI
             discovered.append(("gemini", "models/gemini-1.5-flash", 90))
-            discovered.append(("gemini", "models/gemini-1.5-pro", 80))
 
     # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
     if keys.get("groq"):
-        groq_count = 0
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=keys["groq"], base_url="https://api.groq.com/openai/v1")
             models_res = await client.models.list()
             for m in models_res.data:
                 mid = m.id.lower()
-                # Filtrar modelos potentes de Groq
-                score = 0
-                if "llama-3.3-70b" in mid: score = 105 # Máxima prioridad por ser rápido y gratuito
+                score = 10
+                if "llama-3.3-70b" in mid: score = 105
                 elif "mixtral-8x7b" in mid: score = 85
                 elif "llama-3.1-8b" in mid: score = 70
                 
-                if score > 0:
-                    discovered.append(("groq", m.id, score))
-                    groq_count += 1
+                print(f"[IA] Groq descubierto: {m.id} (Score: {score})")
+                discovered.append(("groq", m.id, score))
         except Exception as e:
             print(f"[IA] Error descubriendo Groq: {e}")
-        
-        if groq_count == 0:
-            print("[IA] Fallback: Añadiendo modelos Groq estándar")
             discovered.append(("groq", "llama-3.3-70b-versatile", 105))
-            discovered.append(("groq", "mixtral-8x7b-32768", 85))
 
     # 3. DESCUBRIR OPENAI
     if keys.get("openai"):
-        openai_count = 0
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=keys["openai"])
@@ -115,19 +114,16 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                 mid = m.id.lower()
                 if mid in ["gpt-4o", "gpt-4o-mini"]:
                     score = 95 if mid == "gpt-4o" else 75
+                    print(f"[IA] OpenAI descubierto: {m.id}")
                     discovered.append(("openai", m.id, score))
-                    openai_count += 1
         except Exception as e:
             print(f"[IA] Error descubriendo OpenAI: {e}")
-        
-        if openai_count == 0:
             discovered.append(("openai", "gpt-4o-mini", 75))
-            discovered.append(("openai", "gpt-4o", 95))
 
     # ORDENAR POR PUNTUACIÓN (MAYOR A MENOR)
     discovered.sort(key=lambda x: x[2], reverse=True)
     
-    # Guardar en caché (solo extraemos provider y model_id)
+    # Guardar en caché
     final_list = [(d[0], d[1]) for d in discovered]
     _MODEL_CACHE = {
         "hierarchy": final_list,
@@ -156,28 +152,12 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
     active_queue = []
     
-    # - El preferido siempre va primero si está disponible
+    # - El preferido siempre va primero si está disponible en la jerarquía
     if pref_model:
-        found_pref = False
         for prov, m_id in dynamic_hierarchy:
             if normalize_m(m_id) == normalize_m(pref_model):
                 active_queue.append((prov, m_id))
-                found_pref = True
                 break
-        
-        # Si no se encontró en la jerarquía pero estamos en modo test (skip_fallback), 
-        # forzamos su inclusión para probar la clave directamente.
-        if not found_pref and skip_fallback and pref_model:
-            # Adivinar el proveedor basado en el nombre del modelo si no se conoce
-            prov = "openai"
-            if "gemini" in pref_model: 
-                prov = "gemini"
-                # Para Gemini, si no tiene el prefijo y vamos a probar, se lo ponemos por si acaso
-                full_m = pref_model if pref_model.startswith("models/") else f"models/{pref_model}"
-                active_queue.append((prov, full_m))
-            else:
-                if "llama" in pref_model or "mixtral" in pref_model: prov = "groq"
-                active_queue.append((prov, pref_model))
 
     # - Añadir el resto de la jerarquía técnica
     if not skip_fallback:
