@@ -244,7 +244,14 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         print(f"[IA] Gemini: Probando variante {g_m}...")
                         mdl = genai.GenerativeModel(g_m)
                         safety = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
-                        response = await asyncio.to_thread(mdl.generate_content, f"{system}\n\n{user}", safety_settings=safety)
+                        # Forzamos v1 en lugar de v1beta si es posible
+                        from google.generativeai.types import RequestOptions
+                        response = await asyncio.to_thread(
+                            mdl.generate_content, 
+                            f"{system}\n\n{user}", 
+                            safety_settings=safety,
+                            request_options=RequestOptions(api_version="v1")
+                        )
                         if not response or not response.text: raise ValueError("Sin respuesta o bloqueado por seguridad")
                         return response.text, g_m
                     except Exception as ge:
