@@ -283,9 +283,9 @@ export default function BookPage() {
   const [audioEl, setAudioEl] = useState(null)
   const [rating, setRating] = useState(0)
 
-  const load = async () => {
+  const load = async (isFirst = false) => {
     try {
-      setLoading(true)
+      if (isFirst) setLoading(true)
       const bookRes = await booksAPI.get(id)
       const statusRes = await analysisAPI.status(id)
       setData(bookRes.data)
@@ -299,16 +299,16 @@ export default function BookPage() {
     } catch (err) {
       toast.error(`Error al cargar: ${err.message}`)
     } finally {
-      setLoading(false)
+      if (isFirst) setLoading(false)
     }
   }
 
-  useEffect(() => { load() }, [id])
+  useEffect(() => { load(true) }, [id])
 
   useEffect(() => {
     if (!status) return
     if (PROCESSING_STATUSES.includes(status.status)) {
-      const t = setTimeout(load, 4000)
+      const t = setTimeout(() => load(false), 4000)
       return () => clearTimeout(t)
     }
   }, [status])

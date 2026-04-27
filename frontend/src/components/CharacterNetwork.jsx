@@ -9,6 +9,13 @@ export default function CharacterNetwork({ characters }) {
   const [isFullScreen, setIsFullScreen] = useState(false)
 
   useEffect(() => {
+    if (selectedChar && characters) {
+      const updated = characters.find(c => c.name === selectedChar.name)
+      if (updated) setSelectedChar(updated)
+    }
+  }, [characters])
+
+  useEffect(() => {
     if (!characters || characters.length === 0) return
 
     // 1. Preparar datos
