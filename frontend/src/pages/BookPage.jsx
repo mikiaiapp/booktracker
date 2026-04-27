@@ -544,16 +544,15 @@ export default function BookPage() {
 
   const handleDelete = async () => { if (await confirm(`¿Eliminar "${data?.book?.title}"?`)) { await booksAPI.delete(id); navigate('/') } }
 
-  if (loading) return <div className="book-loading"><Loader size={28} className="spin" /><p>Cargando...</p></div>
-
   const activeData = data || prevData
   const book = activeData?.book || {}
   const statusInfo = status || {}
-  if (!book.id) return <div className="book-loading"><button onClick={() => navigate("/")}>Volver</button></div>
-  
   const chapters = activeData?.chapters || []
   const characters = activeData?.characters || []
   const isProcessing = PROCESSING_STATUSES.includes(statusInfo.status)
+
+  if (loading) return <div className="book-loading"><Loader size={28} className="spin" /><p>Cargando...</p></div>
+  if (!book.id) return <div className="book-loading"><button onClick={() => navigate("/")}>Volver</button></div>
 
   const formatDuration = (s) => { const m = Math.floor(s/60); const sc = Math.floor(s%60); return `${m}:${sc.toString().padStart(2,'0')}` }
 
@@ -630,7 +629,7 @@ export default function BookPage() {
               
               {(ttsInfoPlaying || ttsInfoPaused) && (
                 <>
-                  <button className="hero-action-btn pause-btn active" onClick={ttsInfoPaused ? resumeInfoTTS : pauseInfoTTS}>
+                  <button className="hero-action-btn pause-btn" onClick={ttsInfoPaused ? resumeInfoTTS : pauseInfoTTS}>
                     {ttsInfoPaused ? <Play size={16} /> : <Pause size={16} />}
                     <span>{ttsInfoPaused ? 'Reanudar' : 'Pausar'}</span>
                   </button>
@@ -665,7 +664,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.4</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.5</span>
         </div>
 
         <AnimatePresence mode="wait">
