@@ -339,6 +339,7 @@ async def get_book(
                 "podcast_script": book.podcast_script or "",
                 "podcast_audio_path": book.podcast_audio_path or "",
                 "podcast_duration": book.podcast_duration,
+                "has_file": bool(book.file_path),
                 "cover_local": book.cover_local,
             },
             "chapters": [
@@ -655,3 +656,24 @@ async def upload_file_to_shell(
     q_enqueue(current_user.id, book_id, book.title, ["1", "2", "3", "4", "5", "6"])
 
     return {"id": book_id, "status": "queued", "task_id": None}
+
+
+# ── Descargar archivo original ────────────────────────────────
+@router.get("/{book_id}/download")
+async def download_book(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from fastapi.responses import FileResponse
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book or not book.file_path or not os.path.exists(book.file_path):
+        raise HTTPException(404, "Archivo no encontrado")
+
+    filename = f"{book.title}.{book.file_type}"
+    return FileResponse(
+        book.file_path,
+        media_type="application/octet-stream",
+        filename=filename
+    )

@@ -378,67 +378,101 @@ export default function BookPage() {
       const pageWidth = doc.internal.pageSize.getWidth()
       const contentWidth = pageWidth - (margin * 2)
 
-      const checkPage = (h) => { if (y + h > 280) { doc.addPage(); y = 30; return true } return false }
+      const addPageIfNeeded = (h) => {
+        if (y + h > 280) {
+          doc.addPage();
+          y = 30;
+          return true;
+        }
+        return false;
+      }
+
+      const renderParagraph = (text, fontSize, isBold = false, isItalic = false) => {
+        const style = isBold ? 'bold' : (isItalic ? 'italic' : 'normal');
+        doc.setFont('helvetica', style);
+        doc.setFontSize(fontSize);
+        const lines = doc.splitTextToSize(text, contentWidth);
+        const lineHeight = fontSize * 0.5; // Aproximación en mm
+        
+        lines.forEach(line => {
+          addPageIfNeeded(lineHeight);
+          doc.text(line, margin, y);
+          y += lineHeight;
+        });
+        y += 4; // Espacio entre párrafos
+      }
+
+      const renderHeader = (text, size = 16) => {
+        addPageIfNeeded(size + 10);
+        y += 5;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(size);
+        doc.text(text, margin, y);
+        y += (size * 0.6) + 2;
+        doc.line(margin, y - 1, margin + 40, y - 1);
+        y += 5;
+      }
 
       // Title & Author
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(24); doc.text(book.title, margin, y); y += 12
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(16); doc.text(book.author || '', margin, y); y += 20
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(24); doc.text(book.title, margin, y); y += 12;
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(14); doc.text(book.author || '', margin, y); y += 20;
+
+      // Meta info (ISBN, etc)
+      doc.setFontSize(10); doc.setTextColor(100);
+      let metaStr = `ISBN: ${book.isbn || 'N/A'}  |  Género: ${book.genre || 'N/A'}  |  Año: ${book.year || 'N/A'}`;
+      doc.text(metaStr, margin, y); y += 15;
+      doc.setTextColor(0);
 
       // Synopsis
       if (book.synopsis) {
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('SINOPSIS', margin, y); y += 10
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
-        const synLines = doc.splitTextToSize(book.synopsis, contentWidth)
-        doc.text(synLines, margin, y); y += (synLines.length * 5) + 15
+        renderHeader('SINOPSIS', 14);
+        renderParagraph(book.synopsis, 10);
       }
 
       // Chapters
       if (chapters.length > 0) {
-        checkPage(20)
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('CAPÍTULOS Y RESÚMENES', margin, y); y += 12
+        renderHeader('CAPÍTULOS Y RESÚMENES', 14);
         chapters.forEach((ch, i) => {
-          checkPage(20)
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(`${i+1}. ${ch.title}`, margin, y); y += 7
+          addPageIfNeeded(15);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); 
+          doc.text(`${i+1}. ${ch.title}`, margin, y); y += 7;
           if (ch.summary) {
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-            const chLines = doc.splitTextToSize(ch.summary, contentWidth)
-            checkPage(chLines.length * 4.5)
-            doc.text(chLines, margin, y); y += (chLines.length * 4.5) + 10
-          } else { y += 5 }
-        })
-        y += 10
+            renderParagraph(ch.summary, 9);
+          } else {
+            y += 5;
+          }
+        });
       }
 
       // Characters
       if (characters.length > 0) {
-        checkPage(20)
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('PERSONAJES', margin, y); y += 12
+        renderHeader('PERSONAJES', 14);
         characters.forEach(char => {
-          checkPage(20)
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(char.name, margin, y); y += 6
-          doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.text(char.role || 'Personaje', margin, y); y += 6
+          addPageIfNeeded(15);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); 
+          doc.text(char.name, margin, y); y += 6;
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(9); 
+          doc.text(char.role || 'Personaje', margin, y); y += 6;
           if (char.description) {
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
-            const descLines = doc.splitTextToSize(char.description, contentWidth)
-            checkPage(descLines.length * 4.5)
-            doc.text(descLines, margin, y); y += (descLines.length * 4.5) + 8
-          } else { y += 4 }
-        })
-        y += 10
+            renderParagraph(char.description, 9);
+          } else {
+            y += 4;
+          }
+        });
       }
 
       // Global Summary
       if (book.global_summary) {
-        checkPage(20)
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('ANÁLISIS GLOBAL', margin, y); y += 12
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
-        const globLines = doc.splitTextToSize(book.global_summary, contentWidth)
-        checkPage(globLines.length * 5)
-        doc.text(globLines, margin, y); y += (globLines.length * 5) + 15
+        renderHeader('ANÁLISIS GLOBAL', 14);
+        renderParagraph(book.global_summary, 10);
       }
 
-      doc.save(`${book.title}_Ficha_Completa.pdf`); toast.success('Ficha PDF generada')
-    } catch (err) { console.error(err); toast.error('Error al generar PDF') }
+      doc.save(`${book.title}_Análisis_Completo.pdf`);
+      toast.success('PDF generado con éxito');
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al generar PDF');
+    }
   }
 
   const handleDelete = async () => { if (await confirm(`¿Eliminar "${data?.book?.title}"?`)) { await booksAPI.delete(id); navigate('/') } }
@@ -484,29 +518,30 @@ export default function BookPage() {
                 </button>
               )}
 
-              {book.file_path && (
+              {book.has_file && (
                 <button
                   className="hero-action-btn epub-btn"
                   title="Descargar archivo original"
                   onClick={async () => {
                     try {
                       const token = localStorage.getItem('bt_token')
-                      const resp = await fetch(analysisAPI.downloadUrl(id), {
+                      const url = `${booksAPI.baseURL}/${id}/download`
+                      const resp = await fetch(url, {
                         headers: { Authorization: `Bearer ${token}` }
                       })
                       if (!resp.ok) { toast.error('No se pudo descargar el archivo'); return }
                       const blob = await resp.blob()
-                      const url = URL.createObjectURL(blob)
+                      const objUrl = URL.createObjectURL(blob)
                       const a = document.createElement('a')
-                      a.href = url
-                      a.download = `${book.title}.${book.file_type || 'pdf'}`
+                      a.href = objUrl
+                      a.download = `${book.title}.pdf` // Extension is determined by backend but fallback to pdf
                       a.click()
-                      setTimeout(() => URL.revokeObjectURL(url), 5000)
+                      setTimeout(() => URL.revokeObjectURL(objUrl), 5000)
                     } catch { toast.error('Error al descargar el archivo') }
                   }}
                 >
                   <BookOpen size={16} />
-                  <span>Descarga {book.file_type ? book.file_type.toUpperCase() : 'Libro'}</span>
+                  <span>Descarga Original</span>
                 </button>
               )}
 
@@ -543,7 +578,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.4</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.5</span>
         </div>
 
         <AnimatePresence mode="wait">

@@ -178,6 +178,10 @@ export default function CharacterNetwork({ characters }) {
 
     svg.on("click", () => setSelectedChar(null))
 
+    return () => {
+      simulation.stop()
+    }
+
   }, [characters, isFullScreen])
 
   const renderSidebar = () => (
