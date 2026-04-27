@@ -33,7 +33,7 @@ def _normalize_title(t: str) -> str:
 
 
 def _isbn_base(isbn: str) -> str:
-    \"\"\"Primeros 9 dígitos del ISBN-13 = misma obra, distintas ediciones.\"\"\"
+    """Primeros 9 dígitos del ISBN-13 = misma obra, distintas ediciones."""
     digits = ''.join(c for c in (isbn or '') if c.isdigit())
     return digits[:9] if len(digits) >= 9 else digits
 
@@ -54,10 +54,10 @@ def _is_name_inversion(name_a: str, name_b: str) -> bool:
 
 
 async def _find_existing_book(db, title: str, author: str, isbn: str, exclude_id: str = None):
-    \"\"\"
+    """
     Busca si ya existe un libro en la BD con el mismo ISBN o título+autor.
     Retorna el libro encontrado o None.
-    \"\"\"
+    """
     from sqlalchemy import select
 
     # 1. Match por ISBN (siempre es la prueba más robusta)
@@ -70,7 +70,7 @@ async def _find_existing_book(db, title: str, author: str, isbn: str, exclude_id
         
         # También buscar por ISBN base
         if isbn_b:
-            result = await db.execute(select(Book).where(Book.isbn.like(f\"{isbn_b}%\")))
+            result = await db.execute(select(Book).where(Book.isbn.like(f"{isbn_b}%")))
             all_isbn_matches = result.scalars().all()
             for b in all_isbn_matches:
                 if not exclude_id or b.id != exclude_id:
@@ -98,84 +98,84 @@ async def _find_existing_book(db, title: str, author: str, isbn: str, exclude_id
 
 
 # ── Upload book ───────────────────────────────────────────────────────────────
-@router.post(\"/upload\", status_code=201)
+@router.post("/upload", status_code=201)
 async def upload_book(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Validate file type
-    print(f\"[API] Iniciando subida de: {file.filename}\")
+    print(f"[API] Iniciando subida de: {file.filename}")
     if not file.filename:
-        raise HTTPException(400, \"Nombre de archivo no válido\")
+        raise HTTPException(400, "Nombre de archivo no válido")
     
-    ext = file.filename.rsplit(\".\", 1)[-1].lower()
-    if ext not in (\"pdf\", \"epub\"):
-        raise HTTPException(400, \"Solo se admiten archivos PDF y EPUB\")
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ("pdf", "epub"):
+        raise HTTPException(400, "Solo se admiten archivos PDF y EPUB")
 
     def sanitize_title(title: str) -> str:
         import re
         # Quitar caracteres que no sean alfanuméricos, espacios, puntos o guiones
         s = re.sub(r'[^\w\s\.-]', '', title).strip()
-        return s[:150] or \"Libro sin titulo\"
+        return s[:150] or "Libro sin titulo"
 
     try:
         content = await file.read()
-        print(f\"[API] Archivo leido: {len(content)} bytes\")
+        print(f"[API] Archivo leido: {len(content)} bytes")
     except Exception as e:
-        print(f\"[API] Error al leer archivo: {e}\")
-        raise HTTPException(500, f\"Error al leer el archivo: {e}\")
+        print(f"[API] Error al leer archivo: {e}")
+        raise HTTPException(500, f"Error al leer el archivo: {e}")
 
     shell_book = None
     book_id = str(uuid.uuid4())
-    filename = f\"{book_id}.{ext}\"
+    filename = f"{book_id}.{ext}"
     user_dir = os.path.join(settings.UPLOADS_DIR, current_user.id)
     
     try:
         os.makedirs(user_dir, exist_ok=True)
         file_path = os.path.join(user_dir, filename)
-        async with aiofiles.open(file_path, \"wb\") as f:
+        async with aiofiles.open(file_path, "wb") as f:
             await f.write(content)
-        print(f\"[API] Archivo guardado en: {file_path}\")
+        print(f"[API] Archivo guardado en: {file_path}")
     except Exception as e:
-        print(f\"[API] Error al guardar archivo: {e}\")
-        raise HTTPException(500, f\"Error al guardar disco: {e}\")
+        print(f"[API] Error al guardar archivo: {e}")
+        raise HTTPException(500, f"Error al guardar disco: {e}")
 
     try:
-        base_title = sanitize_title(file.filename.rsplit(\".\", 1)[0])
+        base_title = sanitize_title(file.filename.rsplit(".", 1)[0])
         book = Book(
             id=book_id,
             title=base_title,
             file_path=file_path,
             file_type=ext,
             file_size=len(content),
-            status=\"uploaded\",
+            status="uploaded",
         )
         db.add(book)
         await db.commit()
         await db.refresh(book)
-        print(f\"[API] Libro registrado en DB: {book.id}\")
+        print(f"[API] Libro registrado en DB: {book.id}")
     except Exception as e:
-        print(f\"[API] Error DB: {e}\")
-        raise HTTPException(500, f\"Error base de datos: {e}\")
+        print(f"[API] Error DB: {e}")
+        raise HTTPException(500, f"Error base de datos: {e}")
 
     # Encolar en la cola serializada
     try:
-        book.status = \"queued\"
+        book.status = "queued"
         await db.commit()
         
         from app.workers.queue_manager import enqueue as q_enqueue
-        q_enqueue(current_user.id, book.id, book.title, [\"1\", \"2\", \"3\", \"4\", \"5\", \"6\"])
-        print(f\"[API] Libro encolado con éxito (F1-F6)\")
+        q_enqueue(current_user.id, book.id, book.title, ["1", "2", "3", "4", "5", "6"])
+        print(f"[API] Libro encolado con éxito (F1-F6)")
     except Exception as e:
-        print(f\"[API] Error al encolar: {e}\")
+        print(f"[API] Error al encolar: {e}")
 
-    return {\"id\": book.id, \"status\": \"queued\", \"task_id\": None}
+    return {"id": book.id, "status": "queued", "task_id": None}
 
 
 
 # ── List books ────────────────────────────────────────────────────────────────
-@router.get(\"/\")
+@router.get("/")
 async def list_books(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -188,7 +188,7 @@ async def list_books(
     from app.models.book import Chapter, Character
     
     # Optimizamos: Solo consultamos estados para los libros que no son 'shell'
-    real_book_ids = [b.id for b in books if b.status != \"shell\"]
+    real_book_ids = [b.id for b in books if b.status != "shell"]
     
     ch_counts = {}
     if real_book_ids:
@@ -211,16 +211,16 @@ async def list_books(
     response = []
     for b in books:
         # FILTRO ABSOLUTO: Si no tiene archivo físico real, NO es un libro de la biblioteca personal
-        is_shell = b.status == \"shell\"
-        no_file = not b.file_path or b.file_path.lower() in (\"none\", \"\", \"null\")
+        is_shell = b.status == "shell"
+        no_file = not b.file_path or b.file_path.lower() in ("none", "", "null")
         if is_shell or no_file:
             continue
 
         # Detectar si el libro está realmente en proceso
-        is_analyzing = b.status in (\"queued\", \"identifying\", \"analyzing\", \"structuring\", \"summarizing\")
+        is_analyzing = b.status in ("queued", "identifying", "analyzing", "structuring", "summarizing")
         
         # Detección inteligente de fases (para libros antiguos con banderas desincronizadas)
-        p1_done = b.phase1_done or (b.title and b.author and b.status != \"shell\")
+        p1_done = b.phase1_done or (b.title and b.author and b.status != "shell")
         has_chapters = ch_counts.get(b.id, 0) > 0
         p2_done = b.phase2_done or has_chapters
         p3_done = b.phase3_done or has_chapters # Si hay capítulos en lista, suele estar hecha la estructura
@@ -233,31 +233,31 @@ async def list_books(
         
         status = b.status
         if is_complete:
-            status = \"complete\"
+            status = "complete"
         elif is_analyzing:
-            status = \"analyzing\"
+            status = "analyzing"
         else:
-            # Si no está analizando ni está completo, pero tiene algo hecho (o es un libro real), está \"a medias\"
-            status = \"incomplete\"
+            # Si no está analizando ni está completo, pero tiene algo hecho (o es un libro real), está "a medias"
+            status = "incomplete"
 
         response.append({
-            \"id\": b.id, \"title\": b.title, \"author\": b.author,
-            \"cover_local\": b.cover_local, \"cover_url\": b.cover_url,
-            \"isbn\": b.isbn, \"status\": status,
-            \"read_status\": b.read_status, \"rating\": b.rating,
-            \"phase1_done\": p1_done, \"phase2_done\": p2_done,
-            \"phase3_done\": p3_done, \"phase4_done\": p4_done,
-            \"phase5_done\": p5_done, \"phase6_done\": p6_done,
-            \"created_at\": b.created_at,
-            \"has_chapters\": has_chapters,
-            \"has_characters\": char_counts.get(b.id, 0) > 0
+            "id": b.id, "title": b.title, "author": b.author,
+            "cover_local": b.cover_local, "cover_url": b.cover_url,
+            "isbn": b.isbn, "status": status,
+            "read_status": b.read_status, "rating": b.rating,
+            "phase1_done": p1_done, "phase2_done": p2_done,
+            "phase3_done": p3_done, "phase4_done": p4_done,
+            "phase5_done": p5_done, "phase6_done": p6_done,
+            "created_at": b.created_at,
+            "has_chapters": has_chapters,
+            "has_characters": char_counts.get(b.id, 0) > 0
         })
     
     return response
 
 
 # ── Book detail ───────────────────────────────────────────────
-@router.get(\"/{book_id}\")
+@router.get("/{book_id}")
 async def get_book(
     book_id: str,
     current_user: User = Depends(get_current_user),
@@ -277,9 +277,9 @@ async def get_book(
                     break
         
         if not book:
-            raise HTTPException(404, f\"Book {book_id} not found\")
+            raise HTTPException(404, f"Book {book_id} not found")
         
-        print(f\"[API] Cargando detalle libro: {book.title}\")
+        print(f"[API] Cargando detalle libro: {book.title}")
 
         # 2. Capítulos
         ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
@@ -301,11 +301,11 @@ async def get_book(
             for b in others_result.scalars().all():
                 try:
                     other_books.append({
-                        \"id\": b.id, \"title\": b.title, \"isbn\": b.isbn,
-                        \"cover_local\": b.cover_local, \"year\": b.year,
-                        \"status\": b.status, 
-                        \"phase3_done\": getattr(b, 'phase3_done', False),
-                        \"synopsis\": b.synopsis,
+                        "id": b.id, "title": b.title, "isbn": b.isbn,
+                        "cover_local": b.cover_local, "year": b.year,
+                        "status": b.status, 
+                        "phase3_done": getattr(b, 'phase3_done', False),
+                        "synopsis": b.synopsis,
                     })
                 except Exception: continue
 
@@ -318,53 +318,53 @@ async def get_book(
             except: return default
 
         return {
-            \"book\": {
-                \"id\": book.id,
-                \"title\": book.title,
-                \"author\": book.author,
-                \"isbn\": book.isbn,
-                \"synopsis\": book.synopsis or \"\",
-                \"author_bio\": book.author_bio or \"\",
-                \"genre\": book.genre or \"\",
-                \"year\": book.year,
-                \"status\": book.status,
-                \"phase1_done\": book.phase1_done,
-                \"phase2_done\": book.phase2_done,
-                \"phase3_done\": book.phase3_done,
-                \"phase4_done\": book.phase4_done,
-                \"phase5_done\": book.phase5_done,
-                \"phase6_done\": book.phase6_done,
-                \"global_summary\": book.global_summary or \"\",
-                \"mindmap_data\": _safe_json(book.mindmap_data, {\"center\": book.title, \"branches\": []}),
-                \"podcast_script\": book.podcast_script or \"\",
-                \"podcast_audio_path\": book.podcast_audio_path or \"\",
-                \"cover_local\": book.cover_local,
+            "book": {
+                "id": book.id,
+                "title": book.title,
+                "author": book.author,
+                "isbn": book.isbn,
+                "synopsis": book.synopsis or "",
+                "author_bio": book.author_bio or "",
+                "genre": book.genre or "",
+                "year": book.year,
+                "status": book.status,
+                "phase1_done": book.phase1_done,
+                "phase2_done": book.phase2_done,
+                "phase3_done": book.phase3_done,
+                "phase4_done": book.phase4_done,
+                "phase5_done": book.phase5_done,
+                "phase6_done": book.phase6_done,
+                "global_summary": book.global_summary or "",
+                "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []}),
+                "podcast_script": book.podcast_script or "",
+                "podcast_audio_path": book.podcast_audio_path or "",
+                "cover_local": book.cover_local,
             },
-            \"chapters\": [
+            "chapters": [
                 {
-                    \"id\": c.id, \"title\": c.title, \"order\": c.order, 
-                    \"summary\": c.summary or \"\", \"summary_status\": c.summary_status,
-                    \"key_events\": _safe_json(c.key_events, [])
+                    "id": c.id, "title": c.title, "order": c.order, 
+                    "summary": c.summary or "", "summary_status": c.summary_status,
+                    "key_events": _safe_json(c.key_events, [])
                 }
                 for c in chapters
             ],
-            \"characters\": [
+            "characters": [
                 {
-                    \"id\": c.id, \"name\": c.name, \"role\": c.role, 
-                    \"description\": c.description, \"personality\": c.personality,
-                    \"arc\": c.arc, \"relationships\": _safe_json(c.relationships, {}),
-                    \"key_moments\": _safe_json(c.key_moments, []),
-                    \"quotes\": _safe_json(c.quotes, [])
+                    "id": c.id, "name": c.name, "role": c.role, 
+                    "description": c.description, "personality": c.personality,
+                    "arc": c.arc, "relationships": _safe_json(c.relationships, {}),
+                    "key_moments": _safe_json(c.key_moments, []),
+                    "quotes": _safe_json(c.quotes, [])
                 }
                 for c in characters
             ],
-            \"others\": other_books
+            "others": other_books
         }
     except Exception as e:
-        print(f\"[API ERROR] get_book({book_id}): {str(e)}\")
+        print(f"[API ERROR] get_book({book_id}): {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(500, f\"Error cargando detalle del libro: {str(e)}\")
+        raise HTTPException(500, f"Error cargando detalle del libro: {str(e)}")
 
 
 # ── Update reading status ─────────────────────────────────────────────────────
@@ -374,7 +374,7 @@ class UpdateBookRequest(BaseModel):
     notes: Optional[str] = None
 
 
-@router.patch(\"/{book_id}\")
+@router.patch("/{book_id}")
 async def update_book(
     book_id: str,
     req: UpdateBookRequest,
@@ -384,7 +384,7 @@ async def update_book(
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
-        raise HTTPException(404, \"Book not found\")
+        raise HTTPException(404, "Book not found")
 
     if req.read_status is not None:
         book.read_status = req.read_status
@@ -394,27 +394,27 @@ async def update_book(
         book.notes = req.notes
 
     await db.commit()
-    return {\"ok\": True}
+    return {"ok": True}
 
 
 # ── Actualizar portada ────────────────────────────────────────
-@router.patch(\"/{book_id}/cover\")
+@router.patch("/{book_id}/cover")
 async def update_cover(
     book_id: str,
     request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    \"\"\"Guarda una cover_url elegida por el usuario y descarga la imagen localmente.\"\"\"
+    """Guarda una cover_url elegida por el usuario y descarga la imagen localmente."""
     body = await request.json()
-    cover_url = body.get(\"cover_url\", \"\").strip()
+    cover_url = body.get("cover_url", "").strip()
     if not cover_url:
-        raise HTTPException(400, \"cover_url requerida\")
+        raise HTTPException(400, "cover_url requerida")
 
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
-        raise HTTPException(404, \"Book not found\")
+        raise HTTPException(404, "Book not found")
 
     book.cover_url = cover_url
 
@@ -431,14 +431,14 @@ async def update_cover(
                 try: os.remove(old_cover)
                 except: pass
     except Exception as e:
-        print(f\"Cover download error: {e}\")
+        print(f"Cover download error: {e}")
 
     await db.commit()
-    return {\"ok\": True, \"cover_url\": cover_url, \"cover_local\": book.cover_local}
+    return {"ok": True, "cover_url": cover_url, "cover_local": book.cover_local}
 
 
 # ── Delete book ───────────────────────────────────────────────────────────────
-@router.delete(\"/{book_id}\")
+@router.delete("/{book_id}")
 async def delete_book(
     book_id: str,
     current_user: User = Depends(get_current_user),
@@ -447,7 +447,7 @@ async def delete_book(
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
-        raise HTTPException(404, \"Book not found\")
+        raise HTTPException(404, "Book not found")
 
     author = book.author
 
@@ -491,7 +491,7 @@ async def delete_book(
             shells = await db.execute(
                 select(Book).where(
                     Book.author == author,
-                    Book.status.in_([\"shell\", \"shell_error\", \"identified\", \"uploaded\"])
+                    Book.status.in_(["shell", "shell_error", "identified", "uploaded"])
                 )
             )
             for shell in shells.scalars().all():
@@ -501,29 +501,29 @@ async def delete_book(
                 await db.delete(shell)
             await db.commit()
 
-    return {\"ok\": True}
+    return {"ok": True}
 
 
 # ── Subir portada desde archivo ──────────────────────────────
-@router.post(\"/{book_id}/cover/upload\")
+@router.post("/{book_id}/cover/upload")
 async def upload_cover(
     book_id: str,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    \"\"\"Sube una imagen desde el equipo del usuario como portada del libro.
+    """Sube una imagen desde el equipo del usuario como portada del libro.
     Acepta cualquier formato gráfico soportado por Pillow (JPEG, PNG, WebP,
     AVIF, HEIC, BMP, TIFF, GIF, ICO, TGA, PPM y más).
-    \"\"\"
+    """
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
-        raise HTTPException(404, \"Book not found\")
+        raise HTTPException(404, "Book not found")
 
     contents = await file.read()
     if len(contents) < 500:
-        raise HTTPException(400, \"El archivo es demasiado pequeño\")
+        raise HTTPException(400, "El archivo es demasiado pequeño")
 
     try:
         from app.services.book_identifier import _bytes_to_jpeg
@@ -531,18 +531,18 @@ async def upload_cover(
         import time
         covers_dir = os.path.join(settings.COVERS_DIR, current_user.id)
         os.makedirs(covers_dir, exist_ok=True)
-        filename = f\"{book_id}_cover_{int(time.time())}.jpg\"
+        filename = f"{book_id}_cover_{int(time.time())}.jpg"
         local_path = os.path.join(covers_dir, filename)
 
         try:
             jpeg_data = _bytes_to_jpeg(contents)
         except Exception as e:
-            raise HTTPException(400, f\"Formato de imagen no soportado: {e}\")
+            raise HTTPException(400, f"Formato de imagen no soportado: {e}")
 
         if len(jpeg_data) < 500:
-            raise HTTPException(400, \"La imagen no pudo procesarse correctamente\")
+            raise HTTPException(400, "La imagen no pudo procesarse correctamente")
 
-        with open(local_path, \"wb\") as f:
+        with open(local_path, "wb") as f:
             f.write(jpeg_data)
 
         old_cover = book.cover_local
@@ -554,12 +554,12 @@ async def upload_cover(
             try: os.remove(old_cover)
             except: pass
             
-        return {\"ok\": True, \"cover_local\": local_path}
+        return {"ok": True, "cover_local": local_path}
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f\"Error al guardar la imagen: {e}\")
+        raise HTTPException(500, f"Error al guardar la imagen: {e}")
 
 
 class CreateShellRequest(BaseModel):
@@ -571,18 +571,18 @@ class CreateShellRequest(BaseModel):
     synopsis: Optional[str] = None
 
 
-@router.post(\"/shell\", status_code=201)
+@router.post("/shell", status_code=201)
 async def create_shell_book(
     req: CreateShellRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    \"\"\"Crea una ficha de libro sin archivo — busca metadatos automáticamente.\"\"\"
+    """Crea una ficha de libro sin archivo — busca metadatos automáticamente."""
 
     # Comprobar duplicados por ISBN (si viene) o por título+autor
     existing = await _find_existing_book(db, req.title, req.author, req.isbn)
     if existing:
-        raise HTTPException(400, \"Este libro ya está en tu biblioteca\")
+        raise HTTPException(400, "Este libro ya está en tu biblioteca")
 
     book_id = str(uuid.uuid4())
     book = Book(
@@ -595,7 +595,7 @@ async def create_shell_book(
         synopsis=req.synopsis,
         file_type=None,
         file_path=None,
-        status=\"shell\",          # sin archivo, solo ficha
+        status="shell",          # sin archivo, solo ficha
         phase1_done=False,
     )
     db.add(book)
@@ -605,52 +605,52 @@ async def create_shell_book(
     from app.workers.tasks import fetch_shell_metadata
     fetch_shell_metadata.delay(current_user.id, book_id)
 
-    return {\"id\": book_id, \"status\": \"shell\"}
+    return {"id": book_id, "status": "shell"}
 
 
 # ── Subir PDF a ficha shell existente ─────────────────────────
-@router.post(\"/{book_id}/upload-file\", status_code=200)
+@router.post("/{book_id}/upload-file", status_code=200)
 async def upload_file_to_shell(
     book_id: str,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    \"\"\"Sube un PDF/EPUB a una ficha shell para convertirla en libro analizable.\"\"\"
+    """Sube un PDF/EPUB a una ficha shell para convertirla en libro analizable."""
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
-        raise HTTPException(404, \"Book not found\")
-    if book.status not in (\"shell\", \"shell_error\"):
-        raise HTTPException(400, \"Este libro ya tiene un archivo\")
+        raise HTTPException(404, "Book not found")
+    if book.status not in ("shell", "shell_error"):
+        raise HTTPException(400, "Este libro ya tiene un archivo")
 
-    ext = file.filename.rsplit(\".\", 1)[-1].lower()
-    if ext not in (\"pdf\", \"epub\"):
-        raise HTTPException(400, \"Solo se admiten PDF y EPUB\")
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ("pdf", "epub"):
+        raise HTTPException(400, "Solo se admiten PDF y EPUB")
 
-    filename = f\"{book_id}.{ext}\"
+    filename = f"{book_id}.{ext}"
     user_dir = os.path.join(settings.UPLOADS_DIR, current_user.id)
     os.makedirs(user_dir, exist_ok=True)
     file_path = os.path.join(user_dir, filename)
 
-    async with aiofiles.open(file_path, \"wb\") as f:
+    async with aiofiles.open(file_path, "wb") as f:
         content = await file.read()
         await f.write(content)
 
     book.file_path = file_path
     book.file_type = ext
     book.file_size = len(content)
-    book.status = \"uploaded\"
+    book.status = "uploaded"
     book.phase1_done = False
     book.phase2_done = False
     book.phase3_done = False
     await db.commit()
 
     # Encolar en la cola serializada
-    book.status = \"queued\"
+    book.status = "queued"
     await db.commit()
 
     from app.workers.queue_manager import enqueue as q_enqueue
-    q_enqueue(current_user.id, book_id, book.title, [\"1\", \"2\", \"3\", \"4\", \"5\", \"6\"])
+    q_enqueue(current_user.id, book_id, book.title, ["1", "2", "3", "4", "5", "6"])
 
-    return {\"id\": book_id, \"status\": \"queued\", \"task_id\": None}
+    return {"id": book_id, "status": "queued", "task_id": None}
