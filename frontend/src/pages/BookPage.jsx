@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import {
@@ -272,7 +272,8 @@ export default function BookPage() {
     ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(false)
   }
 
-  const [tab, setTab] = useState('info')
+  const [searchParams] = useSearchParams()
+  const tab = searchParams.get('tab') || 'info'
   const [mindmapView, setMindmapView] = useState('tree')
   const [chaptersView, setChaptersView] = useState('list')
   const [expandedChapter, setExpandedChapter] = useState(null)
@@ -570,15 +571,22 @@ export default function BookPage() {
         <div className="tabs-bar tabs-bar-desktop">
           {TABS.map(t => {
             const isDone = statusInfo?.[t.statusKey]
+            const isTabProcessing = isProcessing && (t.label.toLowerCase().includes(progressMsg?.toLowerCase() || '') || (t.id === 'summary' && progressMsg?.toLowerCase().includes('global')))
+            
             return (
-              <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`}>
+              <button 
+                key={t.id} 
+                onClick={() => window.location.href = `/book/${id}?tab=${t.id}`} 
+                className={`tab-btn ${tab === t.id ? 'active' : ''} ${isTabProcessing ? 'processing' : ''}`}
+              >
                 <t.icon size={18} />
                 <span className="tab-btn-text">{t.label}</span>
                 {isDone && <div className="tab-status-dot" title="Completado" />}
+                {isTabProcessing && <Loader size={12} className="spin" style={{marginLeft:'auto'}} />}
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.8</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.9</span>
         </div>
 
         <AnimatePresence mode="wait">
