@@ -367,16 +367,78 @@ export default function BookPage() {
   }
 
   const exportToPDF = async () => {
-    toast('Generando PDF...', { icon: '📄' })
+    toast('Generando ficha completa...', { icon: '📄' })
     try {
       const script = document.createElement('script'); script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; document.head.appendChild(script)
       await new Promise(r => script.onload = r)
-      const { jsPDF } = window.jspdf; const doc = new jsPDF()
-      doc.setFontSize(22); doc.text(book.title, 20, 30)
-      doc.setFontSize(14); doc.text(book.author || '', 20, 40)
-      doc.setFontSize(10); const lines = doc.splitTextToSize(book.global_summary || '', 170); doc.text(lines, 20, 60)
-      doc.save(`${book.title}_analisis.pdf`); toast.success('PDF listo')
-    } catch { toast.error('Error al generar PDF') }
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF()
+      let y = 30
+      const margin = 20
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const contentWidth = pageWidth - (margin * 2)
+
+      const checkPage = (h) => { if (y + h > 280) { doc.addPage(); y = 30; return true } return false }
+
+      // Title & Author
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(24); doc.text(book.title, margin, y); y += 12
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(16); doc.text(book.author || '', margin, y); y += 20
+
+      // Synopsis
+      if (book.synopsis) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('SINOPSIS', margin, y); y += 10
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
+        const synLines = doc.splitTextToSize(book.synopsis, contentWidth)
+        doc.text(synLines, margin, y); y += (synLines.length * 5) + 15
+      }
+
+      // Chapters
+      if (chapters.length > 0) {
+        checkPage(20)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('CAPÍTULOS Y RESÚMENES', margin, y); y += 12
+        chapters.forEach((ch, i) => {
+          checkPage(20)
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(`${i+1}. ${ch.title}`, margin, y); y += 7
+          if (ch.summary) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+            const chLines = doc.splitTextToSize(ch.summary, contentWidth)
+            checkPage(chLines.length * 4.5)
+            doc.text(chLines, margin, y); y += (chLines.length * 4.5) + 10
+          } else { y += 5 }
+        })
+        y += 10
+      }
+
+      // Characters
+      if (characters.length > 0) {
+        checkPage(20)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('PERSONAJES', margin, y); y += 12
+        characters.forEach(char => {
+          checkPage(20)
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(char.name, margin, y); y += 6
+          doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.text(char.role || 'Personaje', margin, y); y += 6
+          if (char.description) {
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+            const descLines = doc.splitTextToSize(char.description, contentWidth)
+            checkPage(descLines.length * 4.5)
+            doc.text(descLines, margin, y); y += (descLines.length * 4.5) + 8
+          } else { y += 4 }
+        })
+        y += 10
+      }
+
+      // Global Summary
+      if (book.global_summary) {
+        checkPage(20)
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.text('ANÁLISIS GLOBAL', margin, y); y += 12
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(10)
+        const globLines = doc.splitTextToSize(book.global_summary, contentWidth)
+        checkPage(globLines.length * 5)
+        doc.text(globLines, margin, y); y += (globLines.length * 5) + 15
+      }
+
+      doc.save(`${book.title}_Ficha_Completa.pdf`); toast.success('Ficha PDF generada')
+    } catch (err) { console.error(err); toast.error('Error al generar PDF') }
   }
 
   const handleDelete = async () => { if (await confirm(`¿Eliminar "${data?.book?.title}"?`)) { await booksAPI.delete(id); navigate('/') } }
@@ -409,6 +471,7 @@ export default function BookPage() {
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} pp.</span>}
               {book.genre && <span>{book.genre}</span>}
+              {book.isbn && <span className="isbn-tag">ISBN: {book.isbn}</span>}
             </div>
             <div className="star-rating">
               {[1,2,3,4,5].map(n => <button key={n} onClick={() => handleRating(n)} className={`star ${rating >= n ? 'filled' : ''}`}><Star size={20} fill={rating >= n ? 'currentColor' : 'none'} /></button>)}
@@ -443,7 +506,7 @@ export default function BookPage() {
                   }}
                 >
                   <BookOpen size={16} />
-                  <span>Descarga EPUB</span>
+                  <span>Descarga {book.file_type ? book.file_type.toUpperCase() : 'Libro'}</span>
                 </button>
               )}
 
@@ -480,7 +543,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.2</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.3</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -724,47 +787,49 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
 })
 
 const ReferencesTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg }) => {
-  const hasRefs = book.author_bibliography && book.author_bibliography.length > 0
-  
+  const query = encodeURIComponent(`${book.title} ${book.author || ''}`)
+  const authorQuery = encodeURIComponent(book.author || '')
+
+  const extLinks = [
+    { name: 'Google',      icon: Share2,     url: `https://www.google.com/search?q=${query}`, desc: 'Búsqueda general y noticias' },
+    { name: 'Wikipedia',   icon: BookOpen,   url: `https://es.wikipedia.org/wiki/Special:Search?search=${query}`, desc: 'Enciclopedia y contexto' },
+    { name: 'Goodreads',   icon: Star,       url: `https://www.goodreads.com/search?q=${query}`, desc: 'Reseñas y puntuación global' },
+    { name: 'Lecturalia',  icon: ExternalLink,url: `https://www.lecturalia.com/buscar/libros?q=${query}`, desc: 'Comunidad literaria en español' },
+    { name: 'Google Books',icon: BookOpen,   url: `https://www.google.com/search?tbm=bks&q=${query}`, desc: 'Vista previa y metadatos' },
+    { name: 'Amazon',      icon: Download,   url: `https://www.amazon.es/s?k=${query}&i=stripbooks`, desc: 'Tienda y detalles de edición' },
+  ]
+
   return (
     <div className="prose-content">
       <TabPhaseBar phase={7} label="Referencias" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
       
       <div className="refs-section">
-        <h3>Bibliografía del Autor</h3>
-        {hasRefs ? (
-          <div className="author-biblio-grid">
-            {book.author_bibliography.map((b, i) => (
-              <div key={i} className="biblio-item">
-                <BookOpen size={16} />
-                <div className="biblio-info">
-                  <span className="biblio-title">{b.title || b}</span>
-                  {b.year && <span className="biblio-year">{b.year}</span>}
-                </div>
+        <h3>Investigación y Referencias</h3>
+        <p style={{ color: 'var(--mist)', marginBottom: '2rem', fontSize: '0.9rem' }}>
+          Enlaces externos para profundizar en el análisis de <strong>{book.title}</strong>:
+        </p>
+        <div className="external-links-grid">
+          {extLinks.map((link, i) => (
+            <a key={i} href={link.url} target="_blank" rel="noreferrer" className="ext-link-card">
+              <link.icon size={20} />
+              <div className="ext-link-info">
+                <span className="ext-link-title">{link.name}</span>
+                <span className="ext-link-desc">{link.desc}</span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="empty-refs">No se han encontrado otras obras registradas.</p>
-        )}
+              <ExternalLink size={14} className="ext-icon" />
+            </a>
+          ))}
+        </div>
       </div>
 
-      <div className="refs-section">
-        <h3>Enlaces Externos</h3>
+      <div className="refs-section" style={{ marginTop: '3rem', paddingTop: '2rem', borderTop: '1px solid var(--border)' }}>
+        <h3>Búsqueda del Autor</h3>
         <div className="external-links-grid">
-          <a href={`https://www.google.com/search?q=${encodeURIComponent(book.title + ' ' + book.author)}`} target="_blank" rel="noreferrer" className="ext-link-card">
-            <Share2 size={20} />
-            <div className="ext-link-info">
-              <span className="ext-link-title">Buscar en Google</span>
-              <span className="ext-link-desc">Información general, críticas y reseñas</span>
-            </div>
-            <ExternalLink size={14} className="ext-icon" />
-          </a>
-          <a href={`https://www.google.com/search?q=autor+${encodeURIComponent(book.author || '')}`} target="_blank" rel="noreferrer" className="ext-link-card">
+          <a href={`https://www.google.com/search?q=${authorQuery}`} target="_blank" rel="noreferrer" className="ext-link-card">
             <User size={20} />
             <div className="ext-link-info">
-              <span className="ext-link-title">Sobre el Autor</span>
-              <span className="ext-link-desc">Biografía y trayectoria literaria</span>
+              <span className="ext-link-title">Investigar a {book.author}</span>
+              <span className="ext-link-desc">Biografía, entrevistas y artículos</span>
             </div>
             <ExternalLink size={14} className="ext-icon" />
           </a>

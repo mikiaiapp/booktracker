@@ -1918,3 +1918,103 @@
   color: var(--ink);
   margin: 0;
 }
+/* External Links Section */
+.refs-section {
+  margin-bottom: 3rem;
+}
+
+.refs-section h3 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--ink);
+}
+
+.external-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.ext-link-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--ink);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.ext-link-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+  background: linear-gradient(135deg, white 0%, rgba(212, 175, 55, 0.05) 100%);
+}
+
+.ext-link-card svg:first-child {
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
+.ext-link-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.ext-link-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 0.15rem;
+}
+
+.ext-link-desc {
+  font-size: 0.75rem;
+  color: var(--mist);
+  line-height: 1.3;
+}
+
+.ext-icon {
+  opacity: 0.2;
+  transition: opacity 0.2s;
+}
+
+.ext-link-card:hover .ext-icon {
+  opacity: 1;
+  color: var(--gold);
+}
+
+.hero-meta {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.hero-meta span {
+  font-size: 0.8rem;
+  color: var(--slate);
+  background: var(--paper-dark);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.hero-meta .isbn-tag {
+  background: rgba(184, 134, 11, 0.1);
+  color: var(--gold-dark);
+  border: 1px solid rgba(184, 134, 11, 0.2);
+  font-family: monospace;
+  font-weight: bold;
+}
+
+@media (max-width: 640px) {
+  .external-links-grid {
+    grid-template-columns: 1fr;
+  }
+}
