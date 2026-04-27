@@ -485,7 +485,7 @@ async def dedup_all(
 
     def normalize(name: str) -> frozenset:
         stop  = {'i', 'y', 'de', 'del', 'la', 'el', 'von', 'van', 'di', 'da', 'du', 'le'}
-        clean = re.sub(r'[^\\w\\s]', ' ', name.strip(), flags=re.UNICODE)
+        clean = re.sub(r'[^\w\s]', ' ', name.strip(), flags=re.UNICODE)
         return frozenset(w.lower() for w in clean.split() if w.lower() not in stop and len(w) > 1)
 
     counts_result = await db.execute(
@@ -794,129 +794,63 @@ async def reanalyze_characters(
     if not book:
         raise HTTPException(404, "Book not found")
     if not book.phase3_done:
-        raise HTTPException(400, "La fase 3/4 debe estar completa")
+        raise HTTPException(400, "Book must complete Phase 3 first")
 
-    from app.workers.tasks import reanalyze_characters_task
-    task = reanalyze_characters_task.delay(current_user.id, book_id)
-    return {"task_id": task.id, "status": "processing"}
+    # Mark characters for re-analysis
+    await db.execute(delete(Character).where(Character.book_id == book_id))
+    book.phase3_done = False
+    book.status = "queued"
+    await db.commit()
+
+    from app.workers.queue_manager import enqueue as q_enqueue
+    q_enqueue(current_user.id, book_id, book.title, phases=["4"], force=True)
+    return {"status": "reanalyzing"}
 
 
-# ── Reanalizar un personaje individual ───────────────────────
+# ── Limpiar trabajos huérfanos ────────────────────────────────
 
-@router.post("/{book_id}/character/{character_id}/analyze")
-async def analyze_single_character_endpoint(
+@router.post("/{book_id}/clear-jobs")
+async def clear_book_jobs(
     book_id: str,
-    character_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Book).where(Book.id == book_id))
-    book = result.scalar_one_or_none()
-    if not book:
-        raise HTTPException(404, "Book not found")
-        
-    from app.workers.tasks import analyze_single_character_task
-    task = analyze_single_character_task.delay(current_user.id, book_id, character_id)
-    return {"task_id": task.id, "status": "processing"}
-
-
-# ── Queue Management ──────────────────────────────────────────
-
-@router.get("/queue")
-async def get_analysis_queue(current_user: User = Depends(get_current_user)):
-    from app.workers.queue_manager import get_state
-    return get_state(current_user.id)
-
-@router.post("/{book_id}/cancel")
-async def cancel_book_analysis(book_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.workers.queue_manager import cancel
-    res = cancel(current_user.id, book_id)
-    
-    # Si res es un string de tarea (UUID), lo revocamos
-    if res and len(res) > 20 and "-" in res:
-        try:
-            from app.workers.celery_app import celery_app
-            print(f"[API] Revocando tarea de libro {book_id}: {res}")
-            celery_app.control.revoke(res, terminate=True)
-        except Exception as e:
-            print(f"[API] Error revocando tarea de libro: {e}")
-
-    # Forzar actualización de estado en DB
-    from app.models.book import Book
-    book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
-    if book:
-        book.status = "error"
-        book.error_msg = "Análisis cancelado manualmente"
-        await db.commit()
-        
-    return {"status": "cancelled", "detail": str(res)}
-
-@router.post("/queue/pause")
-async def pause_analysis_queue(current_user: User = Depends(get_current_user)):
-    from app.workers.queue_manager import pause
-    pause(current_user.id)
-    return {"status": "paused"}
-
-@router.post("/queue/resume")
-async def resume_analysis_queue(current_user: User = Depends(get_current_user)):
-    from app.workers.queue_manager import resume
-    resume(current_user.id)
-    return {"status": "resumed"}
-
-@router.delete("/queue")
-async def clear_analysis_queue(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.workers.queue_manager import cancel_all
-    tid = cancel_all(current_user.id)
-    
-    if tid:
-        try:
-            from app.workers.celery_app import celery_app
-            print(f"[API] Revocando tarea activa global {tid}")
-            celery_app.control.revoke(tid, terminate=True)
-        except Exception as e:
-            print(f"[API] Error revocando tarea global: {e}")
-            
-    # Resetear TODOS los libros del usuario que no estén marcados como 'complete'
-    from app.models.book import Book, AnalysisJob
-    from sqlalchemy import update, or_
-    await db.execute(
-        update(Book)
-        .where(Book.status != "complete")
-        .values(status="incomplete", task_id=None, error_msg="Proceso cancelado globalmente")
-    )
-    # También cancelar los jobs activos para que no aparezcan como 'procesando' en el UI
-    await db.execute(
-        update(AnalysisJob)
-        .where(AnalysisJob.status == "processing")
-        .values(status="cancelled", detail="Cancelado por limpieza de cola global")
-    )
+    await db.execute(delete(AnalysisJob).where(AnalysisJob.book_id == book_id))
     await db.commit()
-    
     return {"status": "cleared"}
 
+
+# ── Cancelar proceso ──────────────────────────────────────────
+
 @router.post("/{book_id}/cancel")
-@router.delete("/queue/{book_id}")
-async def cancel_queue_item(book_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # 1. Cancelar en el Queue Manager
-    from app.workers.queue_manager import cancel
-    res = cancel(current_user.id, book_id)
+async def cancel_analysis(
+    book_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.workers.celery_app import celery_app
     
-    # 2. Asegurar limpieza en Base de Datos
-    result = await db.execute(select(Book).where(Book.id == book_id))
-    book = result.scalar_one_or_none()
-    if book:
-        print(f"[API] Cancelando análisis de {book.title} ({book_id})")
-        # Resetear a un estado seguro (identificado o incompleto)
-        book.status = "incomplete" if not book.phase1_done else "identified"
-        book.task_id = None
-        book.error_msg = "Proceso cancelado por el usuario"
-        
-        # También cancelar los jobs asociados
-        await db.execute(
-            update(AnalysisJob)
-            .where(AnalysisJob.book_id == book_id, AnalysisJob.status == "processing")
-            .values(status="cancelled", detail="Cancelado individualmente")
+    # 1. Buscar trabajos activos
+    result = await db.execute(
+        select(AnalysisJob).where(
+            AnalysisJob.book_id == book_id,
+            AnalysisJob.status == "processing"
         )
-        await db.commit()
-            
-    return {"status": "cancelled", "manager_res": res}
+    )
+    jobs = result.scalars().all()
+    
+    # 2. Revocar en Celery
+    for job in jobs:
+        if job.celery_task_id:
+            celery_app.control.revoke(job.celery_task_id, terminate=True)
+        job.status = "failed"
+        job.detail = "Cancelado por el usuario"
+        
+    # 3. Resetear libro
+    book_res = await db.execute(select(Book).where(Book.id == book_id))
+    book = book_res.scalar_one_or_none()
+    if book:
+        book.status = "idle"
+        
+    await db.commit()
+    return {"status": "cancelled"}
