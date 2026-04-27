@@ -578,7 +578,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.6</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.7</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -712,8 +712,7 @@ function HeroCover({ book }) { const src = coverSrc(book); return src ? <img src
 
 function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger, progressMsg }) {
   const isDone = status[doneProp]
-  // Only show processing if NOT done, or if processing is explicitly this phase
-  const showProcessing = isProcessing && (!isDone || (progressMsg && progressMsg.toLowerCase().includes(label.toLowerCase())))
+  const showProcessing = isProcessing && (!isDone || (progressMsg?.toLowerCase().includes(label.toLowerCase())))
   
   return (
     <div className="tab-phase-bar" style={{display:'flex', justifyContent:'space-between', marginBottom:'2rem'}}>
@@ -739,9 +738,10 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
 
 const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg, audioUrl, audioPlaying, audioPaused, onToggleAudio, onDownload }) => {
   const formatDuration = (s) => {
-    if (!s) return '--:--'
-    const m = Math.floor(s / 60)
-    const sc = Math.floor(s % 60)
+    if (s === undefined || s === null) return '--:--'
+    const totalSeconds = Math.max(0, Math.floor(s))
+    const m = Math.floor(totalSeconds / 60)
+    const sc = totalSeconds % 60
     return `${m}:${sc.toString().padStart(2, '0')}`
   }
 
@@ -1046,6 +1046,22 @@ const CharactersTab = React.memo(({ characters, bookId, status, isProcessing, on
                 </div>
                 <span className="char-role">{char.role || 'Personaje'}</span>
                 <p className="char-desc">{char.description}</p>
+                
+                {char.personality && (
+                  <div className="char-info-block">
+                    <strong>Personalidad:</strong>
+                    <p>{char.personality}</p>
+                  </div>
+                )}
+
+                {char.key_moments?.length > 0 && (
+                  <div className="char-info-block">
+                    <strong>Momentos Clave:</strong>
+                    <ul className="char-moments-list">
+                      {char.key_moments.map((m, mi) => <li key={mi}>{m}</li>)}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           )
