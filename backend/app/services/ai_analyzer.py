@@ -37,8 +37,14 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     """Obtiene y clasifica los modelos disponibles dinámicamente."""
     global _MODEL_CACHE
     
+    # Limpiar llaves
+    def ck(v): return str(v or "").strip().strip('"').strip("'")
+    g_key = ck(keys.get("gemini"))
+    gr_key = ck(keys.get("groq"))
+    o_key = ck(keys.get("openai"))
+    
     # Generar un hash simple de las llaves para detectar cambios
-    keys_str = f"{keys.get('gemini')}-{keys.get('groq')}-{keys.get('openai')}"
+    keys_str = f"{g_key}-{gr_key}-{o_key}"
     
     # Si la caché tiene menos de 24h y las llaves no han cambiado (y no se fuerza refresh), la usamos
     if not force and _MODEL_CACHE["hierarchy"] and (time.time() - _MODEL_CACHE["last_update"] < 86400) and (_MODEL_CACHE["keys_hash"] == keys_str):
@@ -47,39 +53,56 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
     print("[IA] Descubriendo catálogo de modelos disponible...")
     discovered = []
 
-    # 1. DESCUBRIR GEMINI (OpenAI Compatible)
-    if keys.get("gemini"):
+    # 1. DESCUBRIR GEMINI
+    if g_key:
         try:
+            # Intento 1: OpenAI Compatible API
             from openai import AsyncOpenAI
-            async with AsyncOpenAI(api_key=keys["gemini"], base_url="https://generativelanguage.googleapis.com/v1beta/openai/") as client:
+            async with AsyncOpenAI(api_key=g_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") as client:
                 models_res = await client.models.list()
-                found_any = False
                 for m in models_res.data:
                     mid = m.id
-                    score = 10
-                    if "1.5-flash" in mid.lower(): score = 90
-                    elif "1.5-pro" in mid.lower(): score = 80
-                    elif "gemini-pro" in mid.lower(): score = 70
-                    
-                    print(f"[IA] Gemini (OpenAI-mode) descubierto: {mid} (Score: {score})")
-                    discovered.append(("gemini", mid, score))
-                    found_any = True
-                
-                if not found_any:
-                    print(f"[IA] Gemini list() regresó vacío. Usando fallbacks...")
-                    discovered.append(("gemini", "gemini-1.5-flash", 90))
-                    discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
+                    # Filtrar solo modelos de chat/generación
+                    if any(x in mid.lower() for x in ["gemini", "learnlm"]):
+                        score = 10
+                        if "1.5-flash" in mid.lower(): score = 90
+                        elif "1.5-pro" in mid.lower(): score = 80
+                        elif "gemini-pro" in mid.lower(): score = 70
+                        
+                        # Evitar duplicados (a veces list() devuelve variantes)
+                        if not any(d[1] == mid for d in discovered if d[0] == "gemini"):
+                            print(f"[IA] Gemini (OpenAI-mode) descubierto: {mid} (Score: {score})")
+                            discovered.append(("gemini", mid, score))
+            
+            # Intento 2: Si no hay nada, probar SDK Nativo (a veces el proxy falla en list())
+            if not any(d[0] == "gemini" for d in discovered):
+                import google.generativeai as genai
+                genai.configure(api_key=g_key)
+                # list_models() es síncrono, lo corremos en un thread para no bloquear
+                loop = asyncio.get_event_loop()
+                native_models = await loop.run_in_executor(None, lambda: list(genai.list_models()))
+                for m in native_models:
+                    mid = m.name # formato: models/gemini-1.5-flash
+                    if "generateContent" in m.supported_generation_methods:
+                        score = 10
+                        if "1.5-flash" in mid.lower(): score = 90
+                        elif "1.5-pro" in mid.lower(): score = 80
+                        
+                        print(f"[IA] Gemini (Native) descubierto: {mid} (Score: {score})")
+                        discovered.append(("gemini", mid, score))
 
         except Exception as e:
-            print(f"[IA] Error descubriendo Gemini (OpenAI-mode): {e}")
-            discovered.append(("gemini", "gemini-1.5-flash", 90))
-            discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
+            print(f"[IA] Error descubriendo Gemini: {e}")
+            # Solo añadimos fallbacks si no se descubrió NADA en absoluto
+            if not any(d[0] == "gemini" for d in discovered):
+                discovered.append(("gemini", "gemini-1.5-flash", 90))
+                discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
 
-    # 2. DESCUBRIR GROQ (Prioridad alta por velocidad)
-    if keys.get("groq"):
+    # 2. DESCUBRIR GROQ
+    if gr_key:
         try:
             from openai import AsyncOpenAI
-            async with AsyncOpenAI(api_key=keys["groq"], base_url="https://api.groq.com/openai/v1") as client:
+            async with AsyncOpenAI(api_key=gr_key, base_url="https://api.groq.com/openai/v1") as client:
                 models_res = await client.models.list()
                 for m in models_res.data:
                     mid = m.id.lower()
@@ -92,23 +115,26 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
                     discovered.append(("groq", m.id, score))
         except Exception as e:
             print(f"[IA] Error descubriendo Groq: {e}")
-            discovered.append(("groq", "llama-3.3-70b-versatile", 105))
+            if not any(d[0] == "groq" for d in discovered):
+                discovered.append(("groq", "llama-3.3-70b-versatile", 105))
 
     # 3. DESCUBRIR OPENAI
-    if keys.get("openai"):
+    if o_key:
         try:
             from openai import AsyncOpenAI
-            async with AsyncOpenAI(api_key=keys["openai"]) as client:
+            async with AsyncOpenAI(api_key=o_key) as client:
                 models_res = await client.models.list()
                 for m in models_res.data:
                     mid = m.id.lower()
-                    if mid in ["gpt-4o", "gpt-4o-mini"]:
+                    if mid in ["gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini"]:
                         score = 95 if mid == "gpt-4o" else 75
+                        if "o1" in mid: score = 110 # Modelos de razonamiento arriba
                         print(f"[IA] OpenAI descubierto: {m.id}")
                         discovered.append(("openai", m.id, score))
         except Exception as e:
             print(f"[IA] Error descubriendo OpenAI: {e}")
-            discovered.append(("openai", "gpt-4o-mini", 75))
+            if not any(d[0] == "openai" for d in discovered):
+                discovered.append(("openai", "gpt-4o-mini", 75))
 
     # ORDENAR POR PUNTUACIÓN (MAYOR A MENOR)
     discovered.sort(key=lambda x: x[2], reverse=True)
@@ -135,6 +161,18 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
 
     # 2. Obtener Jerarquía Dinámica
     dynamic_hierarchy = await _get_dynamic_hierarchy(current_keys)
+    
+    # Ajustar jerarquía si es una tarea rápida (priorizar Groq/Flash sobre Pro/GPT4/O1)
+    if is_fast_task:
+        def fast_score(m):
+            prov, mid = m
+            mid_l = mid.lower()
+            if prov == "groq": return 100 # Groq siempre es lo más rápido
+            if "flash" in mid_l: return 90
+            if "mini" in mid_l: return 80
+            return 10
+        dynamic_hierarchy.sort(key=fast_score, reverse=True)
+
     pref_model = ck(api_keys.get("preferred_model")).lower() if api_keys else ""
     
     def normalize_m(name):
@@ -416,12 +454,41 @@ async def test_api_key(provider, key, model=None):
     if provider in _BLACKLISTED_PROVIDERS:
         del _BLACKLISTED_PROVIDERS[provider]
     
-    print(f"[IA] Probando API de {provider} con modelo {model}...")
+    print(f"[IA] Probando API de {provider} (Modo Descubrimiento)...")
     try:
-        # Usamos _call_ai directamente para que intente las variantes si es Gemini
-        r, m_used = await _call_ai("Responde solo la palabra 'OK'", "Test de conexión.", 10, api_keys=ks, skip_fallback=True)
-        print(f"[IA] Test exitoso usando {m_used}")
-        return True if r else False
+        # 1. PASO CRÍTICO: Descubrir modelos primero (esto ya valida la API Key)
+        # Usamos force=True para asegurar que no usamos caché vieja durante un test
+        hierarchy = await _get_dynamic_hierarchy(ks, force=True)
+        
+        # Filtrar modelos para el proveedor actual
+        available_models = [m[1] for m in hierarchy if m[0] == provider]
+        
+        if not available_models:
+            # Si no hay modelos descubiertos, intentamos una llamada mínima como fallback
+            # para obtener el error real de la API (ej: "API Key invalid")
+            print(f"[IA] No se descubrieron modelos para {provider}. Intentando llamada mínima...")
+            r, m_used = await _call_ai("Responde 'OK'", "Test", 5, api_keys=ks, skip_fallback=True)
+            return True if r else False
+        
+        # 2. Si hay modelos, la API Key es válida. 
+        # Podemos hacer una mini-llamada con el primer modelo para confirmar cuota
+        test_model = model if model and any(model in am for am in available_models) else available_models[0]
+        print(f"[IA] API Key de {provider} válida. Modelos encontrados: {len(available_models)}. Probando cuota con {test_model}...")
+        
+        try:
+            # Una llamada de solo 1 token para verificar que no hay "Quota Exhausted"
+            # pero sin gastar casi nada.
+            ks["preferred_model"] = test_model
+            r, m_used = await _call_ai("Responde solo '1'", "Test", 2, api_keys=ks, skip_fallback=True)
+            print(f"[IA] Test de cuota exitoso usando {m_used}")
+            return True
+        except Exception as qe:
+            qe_msg = str(qe).lower()
+            if "quota" in qe_msg or "limit" in qe_msg or "429" in qe_msg:
+                # Si es un error de cuota, informamos específicamente
+                raise ValueError(f"API Key válida pero SIN CUOTA disponible: {qe}")
+            raise qe
+
     except Exception as e:
-        print(f"[IA] Test fallido: {e}")
+        print(f"[IA] Test fallido en {provider}: {e}")
         raise e
