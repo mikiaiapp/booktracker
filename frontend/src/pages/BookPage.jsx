@@ -470,12 +470,16 @@ export default function BookPage() {
 
       <div className="book-tabs">
         <div className="tabs-bar tabs-bar-desktop">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`}>
-              <t.icon size={18} />
-              <span className="tab-btn-text">{t.label}</span>
-            </button>
-          ))}
+          {TABS.map(t => {
+            const isDone = statusInfo?.[t.statusKey]
+            return (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`}>
+                <t.icon size={18} />
+                <span className="tab-btn-text">{t.label}</span>
+                {isDone && <div className="tab-status-dot" title="Completado" />}
+              </button>
+            )
+          })}
         </div>
 
         <AnimatePresence mode="wait">
@@ -671,7 +675,11 @@ const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onCha
                   <button className="chapter-header-btn" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
                     <span className="ch-num">{i+1}</span>
                     <span className="ch-title">{ch.title}</span>
-                    {hasSummary ? <CheckCircle size={14} className="status-done" /> : <AlertCircle size={14} className="status-pending" />}
+                    {hasSummary ? (
+                      <span className="status-badge-done">Resumido</span>
+                    ) : (
+                      <span className="status-badge-pending">Pendiente</span>
+                    )}
                     {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
                   
@@ -743,6 +751,7 @@ const CharactersTab = React.memo(({ characters, bookId, status, isProcessing, on
               <div className="char-content">
                 <div className="char-card-header">
                   <h3>{char.name}</h3>
+                  {char.description && <span className="status-badge-done sm">Analizado</span>}
                   <div className="char-card-actions">
                     <button className={`char-action-btn tts ${isCharPlaying ? 'active' : ''}`}
                       onClick={() => isCharPlaying ? (isPaused ? onResume() : onPause()) : onPlay(char)}>

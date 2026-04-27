@@ -1550,5 +1550,46 @@
   cursor: pointer;
 }
 
-.status-done { color: var(--forest); }
-.status-pending { color: var(--slate); opacity: 0.4; }
+/* Status Indicators */
+.tab-status-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  background: #10b981;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+}
+
+.status-badge-done {
+  background: #10b981;
+  color: white;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 1rem;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+.status-badge-done.sm {
+  padding: 1px 6px;
+  font-size: 0.65rem;
+  margin: 0 0.5rem;
+}
+
+.status-badge-pending {
+  background: var(--paper-darker, #cbd5e1);
+  color: var(--slate);
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 1rem;
+}
