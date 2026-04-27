@@ -180,6 +180,7 @@ export default function CharacterNetwork({ characters }) {
 
     return () => {
       simulation.stop()
+      simulation.on("tick", null)
     }
 
   }, [characters, isFullScreen])

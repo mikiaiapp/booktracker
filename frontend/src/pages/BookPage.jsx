@@ -54,6 +54,34 @@ function useConfirm() {
   return { confirm, modal }
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("Tab Crash:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary-fallback" style={{ textAlign: 'center', padding: '4rem', background: 'rgba(255,0,0,0.05)', borderRadius: '16px', border: '1px solid rgba(255,0,0,0.1)' }}>
+          <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+          <h2 style={{ color: 'var(--ink)' }}>Algo salió mal en esta sección</h2>
+          <p style={{ color: 'var(--mist)', marginBottom: '2rem' }}>{this.state.error?.toString()}</p>
+          <button className="reanalyze-btn" onClick={() => window.location.reload()} style={{ margin: '0 auto' }}>
+            <RefreshCw size={14} /> Recargar Aplicación
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function BookPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -275,11 +303,16 @@ export default function BookPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const currentTab = searchParams.get('tab') || 'info'
   const [tab, setTab] = useState(currentTab)
+  const statusInfo = status || {}
 
   const handleTabChange = (newTab) => {
     if (newTab === tab) return
-    // "Limpieza profunda" local: desmontamos el contenido un instante y luego montamos el nuevo
-    // Esto es mucho más limpio que un F5 total y evita que el sidebar parpadee
+    // Si entramos o salimos del mapa mental, forzamos recarga física por seguridad (D3/Memory)
+    if (tab === 'mindmap' || newTab === 'mindmap') {
+      window.location.href = `/book/${id}?tab=${newTab}`
+      return
+    }
+    // Para el resto, refresco virtual "limpio"
     setTab(null)
     setTimeout(() => {
       setTab(newTab)
@@ -603,33 +636,35 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.1</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.2</span>
         </div>
 
         <AnimatePresence mode="wait">
-          <motion.div 
-            key={tab}
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.25 }}
-            className="tab-content"
-            style={{ minHeight: '500px' }}
-          >
-            {tab === 'info' && (
-              <InfoTab 
-                book={book} 
-                status={statusInfo} 
-                isProcessing={isProcessing} 
-                onTrigger={triggerPhase} 
-                onPlay={playInfo} 
-                onStop={stopInfoTTS} 
-                isPlaying={ttsInfoPlaying} 
-                isPaused={ttsInfoPaused} 
-                onResume={resumeInfoTTS} 
-                onPause={pauseInfoTTS} 
-              />
-            )}
+          {tab && (
+            <motion.div 
+              key={tab}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.25 }}
+              className="tab-content"
+              style={{ minHeight: '500px' }}
+            >
+              <ErrorBoundary key={tab}>
+                {tab === 'info' && (
+                  <InfoTab 
+                    book={book} 
+                    status={statusInfo} 
+                    isProcessing={isProcessing} 
+                    onTrigger={triggerPhase} 
+                    onPlay={playInfo} 
+                    onStop={stopInfoTTS} 
+                    isPlaying={ttsInfoPlaying} 
+                    isPaused={ttsInfoPaused} 
+                    onResume={resumeInfoTTS} 
+                    onPause={pauseInfoTTS} 
+                  />
+                )}
             {tab === 'chapters' && (
               <ChaptersTab 
                 chapters={chapters} 
@@ -724,7 +759,9 @@ export default function BookPage() {
                 progressMsg={progressMsg} 
               />
             )}
-          </motion.div>
+              </ErrorBoundary>
+            </motion.div>
+          )}
         </AnimatePresence>
       </div>
       {confirmModal}
