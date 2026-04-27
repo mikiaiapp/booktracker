@@ -5,6 +5,9 @@ setlocal enabledelayedexpansion
 :: 📚 BookTracker - Lanzador para Windows (Modo Premium)
 :: =================================================================
 
+:: Asegurar que el script se ejecuta desde su propia carpeta
+cd /d "%~dp0"
+
 echo.
 echo  [1/3] Verificando Docker Desktop...
 docker --version >nul 2>&1
@@ -18,6 +21,7 @@ if %errorlevel% neq 0 (
 )
 
 echo  [2/3] Arrancando contenedores de BookTracker...
+:: Usamos docker-compose para levantar el entorno local
 docker-compose -f docker-compose.local.yml up -d
 
 echo  [3/3] Preparando interfaz premium...
@@ -39,4 +43,5 @@ echo  =================================================================
 echo.
 
 :: Mantener la ventana abierta para ver logs en vivo del backend si el usuario quiere
+:: Buscamos el nombre del contenedor dinamicamente si es posible, o usamos el estandar
 docker logs -f booktracker-api-local

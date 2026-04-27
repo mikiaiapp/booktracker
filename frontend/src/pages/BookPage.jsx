@@ -10,6 +10,9 @@ import {
 import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI } from '../utils/api'
 import MindMap from '../components/MindMap'
 import LiteraryDialogue from '../components/LiteraryDialogue'
+import CharacterNetwork from '../components/CharacterNetwork'
+import InteractiveTimeline from '../components/InteractiveTimeline'
+import { Share2, GitBranch, Layout } from 'lucide-react'
 import { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
 import './BookPage.css'
@@ -447,6 +450,8 @@ export default function BookPage() {
   }
 
   const [tab, setTab] = useState('info')
+  const [mindmapView, setMindmapView] = useState('tree') // 'tree' | 'network'
+  const [chaptersView, setChaptersView] = useState('list') // 'list' | 'timeline'
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [coverPickerOpen, setCoverPickerOpen] = useState(false)
   const [coverKey, setCoverKey] = useState(0) // fuerza re-render de BookCover tras cambio
@@ -798,6 +803,7 @@ export default function BookPage() {
                     </button>
                   </>
                 )}
+                
               </div>
             )}
 
@@ -880,6 +886,27 @@ export default function BookPage() {
                 <RefreshCw size={14} /> 
                 <span>Reemplazar archivos</span>
               </label>
+
+              {!isProcessing && (
+                <button 
+                  className="hero-action-btn" 
+                  style={{ 
+                    background: 'rgba(245, 158, 11, 0.15)', 
+                    borderColor: 'rgba(245, 158, 11, 0.4)', 
+                    color: '#f59e0b',
+                    fontWeight: '600'
+                  }}
+                  onClick={async () => {
+                    if (!window.confirm('Esto reanalizará capítulos y personajes para extraer los datos necesarios para la Timeline y la Red. ¿Continuar?')) return
+                    triggerPhase(2, true) 
+                    toast.success('Reanálisis iniciado. El progreso se verá en la biblioteca.')
+                    navigate('/')
+                  }}
+                >
+                  <RefreshCw size={16} />
+                  <span>Actualizar Timeline y Red</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -959,16 +986,32 @@ export default function BookPage() {
 
         <div className="tab-content">
           {tab === 'info' && <InfoTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={playInfo} onPause={pauseInfoTTS} onResume={resumeInfoTTS} onStop={stopInfoTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} onDelete={handleDelete} />}
-          {tab === 'chapters' && <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} onPlayChapter={(c) => { stopTTS(); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); ttsActiveRef.current = true; setTtsPlaying(true); speakItem([{id:c.id, title:c.title, text:chapterToText(c)}], 0); setTtsMode('single') }} onPlayFromChapter={(c) => playFromChapter(c, chapters)} onResume={resumeCurrentTTS} onStop={stopTTS} onPause={pauseTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} />}
+          {tab === 'chapters' && <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} ttsPlaying={ttsPlaying} ttsChapterPaused={ttsChapterPaused} ttsChapter={ttsChapter} onPlayChapter={(c) => { stopTTS(); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); ttsActiveRef.current = true; setTtsPlaying(true); speakItem([{id:c.id, title:c.title, text:chapterToText(c)}], 0); setTtsMode('single') }} onPlayFromChapter={(c) => playFromChapter(c, chapters)} onResume={resumeCurrentTTS} onStop={stopTTS} onPause={pauseTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} view={chaptersView} setView={setChaptersView} />}
           {tab === 'characters' && <CharactersTab characters={characters} ttsPlaying={ttsCharPlaying} ttsPaused={ttsCharPaused} ttsCharacter={ttsCharacter} onPlay={playCharacter} onPlayFrom={(c) => playFromCharacter(c, characters)} onPause={pauseCharTTS} onResume={resumeCharTTS} onStop={stopCharTTS} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} bookId={id} onDone={load} />}
           {tab === 'summary' && <SummaryTab book={book} ttsPlaying={ttsInfoPlaying} ttsPaused={ttsInfoPaused} onPlay={() => playSummary(book)} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />}
           {tab === 'mindmap' && (
-            <div className="prose-content" style={{height:'80vh', display:'flex', flexDirection:'column'}}>
-               <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
-               <h2 style={{marginBottom:'1rem'}}>Mapa mental de ideas</h2>
-               <div style={{flex:1, minHeight:0, background:'#fcfaf7', borderRadius:'12px', border:'1.5px solid var(--paper-dark)'}}>
-                 <MindMap data={book.mindmap_data} />
-               </div>
+            <div className="prose-content">
+                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
+                
+                {statusInfo.has_mindmap && (
+                  <>
+                    <div className="view-toggle-wrap">
+                      <button className={`view-toggle-btn ${mindmapView === 'tree' ? 'active' : ''}`} onClick={() => setMindmapView('tree')}>
+                        <Layout size={14} /> Mapa de Ideas
+                      </button>
+                      <button className={`view-toggle-btn ${mindmapView === 'network' ? 'active' : ''}`} onClick={() => setMindmapView('network')}>
+                        <Share2 size={14} /> Red de Personajes
+                      </button>
+                    </div>
+
+                    {mindmapView === 'tree' ? (
+                      <MindMap data={book.mindmap_data} />
+                    ) : (
+                      <CharacterNetwork characters={characters} />
+                    )}
+                  </>
+                )}
+                {!statusInfo.has_mindmap && <p className="empty-tab">El mapa mental aún no se ha generado.</p>}
             </div>
           )}
           {tab === 'podcast' && (
@@ -1301,7 +1344,7 @@ function SummaryTab({ book, ttsPlaying, ttsPaused, onPlay, status, isProcessing,
   )
 }
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause, status, isProcessing, onTrigger, onCancel, progressMsg }) {
+function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, ttsPlaying, ttsChapterPaused, ttsChapter, onPlayChapter, onPlayFromChapter, onResume, onStop, onPause, status, isProcessing, onTrigger, onCancel, progressMsg, view, setView }) {
   const [summarizing, setSummarizing] = React.useState({})
   const handleSummarize = async (e, chapter) => {
     e.stopPropagation()
@@ -1320,79 +1363,92 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
   return (
     <div className="chapters-list">
       <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" canProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} onCancel={onCancel} progressMsg={progressMsg} />
-      {chapters.map((ch, i) => (
-        <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'open' : ''}`}>
-          <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
-            <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
-            <span className="ch-title">{ch.title}</span>
-            <div className="ch-meta">
-              {ch.summary_status === 'done' && ch.summary && ch.summary.length > 50 ? <span className="badge badge-green">Resumido</span> : <button className="summarize-ch-btn" onClick={(e) => handleSummarize(e, ch)} disabled={summarizing[ch.id]}>{summarizing[ch.id] ? '…' : '+ Resumir'}</button>}
-              {ch.summary_status === 'done' && ch.summary && ch.summary.length > 50 && (
-                <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
-                  {ttsChapter === ch.id && ttsPlaying ? <button className="ch-tts-btn pause" onClick={onPause}><Pause size={12} /></button> : <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)}><Play size={12} /></button>}
-                </div>
-              )}
-              {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </div>
-          </button>
-          <AnimatePresence>{expanded === ch.id && (
-            <motion.div className="chapter-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-              <div className="chapter-body-inner">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '2rem' }}>
-                  <div style={{ flex: 1 }}>
-                    {(!ch.summary || typeof ch.summary !== 'string' || ch.summary.length < 50) ? (
-                      <div className="empty-chapter-warning" style={{ 
-                        display: 'flex', 
-                        gap: '1rem', 
-                        padding: '1.5rem', 
-                        background: 'rgba(239, 68, 68, 0.05)', 
-                        border: '1px solid rgba(239, 68, 68, 0.2)', 
-                        borderRadius: '12px',
-                        marginBottom: '1rem' 
-                      }}>
-                        <AlertCircle size={24} style={{ color: '#ef4444', flexShrink: 0 }} />
-                        <div>
-                          <strong style={{ display: 'block', color: '#ef4444', marginBottom: '0.25rem' }}>🤖 Capitulo sin resumen válido</strong>
-                          <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--mist)' }}>
-                            La IA parece haber fallado al procesar este capítulo (resumen demasiado corto o vacío). 
-                            Pulsa el botón de la derecha para intentar reanalizarlo.
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <p style={{ whiteSpace: 'pre-wrap', color: 'var(--mist)', lineHeight: '1.6' }}>
-                        {ch.summary}
-                      </p>
-                    )}
-                    {Array.isArray(ch.key_events) && ch.key_events.length > 0 && (
-                      <div className="key-events" style={{ marginTop: '1.5rem' }}>
-                        <strong>Eventos clave:</strong>
-                        <ul style={{ marginTop: '0.5rem' }}>
-                          {ch.key_events.map((e, i) => (
-                            <li key={i} style={{ marginBottom: '0.4rem' }}>{typeof e === 'object' && e !== null ? e.event || JSON.stringify(e) : e}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+      
+      <div className="view-toggle-wrap">
+        <button className={`view-toggle-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>
+          <List size={14} /> Lista
+        </button>
+        <button className={`view-toggle-btn ${view === 'timeline' ? 'active' : ''}`} onClick={() => setView('timeline')}>
+          <GitBranch size={14} /> Línea de Tiempo
+        </button>
+      </div>
+
+      {view === 'list' ? (
+        chapters.map((ch, i) => (
+          <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'open' : ''}`}>
+            <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
+              <span className="ch-num">{String(i + 1).padStart(2, '0')}</span>
+              <span className="ch-title">{ch.title}</span>
+              <div className="ch-meta">
+                {ch.summary_status === 'done' && ch.summary && ch.summary.length > 50 ? <span className="badge badge-green">Resumido</span> : <button className="summarize-ch-btn" onClick={(e) => handleSummarize(e, ch)} disabled={summarizing[ch.id]}>{summarizing[ch.id] ? '…' : '+ Resumir'}</button>}
+                {ch.summary_status === 'done' && ch.summary && ch.summary.length > 50 && (
+                  <div className="ch-tts-btns" onClick={e => e.stopPropagation()}>
+                    {ttsChapter === ch.id && ttsPlaying ? <button className="ch-tts-btn pause" onClick={onPause}><Pause size={12} /></button> : <button className="ch-tts-btn play" onClick={() => onPlayChapter(ch)}><Play size={12} /></button>}
                   </div>
-                  
-                  {/* Botón de re-análisis específico por capítulo */}
-                  <button 
-                    className="reanalyze-btn" 
-                    style={{ flexShrink: 0, margin: 0, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} 
-                    onClick={(e) => handleSummarize(e, ch)} 
-                    disabled={summarizing[ch.id]}
-                    title="Forzar a la IA a resumir este capítulo de nuevo"
-                  >
-                    <RefreshCw size={12} className={summarizing[ch.id] ? 'spin' : ''} />
-                    <span>{summarizing[ch.id] ? 'Procesando…' : 'Reanalizar capítulo'}</span>
-                  </button>
-                </div>
+                )}
+                {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </div>
-            </motion.div>
-          )}</AnimatePresence>
-        </div>
-      ))}
+            </button>
+            <AnimatePresence>{expanded === ch.id && (
+              <motion.div className="chapter-body" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+                <div className="chapter-body-inner">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '2rem' }}>
+                    <div style={{ flex: 1 }}>
+                      {(!ch.summary || typeof ch.summary !== 'string' || ch.summary.length < 50) ? (
+                        <div className="empty-chapter-warning" style={{ 
+                          display: 'flex', 
+                          gap: '1rem', 
+                          padding: '1.5rem', 
+                          background: 'rgba(239, 68, 68, 0.05)', 
+                          border: '1px solid rgba(239, 68, 68, 0.2)', 
+                          borderRadius: '12px',
+                          marginBottom: '1rem' 
+                        }}>
+                          <AlertCircle size={24} style={{ color: '#ef4444', flexShrink: 0 }} />
+                          <div>
+                            <strong style={{ display: 'block', color: '#ef4444', marginBottom: '0.25rem' }}>🤖 Capitulo sin resumen válido</strong>
+                            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--mist)' }}>
+                              La IA parece haber fallado al procesar este capítulo (resumen demasiado corto o vacío). 
+                              Pulsa el botón de la derecha para intentar reanalizarlo.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={{ whiteSpace: 'pre-wrap', color: 'var(--mist)', lineHeight: '1.6' }}>
+                          {ch.summary}
+                        </p>
+                      )}
+                      {Array.isArray(ch.key_events) && ch.key_events.length > 0 && (
+                        <div className="key-events" style={{ marginTop: '1.5rem' }}>
+                          <strong>Eventos clave:</strong>
+                          <ul style={{ marginTop: '0.5rem' }}>
+                            {ch.key_events.map((e, i) => (
+                              <li key={i} style={{ marginBottom: '0.4rem' }}>{typeof e === 'object' && e !== null ? e.event || JSON.stringify(e) : e}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button 
+                      className="reanalyze-btn" 
+                      style={{ flexShrink: 0, margin: 0, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} 
+                      onClick={(e) => handleSummarize(e, ch)} 
+                      disabled={summarizing[ch.id]}
+                      title="Forzar a la IA a resumir este capítulo de nuevo"
+                    >
+                      <RefreshCw size={12} className={summarizing[ch.id] ? 'spin' : ''} />
+                      <span>{summarizing[ch.id] ? 'Procesando…' : 'Reanalizar capítulo'}</span>
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}</AnimatePresence>
+          </div>
+        ))
+      ) : (
+        <InteractiveTimeline chapters={chapters} />
+      )}
     </div>
   )
 }

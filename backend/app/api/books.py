@@ -453,13 +453,27 @@ async def delete_book(
 
     # Borrar archivo físico
     if book.file_path and os.path.exists(book.file_path):
-        os.remove(book.file_path)
+        try: os.remove(book.file_path)
+        except: pass
+    
     # Borrar portada local si existe
     if book.cover_local and os.path.exists(book.cover_local):
-        try:
-            os.remove(book.cover_local)
-        except Exception:
-            pass
+        try: os.remove(book.cover_local)
+        except: pass
+    
+    # Borrar audio del podcast si existe
+    if book.podcast_audio_path and os.path.exists(book.podcast_audio_path):
+        try: os.remove(book.podcast_audio_path)
+        except: pass
+
+    # Borrar registros relacionados (manualmente ya que no hay cascada en DB)
+    from sqlalchemy import delete
+    from app.models.book import Chapter, Character, AnalysisJob, ChatMessage
+    
+    await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
+    await db.execute(delete(Character).where(Character.book_id == book_id))
+    await db.execute(delete(AnalysisJob).where(AnalysisJob.book_id == book_id))
+    await db.execute(delete(ChatMessage).where(ChatMessage.book_id == book_id))
 
     await db.delete(book)
     await db.commit()
@@ -472,7 +486,8 @@ async def delete_book(
                 Book.phase3_done == True
             )
         )
-        if not analyzed.scalar_one_or_none():
+        # Usamos .first() en lugar de .scalar_one_or_none() para evitar error si hay varios
+        if not analyzed.first():
             shells = await db.execute(
                 select(Book).where(
                     Book.author == author,
@@ -481,10 +496,8 @@ async def delete_book(
             )
             for shell in shells.scalars().all():
                 if shell.cover_local and os.path.exists(shell.cover_local):
-                    try:
-                        os.remove(shell.cover_local)
-                    except Exception:
-                        pass
+                    try: os.remove(shell.cover_local)
+                    except: pass
                 await db.delete(shell)
             await db.commit()
 

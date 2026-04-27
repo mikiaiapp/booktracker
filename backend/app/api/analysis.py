@@ -228,7 +228,7 @@ async def repair_all_events(
                 or_(Chapter.key_events == None, Chapter.key_events == "[]", Chapter.key_events == "")
             ).limit(1) # Basta con que falte uno
         )
-        if ch_res.scalar_one_or_none():
+        if (await ch_res.first()):
             # 3. Encolar para reparación
             q_enqueue(current_user.id, book.id, book.title, phases=["repair"])
             enqueued_count += 1
@@ -677,23 +677,40 @@ async def delete_author(
     if not author_name:
         raise HTTPException(400, "author requerido")
 
+    # Si hay libros analizados, no permitimos borrar el autor globalmente (medida de seguridad)
     analyzed = await db.execute(
         select(Book).where(Book.author == author_name, Book.phase3_done == True)
     )
-    if analyzed.scalar_one_or_none():
+    if analyzed.first():
         raise HTTPException(400, "No se puede borrar un autor con libros analizados")
 
     result = await db.execute(select(Book).where(Book.author == author_name))
     books  = result.scalars().all()
 
+    from sqlalchemy import delete
+    from app.models.book import Chapter, Character, AnalysisJob, ChatMessage
+
     deleted_books = 0
     for book in books:
+        book_id = book.id
+        
+        # Borrar archivos físicos
         if book.file_path and os.path.exists(book.file_path):
             try: os.remove(book.file_path)
-            except Exception: pass
+            except: pass
         if book.cover_local and os.path.exists(book.cover_local):
             try: os.remove(book.cover_local)
-            except Exception: pass
+            except: pass
+        if book.podcast_audio_path and os.path.exists(book.podcast_audio_path):
+            try: os.remove(book.podcast_audio_path)
+            except: pass
+
+        # Borrar registros relacionados
+        await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
+        await db.execute(delete(Character).where(Character.book_id == book_id))
+        await db.execute(delete(AnalysisJob).where(AnalysisJob.book_id == book_id))
+        await db.execute(delete(ChatMessage).where(ChatMessage.book_id == book_id))
+        
         await db.delete(book)
         deleted_books += 1
 

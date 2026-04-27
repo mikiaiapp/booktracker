@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react'
 
 const PALETTE = [
   '#4f46e5', '#06b6d4', '#f59e0b', '#d4876b',
@@ -27,78 +28,89 @@ export default function MindMap({ data }) {
   const collapseAll = () => setExpanded(new Set())
 
   return (
-    <div className="mm-wrap">
-
-      {/* ── Toolbar ─────────────────────────────────────── */}
-      <div className="mm-toolbar">
-        <div>
+    <div className="mm-premium-container">
+      <div className="mm-header">
+        <div className="mm-header-text">
           <h2 className="mm-title">Mapa mental interactivo</h2>
-          <p className="mm-hint">Pulsa en cada rama para desplegar su contenido completo</p>
+          <p className="mm-hint">Explora la estructura del libro desplegando cada nodo</p>
         </div>
-        <div className="mm-toolbar-btns">
-          {anyOpen  && <button className="mm-btn-sec" onClick={collapseAll}>Colapsar todo</button>}
-          {!allOpen && <button className="mm-btn-sec" onClick={expandAll}>Expandir todo</button>}
+        <div className="mm-controls">
+          <button className="mm-control-btn" onClick={anyOpen ? collapseAll : expandAll}>
+            {anyOpen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            <span>{anyOpen ? 'Colapsar todo' : 'Expandir todo'}</span>
+          </button>
         </div>
       </div>
 
-      {/* ── Tree ────────────────────────────────────────── */}
-      <div className="mm-tree">
-
-        {/* Root */}
-        <div className="mm-root-col">
-          <div className="mm-root-node">
-            <span className="mm-root-text">{center}</span>
-          </div>
-          <div className="mm-root-line" />
+      <div className="mm-content">
+        <div className="mm-root-section">
+           <motion.div 
+             className="mm-central-node"
+             whileHover={{ scale: 1.02 }}
+           >
+             <span className="mm-central-label">{center}</span>
+           </motion.div>
+           <div className="mm-vertical-line" />
         </div>
 
-        {/* Branches */}
-        <div className="mm-branches-col">
+        <div className="mm-branches-grid">
           {branches.map((branch, bi) => {
-            const color    = branch.color || PALETTE[bi % PALETTE.length]
-            const isOpen   = expanded.has(bi)
+            const color = PALETTE[bi % PALETTE.length]
+            const isOpen = expanded.has(bi)
             const children = branch.children || branch.nodes || branch.items || []
-            const label    = branch.label || branch.title || branch.text || `Rama ${bi + 1}`
+            const label = branch.label || branch.title || branch.text || `Rama ${bi + 1}`
 
             return (
-              <div key={bi} className="mm-branch-block">
-
-                {/* Branch header button */}
-                <button
-                  className={`mm-branch-btn ${isOpen ? 'mm-branch-open' : ''}`}
-                  style={{ '--bc': color }}
+              <div key={bi} className="mm-branch-wrapper">
+                <motion.button
+                  className={`mm-branch-node ${isOpen ? 'is-open' : ''}`}
+                  style={{ '--branch-color': color }}
                   onClick={() => toggle(bi)}
-                  aria-expanded={isOpen}
+                  layout
                 >
-                  <span className="mm-branch-icon">
-                    {isOpen
-                      ? <ChevronDown size={14} strokeWidth={2} />
-                      : <ChevronRight size={14} strokeWidth={2} />}
-                  </span>
-                  <span className="mm-branch-label">{label}</span>
-                  {!isOpen && children.length > 0 && (
-                    <span className="mm-branch-count" style={{ background: color }}>
-                      {children.length}
-                    </span>
-                  )}
-                </button>
-
-                {/* Children */}
-                {isOpen && children.length > 0 && (
-                  <div className="mm-leaves">
-                    {children.map((child, ci) => {
-                      const text = typeof child === 'string'
-                        ? child
-                        : (child.label || child.text || child.title || JSON.stringify(child))
-                      return (
-                        <div key={ci} className="mm-leaf" style={{ borderLeftColor: color }}>
-                          <span className="mm-leaf-dot" style={{ background: color }} />
-                          <span className="mm-leaf-text">{text}</span>
-                        </div>
-                      )
-                    })}
+                  <div className="mm-branch-indicator" style={{ background: color }} />
+                  <span className="mm-branch-text">{label}</span>
+                  <div className="mm-branch-actions">
+                    {children.length > 0 && (
+                      <span className="mm-branch-badge" style={{ background: isOpen ? 'white' : color, color: isOpen ? color : 'white' }}>
+                        {children.length}
+                      </span>
+                    )}
+                    <div className={`mm-chevron ${isOpen ? 'rotated' : ''}`}>
+                      <ChevronRight size={16} />
+                    </div>
                   </div>
-                )}
+                </motion.button>
+
+                <AnimatePresence>
+                  {isOpen && children.length > 0 && (
+                    <motion.div 
+                      className="mm-children-container"
+                      initial={{ height: 0, opacity: 0, x: -10 }}
+                      animate={{ height: 'auto', opacity: 1, x: 0 }}
+                      exit={{ height: 0, opacity: 0, x: -10 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                    >
+                      {children.map((child, ci) => {
+                        const text = typeof child === 'string'
+                          ? child
+                          : (child.label || child.text || child.title || JSON.stringify(child))
+                        return (
+                          <motion.div 
+                            key={ci} 
+                            className="mm-child-node"
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: ci * 0.05 }}
+                          >
+                            <div className="mm-child-dot" style={{ background: color }} />
+                            <span className="mm-child-text">{text}</span>
+                          </motion.div>
+                        )
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )
           })}
