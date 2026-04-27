@@ -338,6 +338,7 @@ async def get_book(
                 "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []}),
                 "podcast_script": book.podcast_script or "",
                 "podcast_audio_path": book.podcast_audio_path or "",
+                "podcast_duration": book.podcast_duration,
                 "cover_local": book.cover_local,
             },
             "chapters": [

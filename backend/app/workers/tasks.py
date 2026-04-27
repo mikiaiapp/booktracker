@@ -466,7 +466,7 @@ def process_book_phase6(self, user_id: str, book_id: str, force: bool = False):
                     book.error_msg = f"Error en generación de audio: {str(e)}"
                     update_progress(user_id, book_id, "phase6", 50, f"Error Audio: {e}", model="Error")
                 
-                await dispatch_next_final(db, user_id, book_id, book)
+                await _dispatch_next(db, user_id, book_id)
         except ValueError as ve:
             wait_sec = _extract_wait_seconds(str(ve))
             update_progress(user_id, book_id, "phase6", 0, str(ve).replace("Sin IA disponible: ", ""), model="Agotado")
