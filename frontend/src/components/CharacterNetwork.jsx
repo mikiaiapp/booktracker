@@ -20,8 +20,8 @@ export default function CharacterNetwork({ characters }) {
   useEffect(() => {
     if (!characters || characters.length === 0) return
     
-    // Evitar redibujar todo si la longitud es la misma (asumimos que los personajes son los mismos durante el análisis)
-    if (characters.length === lastCharactersLengthRef.current && svgRef.current.childNodes.length > 0) {
+    // Evitar redibujar todo si la longitud es la misma
+    if (svgRef.current && characters.length === lastCharactersLengthRef.current && svgRef.current.childNodes.length > 0) {
         return
     }
     lastCharactersLengthRef.current = characters.length
