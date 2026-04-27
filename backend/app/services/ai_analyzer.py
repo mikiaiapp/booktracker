@@ -395,7 +395,7 @@ Responde ESTRICTAMENTE con un JSON con las claves 'summary' (un texto largo y an
 
 async def get_character_list(all_summaries, api_keys=None, user_id=None, book_id=None) -> list:
     if not all_summaries: return [], "Error"
-    system = "Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{"name": "...", "is_main": true}]"
+    system = """Experto literario. Identifica TODOS los personajes relevantes. Responde SOLO array JSON: [{"name": "...", "is_main": true}]"""
     context = _compress_text(all_summaries, 12000)
     raw, m = await _call_ai_with_retry(system, f"Lista los personajes de este libro:\n{context}", 1000, is_fast_task=True, api_keys=api_keys, user_id=user_id, book_id=book_id)
     data = _parse_json(raw)
