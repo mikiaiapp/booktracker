@@ -272,8 +272,25 @@ export default function BookPage() {
     ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(false)
   }
 
-  const [searchParams] = useSearchParams()
-  const tab = searchParams.get('tab') || 'info'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const currentTab = searchParams.get('tab') || 'info'
+  const [tab, setTab] = useState(currentTab)
+
+  const handleTabChange = (newTab) => {
+    if (newTab === tab) return
+    // "Limpieza profunda" local: desmontamos el contenido un instante y luego montamos el nuevo
+    // Esto es mucho más limpio que un F5 total y evita que el sidebar parpadee
+    setTab(null)
+    setTimeout(() => {
+      setTab(newTab)
+      setSearchParams({ tab: newTab })
+    }, 10)
+  }
+
+  // Sincronizar si cambia la URL directamente
+  useEffect(() => {
+    if (currentTab !== tab && tab !== null) setTab(currentTab)
+  }, [currentTab])
   const [mindmapView, setMindmapView] = useState('tree')
   const [chaptersView, setChaptersView] = useState('list')
   const [expandedChapter, setExpandedChapter] = useState(null)
@@ -576,7 +593,7 @@ export default function BookPage() {
             return (
               <button 
                 key={t.id} 
-                onClick={() => window.location.href = `/book/${id}?tab=${t.id}`} 
+                onClick={() => handleTabChange(t.id)} 
                 className={`tab-btn ${tab === t.id ? 'active' : ''} ${isTabProcessing ? 'processing' : ''}`}
               >
                 <t.icon size={18} />
@@ -586,7 +603,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.0</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.1</span>
         </div>
 
         <AnimatePresence mode="wait">
