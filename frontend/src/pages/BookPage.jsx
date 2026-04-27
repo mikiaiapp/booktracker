@@ -534,7 +534,7 @@ export default function BookPage() {
                       const objUrl = URL.createObjectURL(blob)
                       const a = document.createElement('a')
                       a.href = objUrl
-                      a.download = `${book.title}.pdf` // Extension is determined by backend but fallback to pdf
+                      a.download = `${book.title}.${book.file_type || 'pdf'}`
                       a.click()
                       setTimeout(() => URL.revokeObjectURL(objUrl), 5000)
                     } catch { toast.error('Error al descargar el archivo') }
@@ -578,7 +578,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.5</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.6</span>
         </div>
 
         <AnimatePresence mode="wait">

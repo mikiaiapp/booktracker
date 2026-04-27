@@ -340,6 +340,7 @@ async def get_book(
                 "podcast_audio_path": book.podcast_audio_path or "",
                 "podcast_duration": book.podcast_duration,
                 "has_file": bool(book.file_path),
+                "file_type": book.file_type,
                 "cover_local": book.cover_local,
             },
             "chapters": [
