@@ -412,8 +412,54 @@ export default function BookPage() {
               {[1,2,3,4,5].map(n => <button key={n} onClick={() => handleRating(n)} className={`star ${rating >= n ? 'filled' : ''}`}><Star size={20} fill={rating >= n ? 'currentColor' : 'none'} /></button>)}
             </div>
             <div className="hero-actions-container">
-              {statusInfo?.has_global_summary && <button className="hero-action-btn" onClick={exportToPDF}><FileText size={16} /> PDF</button>}
-              {book.file_path && <button className="hero-action-btn" onClick={handleDownloadAudio}><Download size={16} /> MP3</button>}
+              {statusInfo?.has_global_summary && (
+                <button className="hero-action-btn pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
+                  <FileText size={16} />
+                  <span>Genera PDF</span>
+                </button>
+              )}
+
+              {book.file_path && (
+                <button
+                  className="hero-action-btn epub-btn"
+                  title="Descargar archivo original"
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('bt_token')
+                      const resp = await fetch(analysisAPI.downloadUrl(id), {
+                        headers: { Authorization: `Bearer ${token}` }
+                      })
+                      if (!resp.ok) { toast.error('No se pudo descargar el archivo'); return }
+                      const blob = await resp.blob()
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `${book.title}.${book.file_type || 'pdf'}`
+                      a.click()
+                      setTimeout(() => URL.revokeObjectURL(url), 5000)
+                    } catch { toast.error('Error al descargar el archivo') }
+                  }}
+                >
+                  <BookOpen size={16} />
+                  <span>Descarga EPUB</span>
+                </button>
+              )}
+
+              <label className="hero-action-btn replace-btn" style={{ cursor: 'pointer' }} title="Reemplazar archivo PDF/EPUB del libro">
+                <input type="file" accept=".pdf,.epub" style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files[0]; if (!file) return
+                    if (!confirm('¿Reemplazar los archivos? El análisis se conservará.')) return
+                    try {
+                      toast('Subiendo archivo…', { icon: '⏳' })
+                      await uploadToShell(id, file)
+                      toast.success('Archivo subido. Identificando…')
+                      load(false)
+                    } catch { toast.error('Error al subir el archivo') }
+                  }} />
+                <RefreshCw size={14} /> 
+                <span>Reemplazar archivos</span>
+              </label>
             </div>
           </div>
           <button className="delete-btn" onClick={handleDelete}><Trash2 size={20} /></button>
