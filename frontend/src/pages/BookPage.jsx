@@ -273,10 +273,14 @@ export default function BookPage() {
 
   const _speakInfoFromIndex = (sentences, idx) => {
     if (!ttsInfoActiveRef.current || idx >= sentences.length) {
-      if (ttsInfoActiveRef.current) { ttsInfoActiveRef.current = false; setTtsInfoPlaying(false); setTtsInfoPaused(false) }
+      if (ttsInfoActiveRef.current) { 
+        ttsInfoActiveRef.current = false; setTtsInfoPlaying(false); setTtsInfoPaused(false) 
+        localStorage.removeItem(infoStorageKey)
+      }
       return
     }
     ttsInfoIndexRef.current = idx
+    localStorage.setItem(infoStorageKey, idx.toString())
     const u = new SpeechSynthesisUtterance(sentences[idx])
     u.lang = 'es-ES'; u.rate = 0.95
     u.onend = () => { if (ttsInfoActiveRef.current) _speakInfoFromIndex(sentences, idx + 1) }
@@ -291,13 +295,26 @@ export default function BookPage() {
     _speakInfoFromIndex(sentences, fromIdx)
   }
 
-  const playInfo = (book) => { stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); const text = book.synopsis || ''; if (!text) return; setTtsInfoPlaying(true); _startInfoTTS(text, 0) }
-  const playSummary = (book) => { stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); if (!book.global_summary) return; setTtsInfoPlaying(true); _startInfoTTS(book.global_summary, 0) }
+  const playInfo = (book) => { 
+    stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
+    const text = book.synopsis || ''; if (!text) return; 
+    const saved = localStorage.getItem(infoStorageKey)
+    const fromIdx = saved ? parseInt(saved) : 0
+    setTtsInfoPlaying(true); _startInfoTTS(text, fromIdx) 
+  }
+  const playSummary = (book) => { 
+    stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
+    if (!book.global_summary) return; 
+    const saved = localStorage.getItem(infoStorageKey)
+    const fromIdx = saved ? parseInt(saved) : 0
+    setTtsInfoPlaying(true); _startInfoTTS(book.global_summary, fromIdx) 
+  }
   const pauseInfoTTS = () => { ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(true) }
   const resumeInfoTTS = () => { if (!ttsInfoSentencesRef.current.length) return; setTtsInfoPlaying(true); setTtsInfoPaused(false); ttsInfoActiveRef.current = true; _speakInfoFromIndex(ttsInfoSentencesRef.current, ttsInfoIndexRef.current) }
   const stopInfoTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) { if (!await confirm('¿Parar reproducción?')) return }
     ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(false)
+    localStorage.removeItem(infoStorageKey)
   }
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -611,6 +628,19 @@ export default function BookPage() {
                 <RefreshCw size={14} /> 
                 <span>Reemplazar archivos</span>
               </label>
+              
+              {(ttsInfoPlaying || ttsInfoPaused) && (
+                <>
+                  <button className="hero-action-btn pause-btn active" onClick={ttsInfoPaused ? resumeInfoTTS : pauseInfoTTS}>
+                    {ttsInfoPaused ? <Play size={16} /> : <Pause size={16} />}
+                    <span>{ttsInfoPaused ? 'Reanudar' : 'Pausar'}</span>
+                  </button>
+                  <button className="hero-action-btn stop-btn" onClick={() => stopInfoTTS()}>
+                    <Square size={16} />
+                    <span>Parar</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
           <button className="delete-btn" onClick={handleDelete}><Trash2 size={20} /></button>
@@ -636,7 +666,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.2</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.3</span>
         </div>
 
         <AnimatePresence mode="wait">
