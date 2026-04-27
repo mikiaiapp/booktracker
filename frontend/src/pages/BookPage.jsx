@@ -480,7 +480,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.1</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.2</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -640,6 +640,33 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
 }
 
 const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg, audioUrl, audioPlaying, audioPaused, onToggleAudio, onDownload }) => {
+  const formatDuration = (s) => {
+    if (!s) return '--:--'
+    const m = Math.floor(s / 60)
+    const sc = Math.floor(s % 60)
+    return `${m}:${sc.toString().padStart(2, '0')}`
+  }
+
+  // Parse script into cards
+  const parseScript = (text) => {
+    if (!text) return []
+    const lines = text.split('\n').filter(l => l.trim())
+    const cards = []
+    lines.forEach(line => {
+      const match = line.match(/^(ANA|CARLOS|LOCUTOR|HOST|INVITADO):\s*(.*)/i)
+      if (match) {
+        cards.push({ speaker: match[1].toUpperCase(), text: match[2] })
+      } else if (cards.length > 0) {
+        cards[cards.length - 1].text += ' ' + line
+      } else {
+        cards.push({ speaker: 'LOCUTOR', text: line })
+      }
+    })
+    return cards
+  }
+
+  const scriptCards = parseScript(book.podcast_script)
+
   return (
     <div className="prose-content">
       <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
@@ -653,26 +680,33 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
               </div>
             </div>
             <div className="podcast-info">
-              <h3>Podcast Literario</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <h3>Podcast Literario</h3>
+                <span className="podcast-duration-badge">{formatDuration(book.podcast_duration)}</span>
+              </div>
               <p>Análisis en formato de audio generado por IA</p>
               <div className="podcast-controls">
                 <button className="podcast-play-btn" onClick={onToggleAudio}>
                   {audioPlaying ? <Pause size={20} /> : <Play size={20} />}
                   <span>{audioPlaying ? 'Pausar' : 'Escuchar Podcast'}</span>
                 </button>
-                <button className="download-mp3-btn" onClick={onDownload} title="Descargar MP3">
-                  <Download size={16} />
+                <button className="podcast-download-btn-premium" onClick={onDownload}>
+                  <Download size={18} />
+                  <span>Descargar MP3</span>
                 </button>
               </div>
             </div>
           </div>
           
-          {book.podcast_script && (
-            <div className="podcast-script">
+          {scriptCards.length > 0 && (
+            <div className="podcast-script-v2">
               <h4><FileText size={16} /> Guión del Podcast</h4>
-              <div className="script-content">
-                {book.podcast_script.split('\n').map((line, i) => (
-                  <p key={i}>{line}</p>
+              <div className="script-cards-container">
+                {scriptCards.map((card, i) => (
+                  <div key={i} className={`script-card ${card.speaker.toLowerCase()}`}>
+                    <div className="card-speaker-tag">{card.speaker}</div>
+                    <p className="card-text">{card.text}</p>
+                  </div>
                 ))}
               </div>
             </div>

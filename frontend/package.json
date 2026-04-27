@@ -1,11 +1,12 @@
 {
   "name": "booktracker-frontend",
-  "version": "2.8.1",
+  "version": "2.8.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cache-bust": "CACHE_BUST=v2.8.2"
   },
   "dependencies": {
     "react": "^18.3.1",
