@@ -8,6 +8,8 @@ export default function CharacterNetwork({ characters }) {
   const [selectedChar, setSelectedChar] = useState(null)
   const [isFullScreen, setIsFullScreen] = useState(false)
 
+  const lastCharactersLengthRef = useRef(0)
+
   useEffect(() => {
     if (selectedChar && characters) {
       const updated = characters.find(c => c.name === selectedChar.name)
@@ -17,6 +19,12 @@ export default function CharacterNetwork({ characters }) {
 
   useEffect(() => {
     if (!characters || characters.length === 0) return
+    
+    // Evitar redibujar todo si la longitud es la misma (asumimos que los personajes son los mismos durante el análisis)
+    if (characters.length === lastCharactersLengthRef.current && svgRef.current.childNodes.length > 0) {
+        return
+    }
+    lastCharactersLengthRef.current = characters.length
 
     // 1. Preparar datos
     const nodes = characters.map(c => ({ 

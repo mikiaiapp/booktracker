@@ -531,25 +531,25 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
   )
 }
 
-function InfoTab({ book, status, isProcessing, onTrigger, onDelete }) {
+const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onDelete }) => {
   return (
     <div className="info-tab">
       <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       <h3>Sinopsis</h3><p>{book.synopsis || 'Analizando...'}</p>
     </div>
   )
-}
+})
 
-function SummaryTab({ book, status, isProcessing, onTrigger }) {
+const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger }) => {
   return (
     <div className="prose-content">
       <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       <h2>Resumen</h2><p>{book.global_summary || 'No disponible'}</p>
     </div>
   )
-}
+})
 
-function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger }) {
+const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger }) => {
   return (
     <div className="chapters-list">
       <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
@@ -567,9 +567,9 @@ function ChaptersTab({ chapters, expanded, setExpanded, bookId, onChapterSummari
       )) : <InteractiveTimeline chapters={chapters} />}
     </div>
   )
-}
+})
 
-function CharactersTab({ characters, status, isProcessing, onTrigger, onPlay }) {
+const CharactersTab = React.memo(({ characters, status, isProcessing, onTrigger, onPlay }) => {
   return (
     <div className="characters-tab">
       <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
@@ -585,4 +585,4 @@ function CharactersTab({ characters, status, isProcessing, onTrigger, onPlay }) 
       </div>
     </div>
   )
-}
+})
