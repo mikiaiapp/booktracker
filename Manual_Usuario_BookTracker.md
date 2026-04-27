@@ -19,7 +19,7 @@ BookTracker no es solo una biblioteca; es un puente entre tú y tus libros. Util
 ## 2. Guía de Instalación (Windows)
 Para usuarios que desean ejecutar la aplicación localmente en su PC.
 
-![Vista de la Biblioteca](docs/images/dashboard.png)
+![Pantalla de Acceso](docs/images/login.png)
 
 1.  **Instalar Docker Desktop:** Descárgalo desde [docker.com](https://www.docker.com/). Es el motor que permite que BookTracker funcione sin configuraciones complejas.
 2.  **Lanzar la Aplicación:** Abre la carpeta del proyecto y haz doble clic en `BOOKTRACKER.bat`.
@@ -36,6 +36,8 @@ Antes de analizar tu primer libro, debes configurar tu "llave" de acceso:
 ---
 
 ## 4. Operativa de Análisis
+![Vista de la Biblioteca](docs/images/dashboard.png)
+
 Cuando subes un libro (botón "+" en la pantalla principal), este entra en una "Tubería de Análisis" que consta de 6 fases:
 
 ### Fases del Proceso
