@@ -55,48 +55,55 @@ async def _get_dynamic_hierarchy(keys: dict, force: bool = False) -> List[Tuple[
 
     # 1. DESCUBRIR GEMINI
     if g_key:
-        try:
-            # Intento 1: OpenAI Compatible API
-            from openai import AsyncOpenAI
-            async with AsyncOpenAI(api_key=g_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") as client:
-                models_res = await client.models.list()
-                for m in models_res.data:
-                    mid = m.id
-                    # Filtrar solo modelos de chat/generación
-                    if any(x in mid.lower() for x in ["gemini", "learnlm"]):
-                        score = 10
-                        if "1.5-flash" in mid.lower(): score = 90
-                        elif "1.5-pro" in mid.lower(): score = 80
-                        elif "gemini-pro" in mid.lower(): score = 70
-                        
-                        # Evitar duplicados (a veces list() devuelve variantes)
-                        if not any(d[1] == mid for d in discovered if d[0] == "gemini"):
-                            print(f"[IA] Gemini (OpenAI-mode) descubierto: {mid} (Score: {score})")
+        # Saltar si está blacklisted y no es force
+        is_blocked = False
+        if not force and "gemini" in _BLACKLISTED_PROVIDERS:
+            expiry = _BLACKLISTED_PROVIDERS["gemini"][0]
+            if time.time() < expiry:
+                print(f"[IA] Saltando descubrimiento de Gemini (Bloqueado: {_BLACKLISTED_PROVIDERS['gemini'][1]})")
+                is_blocked = True
+        
+        if not is_blocked:
+            try:
+                # Intento 1: OpenAI Compatible API
+                from openai import AsyncOpenAI
+                async with AsyncOpenAI(api_key=g_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/") as client:
+                    models_res = await client.models.list()
+                    for m in models_res.data:
+                        mid = m.id
+                        if any(x in mid.lower() for x in ["gemini", "learnlm"]):
+                            score = 10
+                            if "1.5-flash" in mid.lower(): score = 90
+                            elif "1.5-pro" in mid.lower(): score = 80
+                            elif "gemini-pro" in mid.lower(): score = 70
+                            if not any(d[1] == mid for d in discovered if d[0] == "gemini"):
+                                discovered.append(("gemini", mid, score))
+                
+                # Intento 2: Si no hay nada, probar SDK Nativo
+                if not any(d[0] == "gemini" for d in discovered):
+                    import google.generativeai as genai
+                    genai.configure(api_key=g_key)
+                    loop = asyncio.get_event_loop()
+                    native_models = await loop.run_in_executor(None, lambda: list(genai.list_models()))
+                    for m in native_models:
+                        mid = m.name
+                        if "generateContent" in m.supported_generation_methods:
+                            score = 10
+                            if "1.5-flash" in mid.lower(): score = 90
+                            elif "1.5-pro" in mid.lower(): score = 80
                             discovered.append(("gemini", mid, score))
-            
-            # Intento 2: Si no hay nada, probar SDK Nativo (a veces el proxy falla en list())
-            if not any(d[0] == "gemini" for d in discovered):
-                import google.generativeai as genai
-                genai.configure(api_key=g_key)
-                # list_models() es síncrono, lo corremos en un thread para no bloquear
-                loop = asyncio.get_event_loop()
-                native_models = await loop.run_in_executor(None, lambda: list(genai.list_models()))
-                for m in native_models:
-                    mid = m.name # formato: models/gemini-1.5-flash
-                    if "generateContent" in m.supported_generation_methods:
-                        score = 10
-                        if "1.5-flash" in mid.lower(): score = 90
-                        elif "1.5-pro" in mid.lower(): score = 80
-                        
-                        print(f"[IA] Gemini (Native) descubierto: {mid} (Score: {score})")
-                        discovered.append(("gemini", mid, score))
 
-        except Exception as e:
-            print(f"[IA] Error descubriendo Gemini: {e}")
-            # Solo añadimos fallbacks si no se descubrió NADA en absoluto
-            if not any(d[0] == "gemini" for d in discovered):
-                discovered.append(("gemini", "gemini-1.5-flash", 90))
-                discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
+            except Exception as e:
+                err_msg = str(e).lower()
+                print(f"[IA] Error descubriendo Gemini: {e}")
+                if "429" in err_msg or "quota" in err_msg:
+                    # Registrar bloqueo si falló por cuota
+                    wait = 60
+                    _BLACKLISTED_PROVIDERS["gemini"] = (time.time() + wait, f"Saturado en descubrimiento hasta {time.strftime('%H:%M:%S', time.localtime(time.time()+wait))}")
+                
+                if not any(d[0] == "gemini" for d in discovered):
+                    discovered.append(("gemini", "gemini-1.5-flash", 90))
+                    discovered.append(("gemini", "gemini-1.5-flash-latest", 85))
 
     # 2. DESCUBRIR GROQ
     if gr_key:
@@ -255,8 +262,8 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                 candidates.extend([clean_m, m])
                 if "-latest" not in clean_m: candidates.append(f"{clean_m}-latest")
                 
-                # Añadir todos los descubiertos que no estén ya en la lista
-                for dm in discovered_models:
+                # Añadir todos los descubiertos que no estén ya en la lista (limitado a 3)
+                for dm in discovered_models[:3]:
                     if dm not in candidates: candidates.append(dm)
                 
                 last_g_err = None
@@ -275,12 +282,15 @@ async def _call_ai(system: str, user: str, max_tokens: int = 2000, is_fast_task:
                         last_g_err = ge
                         ge_msg = str(ge).lower()
                         print(f"[IA] Gemini falló en {g_m}: {ge_msg}")
-                        if "404" in ge_msg or "not found" in ge_msg:
+                        if "429" in ge_msg or "quota" in ge_msg:
+                            # Si es un error de cuota, no seguimos probando otros modelos del mismo proveedor
+                            raise ge
+                        elif "404" in ge_msg or "not found" in ge_msg:
                             continue # Probar el siguiente candidato
                         else:
                             break # Error fatal (ej: API Key mala), no seguir probando
                 
-                raise ValueError(f"[NUEVA-CONEXION-V5] Gemini falló tras probar {len(candidates)} modelos. Último error: {last_g_err}")
+                raise last_g_err or ValueError(f"Gemini falló tras probar {len(candidates)} modelos.")
             
             elif prov == "groq" or prov == "openai":
                 from openai import AsyncOpenAI
