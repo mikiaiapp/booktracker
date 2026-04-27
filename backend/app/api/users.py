@@ -35,7 +35,8 @@ async def get_profile(
     }
     if any([keys["gemini"], keys["openai"], keys["groq"]]):
         # No bloqueamos el login, lo hacemos en background
-        background_tasks.add_task(_get_dynamic_hierarchy, keys, force=True)
+        # Quitamos force=True para usar caché si existe y no saturar la API
+        background_tasks.add_task(_get_dynamic_hierarchy, keys, force=False)
 
     return {
         "id": current_user.id,

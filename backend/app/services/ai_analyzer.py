@@ -471,23 +471,10 @@ async def test_api_key(provider, key, model=None):
             return True if r else False
         
         # 2. Si hay modelos, la API Key es válida. 
-        # Podemos hacer una mini-llamada con el primer modelo para confirmar cuota
-        test_model = model if model and any(model in am for am in available_models) else available_models[0]
-        print(f"[IA] API Key de {provider} válida. Modelos encontrados: {len(available_models)}. Probando cuota con {test_model}...")
-        
-        try:
-            # Una llamada de solo 1 token para verificar que no hay "Quota Exhausted"
-            # pero sin gastar casi nada.
-            ks["preferred_model"] = test_model
-            r, m_used = await _call_ai("Responde solo '1'", "Test", 2, api_keys=ks, skip_fallback=True)
-            print(f"[IA] Test de cuota exitoso usando {m_used}")
-            return True
-        except Exception as qe:
-            qe_msg = str(qe).lower()
-            if "quota" in qe_msg or "limit" in qe_msg or "429" in qe_msg:
-                # Si es un error de cuota, informamos específicamente
-                raise ValueError(f"API Key válida pero SIN CUOTA disponible: {qe}")
-            raise qe
+        # SEGÚN REQUERIMIENTO: El hecho de haber obtenido la lista ya valida la llave.
+        # No hacemos la llamada de "cuota" para ahorrar tokens y evitar el 429 en el test.
+        print(f"[IA] API Key de {provider} válida. Modelos encontrados: {len(available_models)}.")
+        return True
 
     except Exception as e:
         print(f"[IA] Test fallido en {provider}: {e}")

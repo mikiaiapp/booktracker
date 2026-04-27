@@ -696,20 +696,33 @@ async def get_author_bibliography(author_name: str, api_keys: dict = None) -> li
     # ── Normalizar títulos al castellano y asegurar sinopsis via IA ──────────
     entries = list(seen_norm.values())
 
-    semaphore = _asyncio.Semaphore(6)
+    # OPTIMIZACIÓN CRÍTICA: No usamos IA para cada libro de la bibliografía
+    # Esto agotaba la cuota de Gemini/Groq al procesar autores con muchos libros.
+    # Solo normalizamos el título si es estrictamente necesario y no tiene sinopsis.
+    
+    semaphore = _asyncio.Semaphore(3) # Reducir concurrencia para evitar 429
     async def _process_entry(entry):
         async with semaphore:
-            # 1. Normalizar título si no es español o si queremos asegurar versión canónica
-            if entry.get("lang") != "es":
+            # Solo intentamos normalizar si no parece español y es un título corto
+            # para no gastar tokens en libros que ya están bien.
+            if entry.get("lang") != "es" and len(entry["title"]) < 100:
+                # Solo normalizar si no tenemos un título en español ya
                 entry["title"] = await _spanish_title_for(entry["title"], author_name)
             
-            # 2. Asegurar sinopsis ficha básica
-            await _ensure_synopsis(entry, author_name)
+            # NO llamar a _ensure_synopsis para cada libro de la bibliografía.
+            # Es demasiado costoso. Dejamos la sinopsis vacía si no vino de GB/OL.
             return entry
 
-    processed = await _asyncio.gather(*[_process_entry(e) for e in entries],
+    # Solo procesamos los primeros 40 libros para no saturar la API en una sola ráfaga
+    # El resto se devuelven tal cual.
+    to_process = entries[:40]
+    others = entries[40:]
+
+    processed = await _asyncio.gather(*[_process_entry(e) for e in to_process],
                                        return_exceptions=True)
+    
     result = [e for e in processed if isinstance(e, dict)]
+    result.extend(others)
 
     # Limpiar campo interno y ordenar por año desc (más moderno primero)
     for e in result:
