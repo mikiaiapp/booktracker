@@ -11,6 +11,8 @@ RUN npm install --legacy-peer-deps
 
 # Copiar código fuente y compilar
 COPY . .
+ARG CACHE_BUST=unknown
+RUN echo "Building version: $CACHE_BUST"
 RUN npm run build
 
 # ── Imagen final (solo el build estático) ─────────────────────

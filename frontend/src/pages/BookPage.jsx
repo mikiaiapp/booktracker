@@ -401,10 +401,11 @@ export default function BookPage() {
         <div className="hero-content">
           <div className="hero-cover" onClick={() => setCoverPickerOpen(true)}><HeroCover book={book} /></div>
           <div className="hero-info">
-            <h1>{book.title}</h1>
+            <h1>{book.title || 'Sin Título'}</h1>
             <Link to={`/author/${encodeURIComponent(book.author || '')}`} className="hero-author-link">
               {book.author}
             </Link>
+            <span style={{ fontSize: '0.7rem', opacity: 0.3, marginLeft: '1rem' }}>v2.7.9</span>
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} pp.</span>}
