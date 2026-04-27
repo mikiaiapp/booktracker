@@ -571,7 +571,7 @@ export default function BookPage() {
         <div className="tabs-bar tabs-bar-desktop">
           {TABS.map(t => {
             const isDone = statusInfo?.[t.statusKey]
-            const isTabProcessing = isProcessing && (t.label.toLowerCase().includes(progressMsg?.toLowerCase() || '') || (t.id === 'summary' && progressMsg?.toLowerCase().includes('global')))
+            const isTabProcessing = isProcessing && progressMsg && (t.label.toLowerCase().includes(progressMsg.toLowerCase()) || (t.id === 'summary' && progressMsg.toLowerCase().includes('global')))
             
             return (
               <button 
@@ -586,7 +586,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.9</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.0</span>
         </div>
 
         <AnimatePresence mode="wait">
