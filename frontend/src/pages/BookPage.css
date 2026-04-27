@@ -1593,3 +1593,241 @@
   letter-spacing: 0.05em;
   margin: 0 1rem;
 }
+
+/* Podcast Tab Styles */
+.podcast-container {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.podcast-player-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2rem;
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  box-shadow: var(--shadow-md);
+}
+
+.podcast-visual-wrap {
+  width: 120px;
+  height: 120px;
+  background: var(--paper-dark);
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.podcast-visual {
+  color: var(--gold);
+  transition: all 0.3s ease;
+}
+
+.podcast-visual.playing {
+  animation: pulse 1.5s infinite ease-in-out;
+  color: var(--gold-dark);
+}
+
+.podcast-info {
+  flex: 1;
+}
+
+.podcast-info h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+}
+
+.podcast-info p {
+  margin: 0 0 1.5rem 0;
+  color: var(--slate);
+  font-size: 0.95rem;
+}
+
+.podcast-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.podcast-play-btn {
+  background: var(--ink);
+  color: white;
+  border: none;
+  padding: 0.8rem 1.8rem;
+  border-radius: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.podcast-play-btn:hover {
+  background: #000;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.download-mp3-btn {
+  background: var(--paper-dark);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.download-mp3-btn:hover {
+  background: white;
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.podcast-script {
+  background: var(--paper-dark);
+  border-radius: 16px;
+  padding: 2rem;
+}
+
+.podcast-script h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1.5rem 0;
+  color: var(--ink);
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+.script-content {
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--ink-light);
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 1rem;
+}
+
+/* References Tab Styles */
+.refs-section {
+  margin-bottom: 3rem;
+}
+
+.refs-section h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--paper-dark);
+}
+
+.author-biblio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.biblio-item {
+  background: white;
+  border: 1px solid var(--border);
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  transition: all 0.2s;
+}
+
+.biblio-item:hover {
+  border-color: var(--gold);
+  transform: translateX(4px);
+}
+
+.biblio-item svg {
+  color: var(--gold);
+}
+
+.biblio-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.biblio-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.biblio-year {
+  font-size: 0.8rem;
+  color: var(--mist);
+}
+
+.external-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.25rem;
+}
+
+.ext-link-card {
+  background: white;
+  border: 1px solid var(--border);
+  padding: 1.5rem;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.25s;
+  position: relative;
+}
+
+.ext-link-card:hover {
+  border-color: var(--gold);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+.ext-link-card svg:first-child {
+  color: var(--gold);
+}
+
+.ext-link-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ext-link-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.ext-link-desc {
+  font-size: 0.85rem;
+  color: var(--mist);
+}
+
+.ext-icon {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  opacity: 0.3;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.8; }
+}

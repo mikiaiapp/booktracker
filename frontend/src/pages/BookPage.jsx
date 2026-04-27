@@ -480,7 +480,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.0</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.1</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -561,7 +561,7 @@ export default function BookPage() {
             )}
             {tab === 'mindmap' && (
               <div className="prose-content">
-                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} />
+                <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
                 {statusInfo.has_mindmap ? (
                   <>
                     <div className="view-toggle-wrap">
@@ -570,12 +570,37 @@ export default function BookPage() {
                     </div>
                     {mindmapView === 'tree' ? <MindMap data={book.mindmap_data} /> : <CharacterNetwork characters={characters} />}
                   </>
-                ) : <p className="empty-tab">Generando...</p>}
+                ) : <p className="empty-tab">Generando el mapa mental...</p>}
               </div>
             )}
-            {tab === 'podcast' && <div className="prose-content"><TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} />{statusInfo.podcast_done ? <div className="podcast-player-card">Audio listo</div> : <p className="empty-tab">En cola...</p>}</div>}
-            {tab === 'chat' && <div className="prose-content" style={{height:'80vh'}}><LiteraryDialogue bookId={id} bookTitle={book.title} /></div>}
-            {tab === 'refs' && <div className="prose-content"><h2>Referencias</h2></div>}
+            {tab === 'podcast' && (
+              <PodcastTab 
+                book={book} 
+                status={statusInfo} 
+                isProcessing={isProcessing} 
+                onTrigger={triggerPhase} 
+                progressMsg={progressMsg}
+                audioUrl={audioUrl}
+                audioPlaying={audioPlaying}
+                audioPaused={audioPaused}
+                onToggleAudio={toggleAudio}
+                onDownload={handleDownloadAudio}
+              />
+            )}
+            {tab === 'chat' && (
+              <div className="prose-content" style={{height:'80vh'}}>
+                <LiteraryDialogue bookId={id} bookTitle={book.title} />
+              </div>
+            )}
+            {tab === 'refs' && (
+              <ReferencesTab 
+                book={book} 
+                status={statusInfo} 
+                isProcessing={isProcessing} 
+                onTrigger={triggerPhase} 
+                progressMsg={progressMsg} 
+              />
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -589,16 +614,131 @@ function HeroCover({ book }) { const src = coverSrc(book); return src ? <img src
 
 function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger, progressMsg }) {
   const isDone = status[doneProp]
+  // Only show processing if NOT done, or if processing is explicitly this phase
+  const showProcessing = isProcessing && (!isDone || (progressMsg && progressMsg.toLowerCase().includes(label.toLowerCase())))
+  
   return (
     <div className="tab-phase-bar" style={{display:'flex', justifyContent:'space-between', marginBottom:'2rem'}}>
       <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
         {isDone ? <CheckCircle size={20} color="var(--gold)" /> : <div className="phase-dot">{phase}</div>}
-        <div><strong>Fase {phase}: {label}</strong>{isProcessing && <div style={{fontSize:'0.8rem', color:'var(--gold)'}}>{progressMsg || 'Procesando...'}</div>}</div>
+        <div>
+          <strong>Fase {phase}: {label}</strong>
+          {showProcessing && (
+            <div style={{fontSize:'0.8rem', color:'var(--gold)'}}>
+              {progressMsg || 'Procesando...'}
+            </div>
+          )}
+        </div>
       </div>
-      {status[canProp || 'phase1_done'] && !isProcessing && <button className="reanalyze-btn" onClick={() => onTrigger(phase, isDone)}><RefreshCw size={14} /> {isDone ? 'Rehacer' : 'Iniciar'}</button>}
+      {status[canProp || 'phase1_done'] && !isProcessing && (
+        <button className="reanalyze-btn" onClick={() => onTrigger(phase, isDone)}>
+          <RefreshCw size={14} /> {isDone ? 'Rehacer' : 'Iniciar'}
+        </button>
+      )}
     </div>
   )
 }
+
+const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg, audioUrl, audioPlaying, audioPaused, onToggleAudio, onDownload }) => {
+  return (
+    <div className="prose-content">
+      <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
+      
+      {status.podcast_done ? (
+        <div className="podcast-container">
+          <div className="podcast-player-card">
+            <div className="podcast-visual-wrap">
+              <div className={`podcast-visual ${audioPlaying ? 'playing' : ''}`}>
+                <Mic size={48} />
+              </div>
+            </div>
+            <div className="podcast-info">
+              <h3>Podcast Literario</h3>
+              <p>Análisis en formato de audio generado por IA</p>
+              <div className="podcast-controls">
+                <button className="podcast-play-btn" onClick={onToggleAudio}>
+                  {audioPlaying ? <Pause size={20} /> : <Play size={20} />}
+                  <span>{audioPlaying ? 'Pausar' : 'Escuchar Podcast'}</span>
+                </button>
+                <button className="download-mp3-btn" onClick={onDownload} title="Descargar MP3">
+                  <Download size={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {book.podcast_script && (
+            <div className="podcast-script">
+              <h4><FileText size={16} /> Guión del Podcast</h4>
+              <div className="script-content">
+                {book.podcast_script.split('\n').map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="empty-tab">
+          <Mic size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+          <p>El podcast aún no está listo.</p>
+          <p style={{ fontSize: '0.9rem', opacity: 0.6 }}>Esta fase requiere que el Mapa Mental esté completado.</p>
+        </div>
+      )}
+    </div>
+  )
+})
+
+const ReferencesTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg }) => {
+  const hasRefs = book.author_bibliography && book.author_bibliography.length > 0
+  
+  return (
+    <div className="prose-content">
+      <TabPhaseBar phase={7} label="Referencias" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
+      
+      <div className="refs-section">
+        <h3>Bibliografía del Autor</h3>
+        {hasRefs ? (
+          <div className="author-biblio-grid">
+            {book.author_bibliography.map((b, i) => (
+              <div key={i} className="biblio-item">
+                <BookOpen size={16} />
+                <div className="biblio-info">
+                  <span className="biblio-title">{b.title || b}</span>
+                  {b.year && <span className="biblio-year">{b.year}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="empty-refs">No se han encontrado otras obras registradas.</p>
+        )}
+      </div>
+
+      <div className="refs-section">
+        <h3>Enlaces Externos</h3>
+        <div className="external-links-grid">
+          <a href={`https://www.google.com/search?q=${encodeURIComponent(book.title + ' ' + book.author)}`} target="_blank" rel="noreferrer" className="ext-link-card">
+            <Share2 size={20} />
+            <div className="ext-link-info">
+              <span className="ext-link-title">Buscar en Google</span>
+              <span className="ext-link-desc">Información general, críticas y reseñas</span>
+            </div>
+            <ExternalLink size={14} className="ext-icon" />
+          </a>
+          <a href={`https://www.google.com/search?q=autor+${encodeURIComponent(book.author || '')}`} target="_blank" rel="noreferrer" className="ext-link-card">
+            <User size={20} />
+            <div className="ext-link-info">
+              <span className="ext-link-title">Sobre el Autor</span>
+              <span className="ext-link-desc">Biografía y trayectoria literaria</span>
+            </div>
+            <ExternalLink size={14} className="ext-icon" />
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+})
 
 const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onStop, isPlaying, isPaused, onResume, onPause }) => {
   return (
