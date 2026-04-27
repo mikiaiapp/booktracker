@@ -4,6 +4,14 @@
 
 ---
 
+## 📚 Documentación Oficial
+Accede a las guías completas para sacar el máximo partido a BookTracker:
+
+*   📖 **[Manual de Usuario Interactivo (Markdown)](Manual_Usuario_BookTracker.md)** - Ideal para leer directamente en GitHub.
+*   📄 **[Manual para Imprimir / PDF (HTML)](Manual_Usuario.html)** - Abre este archivo y pulsa "Guardar como PDF".
+
+---
+
 ## 🌟 Bloque 1: Características Premium
 BookTracker no es solo un organizador, es una herramienta de análisis literario profundo:
 

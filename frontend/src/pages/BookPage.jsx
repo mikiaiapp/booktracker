@@ -887,26 +887,6 @@ export default function BookPage() {
                 <span>Reemplazar archivos</span>
               </label>
 
-              {!isProcessing && (
-                <button 
-                  className="hero-action-btn" 
-                  style={{ 
-                    background: 'rgba(245, 158, 11, 0.15)', 
-                    borderColor: 'rgba(245, 158, 11, 0.4)', 
-                    color: '#f59e0b',
-                    fontWeight: '600'
-                  }}
-                  onClick={async () => {
-                    if (!window.confirm('Esto reanalizará capítulos y personajes para extraer los datos necesarios para la Timeline y la Red. ¿Continuar?')) return
-                    triggerPhase(2, true) 
-                    toast.success('Reanálisis iniciado. El progreso se verá en la biblioteca.')
-                    navigate('/')
-                  }}
-                >
-                  <RefreshCw size={16} />
-                  <span>Actualizar Timeline y Red</span>
-                </button>
-              )}
             </div>
           </div>
 

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Usuario - BookTracker Premium</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ink: #1e293b;
+            --gold: #c9a96e;
+            --gold-dark: #a68b5a;
+            --paper: #ffffff;
+            --paper-dark: #f8fafc;
+            --border: #e2e8f0;
+            --slate: #64748b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: var(--ink);
+            background-color: var(--paper-dark);
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 3rem auto;
+            background: white;
+            padding: 4rem;
+            border-radius: 24px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+            border-bottom: 2px solid var(--paper-dark);
+            padding-bottom: 2rem;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            color: var(--ink);
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            color: var(--gold-dark);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            border-left: 4px solid var(--gold);
+            padding-left: 1rem;
+            margin-top: 3rem;
+            margin-bottom: 1.5rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            color: var(--ink);
+            margin-top: 2rem;
+        }
+
+        p {
+            margin-bottom: 1.25rem;
+            color: var(--slate);
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 12px;
+            margin: 2rem 0;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border: 1px solid var(--border);
+        }
+
+        .tip {
+            background: rgba(201, 169, 110, 0.1);
+            border-left: 4px solid var(--gold);
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin: 2rem 0;
+        }
+
+        .tip strong {
+            color: var(--gold-dark);
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+
+        ul, ol {
+            margin-bottom: 1.5rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.75rem;
+            color: var(--slate);
+        }
+
+        code {
+            background: var(--paper-dark);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: monospace;
+            color: var(--ink);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 5rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.85rem;
+            color: var(--slate);
+        }
+
+        @media print {
+            body { background: white; }
+            .container { 
+                box-shadow: none; 
+                border: none; 
+                margin: 0; 
+                padding: 0;
+                width: 100%;
+            }
+            .no-print { display: none; }
+        }
+
+        .print-btn {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            background: var(--ink);
+            color: white;
+            border: none;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .print-btn:hover {
+            transform: translateY(-2px);
+            background: var(--gold-dark);
+        }
+    </style>
+</head>
+<body>
+
+    <button class="print-btn no-print" onclick="window.print()">
+        🖨️ Guardar como PDF
+    </button>
+
+    <div class="container">
+        <header>
+            <h1>BookTracker Premium</h1>
+            <div class="subtitle">Manual Oficial de Usuario v2.0</div>
+        </header>
+
+        <section id="intro">
+            <h2>1. Introducción</h2>
+            <p>Bienvenido a <strong>BookTracker</strong>, tu suite de análisis literario inteligente. Este manual te guiará a través de la instalación, la operativa diaria y el uso de las herramientas avanzadas impulsadas por Inteligencia Artificial.</p>
+            <p>BookTracker no es solo una biblioteca; es un puente entre tú y tus libros. Utiliza modelos de lenguaje de última generación (como Google Gemini) para "leer" tus obras y extraer datos que antes requerirían horas de estudio.</p>
+        </section>
+
+        <section id="instalacion">
+            <h2>2. Guía de Instalación (Windows)</h2>
+            <p>Para usuarios que desean ejecutar la aplicación localmente en su PC.</p>
+            <img src="docs/images/dashboard.png" alt="Dashboard de BookTracker">
+            <ol>
+                <li><strong>Instalar Docker Desktop:</strong> Descárgalo desde docker.com. Es el motor que permite que BookTracker funcione sin configuraciones complejas.</li>
+                <li><strong>Lanzar la Aplicación:</strong> Abre la carpeta del proyecto y haz doble clic en <code>BOOKTRACKER.bat</code>.</li>
+                <li><strong>Acceso:</strong> El navegador se abrirá automáticamente en <code>http://localhost:8081</code>. No cierres la ventana negra mientras uses la aplicación.</li>
+            </ol>
+        </section>
+
+        <section id="analisis">
+            <h2>3. Operativa de Análisis</h2>
+            <p>Cuando subes un libro, este entra en una "Tubería de Análisis" que consta de 6 fases:</p>
+            <ul>
+                <li><strong>Fase 1: Ficha y Autor:</strong> Identifica el libro y busca información externa.</li>
+                <li><strong>Fase 2: Estructura de Capítulos:</strong> Divide el texto y genera resúmenes.</li>
+                <li><strong>Fase 3: Análisis de Personajes:</strong> Extrae roles y relaciones.</li>
+                <li><strong>Fase 4: Resumen Global:</strong> Ensayo completo sobre la obra.</li>
+                <li><strong>Fase 5: Mapa Mental:</strong> Estructura visual de ideas.</li>
+                <li><strong>Fase 6: Podcast:</strong> Guion y audio generado.</li>
+            </ul>
+            <div class="tip">
+                <strong>💡 Consejo Pro</strong>
+                Puedes pausar, cancelar o reintentar cualquier fase si detectas que la IA ha omitido algún detalle importante.
+            </div>
+            <img src="docs/images/book_details.png" alt="Detalles del Libro">
+        </section>
+
+        <section id="avanzado">
+            <h2>4. Herramientas Avanzadas</h2>
+            <h3>Red de Personajes</h3>
+            <p>Pulsa sobre cualquier círculo en el mapa para abrir el Panel de Detalles. Aquí verás la descripción psicológica del personaje y con quién se relaciona.</p>
+            <img src="docs/images/character_network.png" alt="Red de Personajes">
+            
+            <h3>Línea de Tiempo y Podcast</h3>
+            <p>En la pestaña "Capítulos", activa la vista de "Línea de Tiempo" para ver un recorrido visual por los hitos del libro. En "Podcast", escucha el análisis generado por expertos de IA.</p>
+            <img src="docs/images/podcast.png" alt="Análisis y Podcast">
+        </section>
+
+        <section id="faq">
+            <h2>5. Solución de Problemas</h2>
+            <ul>
+                <li><strong>El análisis se detiene:</strong> La aplicación reintentará automáticamente cuando la cuota de la IA se resetee.</li>
+                <li><strong>No aparece la portada:</strong> Usa el botón "Cambiar portada" para buscar imágenes alternativas.</li>
+            </ul>
+        </section>
+
+        <footer>
+            Manual generado por Antigravity para BookTracker v2.0 - © 2026
+        </footer>
+    </div>
+
+</body>
+</html>
