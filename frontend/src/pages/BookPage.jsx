@@ -402,7 +402,9 @@ export default function BookPage() {
           <div className="hero-cover" onClick={() => setCoverPickerOpen(true)}><HeroCover book={book} /></div>
           <div className="hero-info">
             <h1>{book.title}</h1>
-            <p className="hero-author">{book.author}</p>
+            <Link to={`/author/${encodeURIComponent(book.author || '')}`} className="hero-author-link">
+              {book.author}
+            </Link>
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} pp.</span>}
@@ -486,10 +488,72 @@ export default function BookPage() {
             className="tab-content"
             style={{ minHeight: '500px' }}
           >
-            {tab === 'info' && <InfoTab book={book} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onCancel={handleCancelAnalysis} progressMsg={progressMsg} onDelete={handleDelete} />}
-            {tab === 'chapters' && <ChaptersTab chapters={chapters} expanded={expandedChapter} setExpanded={setExpandedChapter} bookId={id} onChapterSummarized={load} view={chaptersView} setView={setChaptersView} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} />}
-            {tab === 'characters' && <CharactersTab characters={characters} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} onPlay={playCharacter} />}
-            {tab === 'summary' && <SummaryTab book={book} status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} />}
+            {tab === 'info' && (
+              <InfoTab 
+                book={book} 
+                status={statusInfo} 
+                isProcessing={isProcessing} 
+                onTrigger={triggerPhase} 
+                onPlay={playInfo} 
+                onStop={stopInfoTTS} 
+                isPlaying={ttsInfoPlaying} 
+                isPaused={ttsInfoPaused} 
+                onResume={resumeInfoTTS} 
+                onPause={pauseInfoTTS} 
+              />
+            )}
+            {tab === 'chapters' && (
+              <ChaptersTab 
+                chapters={chapters} 
+                expanded={expandedChapter} 
+                setExpanded={setExpandedChapter} 
+                bookId={id} 
+                onChapterSummarized={() => load(false)} 
+                view={chaptersView} 
+                setView={setChaptersView} 
+                status={statusInfo} 
+                isProcessing={isProcessing} 
+                onTrigger={triggerPhase} 
+                onPlay={playFromChapter}
+                onStop={stopTTS}
+                currentTtsId={ttsChapter}
+                isPlaying={ttsPlaying}
+                isPaused={ttsChapterPaused}
+                onResume={resumeCurrentTTS}
+                onPause={pauseTTS}
+              />
+            )}
+            {tab === 'characters' && (
+              <CharactersTab 
+                characters={characters} 
+                bookId={id}
+                status={statusInfo} 
+                isProcessing={isProcessing} 
+                onTrigger={triggerPhase} 
+                onPlay={playCharacter} 
+                onStop={stopCharTTS}
+                currentTtsId={ttsCharacter}
+                isPlaying={ttsCharPlaying}
+                isPaused={ttsCharPaused}
+                onResume={resumeCharTTS}
+                onPause={pauseCharTTS}
+                onRefresh={() => load(false)}
+              />
+            )}
+            {tab === 'summary' && (
+              <SummaryTab 
+                book={book} 
+                status={statusInfo} 
+                isProcessing={isProcessing} 
+                onTrigger={triggerPhase} 
+                onPlay={playSummary}
+                onStop={stopInfoTTS}
+                isPlaying={ttsInfoPlaying}
+                isPaused={ttsInfoPaused}
+                onResume={resumeInfoTTS}
+                onPause={pauseInfoTTS}
+              />
+            )}
             {tab === 'mindmap' && (
               <div className="prose-content">
                 <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} />
@@ -531,57 +595,177 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
   )
 }
 
-const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onDelete }) => {
+const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onStop, isPlaying, isPaused, onResume, onPause }) => {
   return (
     <div className="info-tab">
       <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
-      <h3>Sinopsis</h3><p>{book.synopsis || 'Analizando...'}</p>
+      <div className="tab-section-header">
+        <h3>Sinopsis</h3>
+        <div className="tab-header-actions">
+          {book.synopsis && (
+            <button className={`tts-btn ${isPlaying ? 'playing' : ''}`} onClick={isPlaying ? (isPaused ? onResume : onPause) : () => onPlay(book)}>
+              {isPlaying ? (isPaused ? <Play size={14} /> : <Pause size={14} />) : <Volume2 size={14} />}
+              <span>{isPlaying ? (isPaused ? 'Reanudar' : 'Pausar') : 'Escuchar'}</span>
+            </button>
+          )}
+          {isPlaying && <button className="tts-btn stop" onClick={onStop}><Square size={14} /></button>}
+        </div>
+      </div>
+      <p>{book.synopsis || 'Analizando...'}</p>
     </div>
   )
 })
 
-const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger }) => {
+const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onStop, isPlaying, isPaused, onResume, onPause }) => {
   return (
     <div className="prose-content">
       <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
-      <h2>Resumen</h2><p>{book.global_summary || 'No disponible'}</p>
+      <div className="tab-section-header">
+        <h2>Resumen</h2>
+        <div className="tab-header-actions">
+          {book.global_summary && (
+            <button className={`tts-btn ${isPlaying ? 'playing' : ''}`} onClick={isPlaying ? (isPaused ? onResume : onPause) : () => onPlay(book)}>
+              {isPlaying ? (isPaused ? <Play size={14} /> : <Pause size={14} />) : <Volume2 size={14} />}
+              <span>{isPlaying ? (isPaused ? 'Reanudar' : 'Pausar') : 'Escuchar'}</span>
+            </button>
+          )}
+          {isPlaying && <button className="tts-btn stop" onClick={onStop}><Square size={14} /></button>}
+        </div>
+      </div>
+      <p>{book.global_summary || 'No disponible'}</p>
     </div>
   )
 })
 
-const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger }) => {
+const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause }) => {
+  // Logic to check if all chapters are done
+  const allDone = chapters.length > 0 && chapters.every(c => c.summary_status === 'done')
+  
   return (
     <div className="chapters-list">
-      <TabPhaseBar phase={2} label="Capítulos" doneProp="phase2_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
-      <div className="view-toggle-wrap">
-        <button className={`view-toggle-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>Lista</button>
-        <button className={`view-toggle-btn ${view === 'timeline' ? 'active' : ''}`} onClick={() => setView('timeline')}>Línea</button>
-      </div>
-      {view === 'list' ? chapters.map((ch, i) => (
-        <div key={ch.id} className="chapter-item">
-          <button className="chapter-header" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
-            <span className="ch-num">{i+1}</span><span className="ch-title">{ch.title}</span>
-          </button>
-          {expanded === ch.id && <div className="chapter-body-inner">{ch.summary}</div>}
+      <TabPhaseBar 
+        phase={2} 
+        label="Capítulos" 
+        doneProp="phase2_done" 
+        status={{...status, phase2_done: allDone}} 
+        isProcessing={isProcessing} 
+        onTrigger={onTrigger} 
+      />
+      
+      <div className="chapters-controls">
+        <div className="view-toggle-wrap">
+          <button className={`view-toggle-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}><List size={14} /> Lista</button>
+          <button className={`view-toggle-btn ${view === 'timeline' ? 'active' : ''}`} onClick={() => setView('timeline')}><GitBranch size={14} /> Línea</button>
         </div>
-      )) : <InteractiveTimeline chapters={chapters} />}
+      </div>
+
+      {view === 'list' ? (
+        <div className="chapters-grid-view">
+          {chapters.map((ch, i) => {
+            const isChPlaying = currentTtsId === ch.id
+            const hasSummary = ch.summary_status === 'done'
+            
+            return (
+              <div key={ch.id} className={`chapter-item ${expanded === ch.id ? 'expanded' : ''}`}>
+                <div className="chapter-header-main">
+                  <button className="chapter-header-btn" onClick={() => setExpanded(expanded === ch.id ? null : ch.id)}>
+                    <span className="ch-num">{i+1}</span>
+                    <span className="ch-title">{ch.title}</span>
+                    {hasSummary ? <CheckCircle size={14} className="status-done" /> : <AlertCircle size={14} className="status-pending" />}
+                    {expanded === ch.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </button>
+                  
+                  <div className="chapter-actions">
+                    {hasSummary && (
+                      <button className={`ch-action-btn tts ${isChPlaying ? 'active' : ''}`} 
+                        onClick={() => isChPlaying ? (isPaused ? onResume() : onPause()) : onPlay(ch, chapters)}>
+                        {isChPlaying ? (isPaused ? <Play size={12} /> : <Pause size={12} />) : <Volume2 size={12} />}
+                      </button>
+                    )}
+                    <button className="ch-action-btn reanalyze" title="Rehacer resumen de este capítulo"
+                      onClick={async () => {
+                        try {
+                          await chapterAPI.summarize(bookId, ch.id)
+                          toast.success('Resumiendo capítulo...')
+                          onChapterSummarized()
+                        } catch { toast.error('Error') }
+                      }}>
+                      <RefreshCw size={12} />
+                    </button>
+                  </div>
+                </div>
+                
+                <AnimatePresence>
+                  {expanded === ch.id && (
+                    <motion.div 
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="chapter-body"
+                    >
+                      <div className="chapter-body-inner">
+                        {ch.summary || 'Sin resumen disponible.'}
+                        {ch.key_events?.length > 0 && (
+                          <div className="key-events">
+                            <strong>Eventos Clave</strong>
+                            <ul>{ch.key_events.map((e, ei) => <li key={ei}>{e}</li>)}</ul>
+                          </div>
+                        )}
+                        {!hasSummary && (
+                           <button className="summarize-now-btn" onClick={() => chapterAPI.summarize(bookId, ch.id).then(() => onChapterSummarized())}>
+                             Generar resumen ahora
+                           </button>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )
+          })}
+        </div>
+      ) : <InteractiveTimeline chapters={chapters} />}
     </div>
   )
 })
 
-const CharactersTab = React.memo(({ characters, status, isProcessing, onTrigger, onPlay }) => {
+const CharactersTab = React.memo(({ characters, bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh }) => {
   return (
     <div className="characters-tab">
       <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
+      
       <div className="characters-grid">
-        {characters.map(char => (
-          <div key={char.id} className="char-card">
-            <div className="char-content">
-              <h3>{char.name}</h3><p>{char.role}</p><p>{char.description}</p>
-              <button onClick={() => onPlay(char)}><Play size={14} /></button>
+        {characters.map(char => {
+          const isCharPlaying = currentTtsId === char.name
+          return (
+            <div key={char.id} className="char-card">
+              <div className="char-avatar">{char.name.charAt(0)}</div>
+              <div className="char-content">
+                <div className="char-card-header">
+                  <h3>{char.name}</h3>
+                  <div className="char-card-actions">
+                    <button className={`char-action-btn tts ${isCharPlaying ? 'active' : ''}`}
+                      onClick={() => isCharPlaying ? (isPaused ? onResume() : onPause()) : onPlay(char)}>
+                      {isCharPlaying ? (isPaused ? <Play size={12} /> : <Pause size={12} />) : <Volume2 size={12} />}
+                    </button>
+                    <button className="char-action-btn reanalyze" title="Rehacer este personaje"
+                      onClick={async () => {
+                        try {
+                          await characterAPI.reanalyze(bookId, char.id)
+                          toast.success('Analizando personaje...')
+                          onRefresh()
+                        } catch { toast.error('Error') }
+                      }}>
+                      <RefreshCw size={12} />
+                    </button>
+                  </div>
+                </div>
+                <span className="char-role">{char.role || 'Personaje'}</span>
+                <p className="char-desc">{char.description}</p>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
