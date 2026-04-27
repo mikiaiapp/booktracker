@@ -37,7 +37,7 @@ export default function CharacterNetwork({ characters }) {
 
     // 2. Configurar SVG
     const width = 800
-    const height = 500
+    const height = isFullScreen ? 700 : 500
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove() 
 
@@ -45,7 +45,7 @@ export default function CharacterNetwork({ characters }) {
     svg.append("defs").append("marker")
       .attr("id", "arrowhead")
       .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 25) // Desplazado para que no quede debajo del nodo
+      .attr("refX", 25) 
       .attr("refY", 0)
       .attr("markerWidth", 6)
       .attr("markerHeight", 6)
@@ -67,18 +67,18 @@ export default function CharacterNetwork({ characters }) {
 
     // Simulación de fuerzas
     const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(200))
-      .force("charge", d3.forceManyBody().strength(-500))
+      .force("link", d3.forceLink(links).id(d => d.id).distance(220))
+      .force("charge", d3.forceManyBody().strength(-600))
       .force("center", d3.forceCenter(width / 2, height / 2))
 
     // Enlaces (líneas con flechas)
     const link = container.append("g")
-      .attr("stroke", "var(--paper-darker, #e2e8f0)")
-      .attr("stroke-opacity", 0.6)
       .selectAll("line")
       .data(links)
       .join("line")
-      .attr("stroke-width", 1.5)
+      .attr("stroke", "var(--paper-darker, #cbd5e1)")
+      .attr("stroke-opacity", 0.6)
+      .attr("stroke-width", 2)
       .attr("marker-end", "url(#arrowhead)")
 
     // Etiquetas de enlaces
@@ -86,13 +86,13 @@ export default function CharacterNetwork({ characters }) {
       .selectAll("text")
       .data(links)
       .join("text")
-      .attr("font-size", "9px")
+      .attr("font-size", "10px")
       .attr("fill", "var(--slate)")
       .attr("text-anchor", "middle")
       .attr("dy", -5)
       .text(d => d.value)
 
-    // Nodos (círculos)
+    // Nodos
     const node = container.append("g")
       .selectAll("g")
       .data(nodes)
@@ -105,28 +105,25 @@ export default function CharacterNetwork({ characters }) {
       .call(drag(simulation))
 
     node.append("circle")
-      .attr("r", d => d.group === 1 ? 16 : 12)
+      .attr("r", d => d.group === 1 ? 18 : 14)
       .attr("fill", d => d.group === 1 ? "var(--gold)" : "white")
-      .attr("stroke", d => d.group === 1 ? "var(--gold-dark)" : "var(--paper-darker, #e2e8f0)")
-      .attr("stroke-width", 2)
-      .attr("class", "node-circle")
+      .attr("stroke", d => d.group === 1 ? "var(--gold-dark)" : "var(--slate)")
+      .attr("stroke-width", 2.5)
 
-    // Nombres de personajes
     node.append("text")
-      .attr("x", 20)
+      .attr("x", 22)
       .attr("y", 4)
-      .attr("font-size", "13px")
-      .attr("font-weight", "700")
-      .attr("fill", "var(--ink)")
+      .attr("font-size", "14px")
+      .attr("font-weight", "800")
+      .attr("fill", "black")
       .text(d => d.id)
 
-    // Roles
     node.append("text")
-      .attr("x", 20)
+      .attr("x", 22)
       .attr("y", 18)
       .attr("font-size", "10px")
       .attr("fill", "var(--slate)")
-      .text(d => d.role.length > 25 ? d.role.substring(0, 25) + '...' : d.role)
+      .text(d => d.role.length > 30 ? d.role.substring(0, 30) + '...' : d.role)
 
     simulation.on("tick", () => {
       link
@@ -174,9 +171,9 @@ export default function CharacterNetwork({ characters }) {
         <motion.div 
           key={selectedChar.name}
           className="sidebar-content"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
         >
           <div className="sidebar-header">
             <div className="sidebar-avatar">{selectedChar.name.charAt(0)}</div>
@@ -208,71 +205,62 @@ export default function CharacterNetwork({ characters }) {
       ) : (
         <div className="sidebar-empty">
           <Info size={32} />
-          <p>Selecciona un personaje para ver su estudio detallado</p>
+          <p>Selecciona un personaje en el gráfico para ver su estudio detallado</p>
         </div>
       )}
     </AnimatePresence>
   )
 
-  return (
-    <>
-      <div className={`network-layout ${isFullScreen ? 'hidden' : ''}`}>
-        <div className="network-main">
-          <div className="network-controls">
-            <div className="network-hint">
-              <Info size={14} /> Haz clic en un personaje
-            </div>
-            <button className="network-fs-btn" onClick={() => setIsFullScreen(true)}>
-              <Maximize2 size={16} /> Pantalla Completa
-            </button>
-          </div>
-          <svg ref={svgRef} className="network-svg"></svg>
+  if (isFullScreen) {
+    return (
+      <div className="network-fullscreen-overlay">
+        <div className="fs-header">
+          <button className="fs-back-btn" onClick={() => setIsFullScreen(false)}>
+            <ArrowLeft size={18} /> Volver a la App
+          </button>
+          <h2>Estudio de Personajes Interactivo</h2>
         </div>
-        
-        <AnimatePresence>
-          {selectedChar && (
-            <motion.div 
-              className="network-sidebar"
-              initial={{ x: 300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 300, opacity: 0 }}
-            >
-              <button className="sidebar-close" onClick={() => setSelectedChar(null)}>
-                <X size={18} />
-              </button>
-              {renderSidebar()}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="fs-container">
+          <div className="fs-info-col">
+            {renderSidebar()}
+          </div>
+          <div className="fs-graphic-col">
+            <svg ref={svgRef} className="network-svg"></svg>
+          </div>
+        </div>
       </div>
+    )
+  }
 
-      {/* Full Screen Overlay */}
+  return (
+    <div className="network-layout">
+      <div className="network-main">
+        <div className="network-controls">
+          <div className="network-hint">
+            <Info size={14} /> Haz clic en un personaje
+          </div>
+          <button className="network-fs-btn" onClick={() => setIsFullScreen(true)}>
+            <Maximize2 size={16} /> Pantalla Completa
+          </button>
+        </div>
+        <svg ref={svgRef} className="network-svg"></svg>
+      </div>
+      
       <AnimatePresence>
-        {isFullScreen && (
+        {selectedChar && (
           <motion.div 
-            className="network-fullscreen-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            className="network-sidebar"
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: 300, opacity: 0 }}
           >
-            <div className="fs-header">
-              <button className="fs-back-btn" onClick={() => setIsFullScreen(false)}>
-                <ArrowLeft size={18} /> Volver
-              </button>
-              <h2>Estudio de Personajes</h2>
-            </div>
-
-            <div className="fs-container">
-              <div className="fs-info-col">
-                {renderSidebar()}
-              </div>
-              <div className="fs-graphic-col">
-                 <svg ref={svgRef} className="network-svg"></svg>
-              </div>
-            </div>
+            <button className="sidebar-close" onClick={() => setSelectedChar(null)}>
+              <X size={18} />
+            </button>
+            {renderSidebar()}
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   )
 }
