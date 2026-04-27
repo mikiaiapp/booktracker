@@ -405,7 +405,6 @@ export default function BookPage() {
             <Link to={`/author/${encodeURIComponent(book.author || '')}`} className="hero-author-link">
               {book.author}
             </Link>
-            <span style={{ fontSize: '0.7rem', opacity: 0.3, marginLeft: '1rem' }}>v2.7.9</span>
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} pp.</span>}
@@ -481,6 +480,7 @@ export default function BookPage() {
               </button>
             )
           })}
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.8.0</span>
         </div>
 
         <AnimatePresence mode="wait">
