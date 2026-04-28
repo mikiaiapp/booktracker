@@ -23,6 +23,7 @@ const TABS = [
   { id: 'chapters',   label: 'Capítulos',       icon: List,         statusKey: 'phase2_done' },
   { id: 'characters', label: 'Personajes',      icon: User,         statusKey: 'phase3_done' },
   { id: 'summary',    label: 'Resumen global',  icon: Brain,        statusKey: 'has_global_summary' },
+  { id: 'mindmap',    label: 'Mapa mental',     icon: Map,          statusKey: 'has_mindmap' },
   { id: 'podcast',    label: 'Podcast',         icon: Mic,          statusKey: 'podcast_done' },
   { id: 'chat',       label: 'Diálogo',         icon: MessageSquare,statusKey: 'status' },
   { id: 'refs',       label: 'Referencias',     icon: ExternalLink, statusKey: 'status' },
@@ -455,6 +456,7 @@ export default function BookPage() {
     if (currentTab !== tab && tab !== null) setTab(currentTab)
   }, [currentTab])
   const [mindmapView, setMindmapView] = useState('list')
+  const [showNetworkModal, setShowNetworkModal] = useState(false)
   const [chaptersView, setChaptersView] = useState('timeline')
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [coverPickerOpen, setCoverPickerOpen] = useState(false)
@@ -798,7 +800,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.9</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.10</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -851,7 +853,6 @@ export default function BookPage() {
                 {tab === 'characters' && (
                   <CharactersTab 
                     characters={characters} 
-                    book={book}
                     bookId={id}
                     status={statusInfo} 
                     isProcessing={isProcessing} 
@@ -864,8 +865,7 @@ export default function BookPage() {
                     onResume={resumeCharTTS}
                     onPause={pauseCharTTS}
                     onRefresh={() => load(false)}
-                    view={mindmapView}
-                    setView={setMindmapView}
+                    onOpenNetwork={() => setShowNetworkModal(true)}
                   />
                 )}
                 {tab === 'summary' && (
@@ -881,6 +881,12 @@ export default function BookPage() {
                     onResume={resumeInfoTTS}
                     onPause={pauseInfoTTS}
                   />
+                )}
+                {tab === 'mindmap' && (
+                  <div className="prose-content">
+                    <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
+                    {statusInfo.has_mindmap ? <MindMap data={book.mindmap_data} /> : <p className="empty-tab">Generando el mapa mental...</p>}
+                  </div>
                 )}
                 {tab === 'podcast' && (
                   <PodcastTab 
@@ -915,6 +921,33 @@ export default function BookPage() {
           )}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showNetworkModal && (
+          <motion.div 
+            className="network-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="network-modal-content">
+              <div className="network-modal-header">
+                <h2>Red de Relaciones de Personajes</h2>
+                <button className="close-modal-btn" onClick={() => setShowNetworkModal(false)}>
+                  <X size={24} />
+                  <span>Cerrar</span>
+                </button>
+              </div>
+              <div className="network-modal-body">
+                <ErrorBoundary>
+                  <CharacterNetwork characters={characters} />
+                </ErrorBoundary>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {confirmModal}
       {coverPickerOpen && <CoverPicker book={book} onClose={() => setCoverPickerOpen(false)} onSelect={async (url) => { await booksAPI.update(id, { cover_url: url }); setCoverKey(k => k+1); setCoverPickerOpen(false); load() }} />}
     </div>
@@ -1233,94 +1266,80 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
   )
 })
 
-const CharactersTab = React.memo(({ characters = [], book, bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh, view, setView }) => {
+const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh, onOpenNetwork }) => {
   const safeChars = Array.isArray(characters) ? characters : []
   return (
     <div className="characters-tab">
       <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       
-      <div className="chapters-controls" style={{ marginBottom: '1.5rem' }}>
-        <div className="view-toggle-wrap">
-          <button className={`view-toggle-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}><List size={14} /> Fichas</button>
-          <button className={`view-toggle-btn ${view === 'tree' ? 'active' : ''}`} onClick={() => setView('tree')}><GitBranch size={14} /> Mapa Mental</button>
-          <button className={`view-toggle-btn ${view === 'network' ? 'active' : ''}`} onClick={() => setView('network')}><Share2 size={14} /> Red de Relaciones</button>
-        </div>
+      <div className="chapters-controls" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--ink)' }}>Estudio Detallado</h3>
+        {status.has_mindmap && (
+          <button className="network-trigger-btn" onClick={onOpenNetwork}>
+            <Share2 size={16} />
+            <span>Explorar Red de Relaciones</span>
+          </button>
+        )}
       </div>
 
-      {view === 'list' ? (
-        <div className="characters-grid">
-          {safeChars.map(char => {
-            const isCharPlaying = currentTtsId === char.name
-            return (
-              <div key={char.id} className="char-card">
-                <div className="char-avatar">{char.name.charAt(0)}</div>
-                <div className="char-content">
-                  <div className="char-card-header">
-                    <h3>{char.name}</h3>
-                    {char.description && <span className="status-badge-done sm">Analizado</span>}
-                    <div className="char-card-actions">
-                      {char.description && !isCharPlaying && (
-                        <button className="char-action-btn tts" title="Escuchar estudio"
-                          onClick={() => onPlay(char)}>
-                          <Volume2 size={12} />
-                        </button>
-                      )}
-                      {isCharPlaying && (
-                        <div className="char-action-btn active" title="Reproduciendo...">
-                          <Volume2 size={12} className="animate-pulse" />
-                        </div>
-                      )}
-                      <button className="char-action-btn reanalyze" title="Rehacer este personaje"
-                        onClick={async () => {
-                          try {
-                            await characterAPI.reanalyze(bookId, char.id)
-                            toast.success('Analizando personaje...')
-                            onRefresh()
-                          } catch { toast.error('Error') }
-                        }}>
-                        <RefreshCw size={12} />
+      <div className="characters-grid">
+        {safeChars.map(char => {
+          const isCharPlaying = currentTtsId === char.name
+          return (
+            <div key={char.id} className="char-card">
+              <div className="char-avatar">{char.name.charAt(0)}</div>
+              <div className="char-content">
+                <div className="char-card-header">
+                  <h3>{char.name}</h3>
+                  {char.description && <span className="status-badge-done sm">Analizado</span>}
+                  <div className="char-card-actions">
+                    {char.description && !isCharPlaying && (
+                      <button className="char-action-btn tts" title="Escuchar estudio"
+                        onClick={() => onPlay(char)}>
+                        <Volume2 size={12} />
                       </button>
+                    )}
+                    {isCharPlaying && (
+                      <div className="char-action-btn active" title="Reproduciendo...">
+                        <Volume2 size={12} className="animate-pulse" />
+                      </div>
+                    )}
+                    <button className="char-action-btn reanalyze" title="Rehacer este personaje"
+                      onClick={async () => {
+                        try {
+                          await characterAPI.reanalyze(bookId, char.id)
+                          toast.success('Analizando personaje...')
+                          onRefresh()
+                        } catch { toast.error('Error') }
+                      }}>
+                      <RefreshCw size={12} />
+                    </button>
+                  </div>
+                </div>
+                <span className="char-role">{char.role || 'Personaje'}</span>
+                <p className="char-desc">{char.description}</p>
+                
+                {char.personality && (
+                  <div className="char-info-block">
+                    <strong>Personalidad</strong>
+                    <p>{char.personality}</p>
+                  </div>
+                )}
+                {char.relationships && Object.keys(char.relationships).length > 0 && (
+                  <div className="char-info-block">
+                    <strong>Relaciones</strong>
+                    <div className="char-rel-pills">
+                      {Object.entries(char.relationships).map(([name, rel], i) => (
+                        <span key={i} className="char-rel-pill"><b>{name}:</b> {rel}</span>
+                      ))}
                     </div>
                   </div>
-                  <span className="char-role">{char.role || 'Personaje'}</span>
-                  <p className="char-desc">{char.description}</p>
-                  
-                  {char.personality && (
-                    <div className="char-info-block">
-                      <strong>Personalidad</strong>
-                      <p>{char.personality}</p>
-                    </div>
-                  )}
-                  {char.relationships && Object.keys(char.relationships).length > 0 && (
-                    <div className="char-info-block">
-                      <strong>Relaciones</strong>
-                      <div className="char-rel-pills">
-                        {Object.entries(char.relationships).map(([name, rel], i) => (
-                          <span key={i} className="char-rel-pill"><b>{name}:</b> {rel}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
-            )
-          })}
-        </div>
-      ) : view === 'tree' ? (
-        <div className="prose-content">
-          <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
-          {status.has_mindmap ? <MindMap data={book.mindmap_data} /> : <p className="empty-tab">Generando el mapa mental...</p>}
-        </div>
-      ) : (
-        <div className="prose-content">
-          <TabPhaseBar phase={5} label="Red de Relaciones" doneProp="has_mindmap" canProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
-          {status.has_mindmap ? (
-            <ErrorBoundary>
-               <CharacterNetwork characters={safeChars} />
-            </ErrorBoundary>
-          ) : <p className="empty-tab">Generando el mapa de relaciones...</p>}
-        </div>
-      )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 })

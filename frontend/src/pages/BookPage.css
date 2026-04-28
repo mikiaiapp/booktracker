@@ -340,6 +340,83 @@
   color: var(--slate);
 }
 
+/* NETWORK MODAL OVERLAY */
+.network-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: var(--paper);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+}
+
+.network-modal-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.network-modal-header {
+  padding: 1rem 2rem;
+  background: var(--ink);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.network-modal-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--gold);
+}
+
+.close-modal-btn {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s;
+}
+
+.close-modal-btn:hover {
+  background: #ef4444;
+}
+
+.network-modal-body {
+  flex: 1;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.network-trigger-btn {
+  background: var(--ink);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.network-trigger-btn:hover {
+  background: var(--gold);
+  color: var(--ink);
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+}
+
 /* Tab Content */
 .tab-content {
   padding: 2.5rem;
