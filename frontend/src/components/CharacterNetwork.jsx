@@ -81,11 +81,11 @@ export default function CharacterNetwork({ characters }) {
       })
       svg.call(zoom)
 
-      // Simulación de fuerzas
       const simulation = d3.forceSimulation(nodes)
         .force("link", d3.forceLink(links).id(d => d.id).distance(220))
         .force("charge", d3.forceManyBody().strength(-600))
         .force("center", d3.forceCenter(width / 2, height / 2))
+        .alphaDecay(0.08) // Se asienta mucho más rápido para evitar inestabilidad
 
       // Enlaces (líneas con flechas)
       const link = container.append("g")
@@ -182,6 +182,7 @@ export default function CharacterNetwork({ characters }) {
       return () => {
         simulation.stop()
         simulation.on("tick", null)
+        svg.selectAll("*").remove() // Limpieza total del DOM de D3
       }
     } catch (err) {
       console.error("D3 CharacterNetwork Error:", err)
