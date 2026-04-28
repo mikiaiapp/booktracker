@@ -69,6 +69,7 @@ class ErrorBoundary extends React.Component {
   }
   render() {
     if (this.state.hasError) {
+      if (this.props.fallback) return this.props.fallback;
       return (
         <div className="error-boundary-fallback" style={{ textAlign: 'center', padding: '4rem', background: 'rgba(255,0,0,0.05)', borderRadius: '16px', border: '1px solid rgba(255,0,0,0.1)' }}>
           <AlertCircle size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
@@ -798,7 +799,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.4</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.8</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -827,7 +828,7 @@ export default function BookPage() {
                     onPause={pauseInfoTTS} 
                   />
                 )}
-                {tab === 'capitulos' && (
+                {tab === 'chapters' && (
                   <ChaptersTab 
                     chapters={chapters} 
                     expanded={expandedChapter} 
@@ -848,7 +849,7 @@ export default function BookPage() {
                     onPause={pauseTTS}
                   />
                 )}
-                {tab === 'personajes' && (
+                {tab === 'characters' && (
                   <CharactersTab 
                     characters={characters} 
                     bookId={id}
@@ -888,7 +889,11 @@ export default function BookPage() {
                           <button className={`view-toggle-btn ${mindmapView === 'tree' ? 'active' : ''}`} onClick={() => setMindmapView('tree')}><GitBranch size={14} /> Ideas</button>
                           <button className={`view-toggle-btn ${mindmapView === 'network' ? 'active' : ''}`} onClick={() => setMindmapView('network')}><Share2 size={14} /> Red</button>
                         </div>
-                        {mindmapView === 'tree' ? <MindMap data={book.mindmap_data} /> : <CharacterNetwork characters={characters} />}
+                        {mindmapView === 'tree' ? <MindMap data={book.mindmap_data} /> : (
+                          <ErrorBoundary>
+                            <CharacterNetwork characters={characters || []} />
+                          </ErrorBoundary>
+                        )}
                       </>
                     ) : <p className="empty-tab">Generando el mapa mental...</p>}
                   </div>
@@ -1142,9 +1147,10 @@ const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, 
   )
 })
 
-const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause }) => {
+const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause }) => {
   // Logic to check if all chapters are done
-  const allDone = chapters.length > 0 && chapters.every(c => c.summary_status === 'done')
+  const safeChapters = Array.isArray(chapters) ? chapters : []
+  const allDone = safeChapters.length > 0 && safeChapters.every(c => c?.summary_status === 'done')
   
   return (
     <div className="chapters-list">
@@ -1166,7 +1172,7 @@ const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onCha
 
       {view === 'list' ? (
         <div className="chapters-grid-view">
-          {chapters.map((ch, i) => {
+          {safeChapters.map((ch, i) => {
             const isChPlaying = currentTtsId === ch.id
             const hasSummary = ch.summary_status === 'done'
             
@@ -1238,18 +1244,19 @@ const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onCha
             )
           })}
         </div>
-      ) : <InteractiveTimeline chapters={chapters} />}
+      ) : <InteractiveTimeline chapters={safeChapters} />}
     </div>
   )
 })
 
-const CharactersTab = React.memo(({ characters, bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh }) => {
+const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh }) => {
+  const safeChars = Array.isArray(characters) ? characters : []
   return (
     <div className="characters-tab">
       <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
       
       <div className="characters-grid">
-        {characters.map(char => {
+        {safeChars.map(char => {
           const isCharPlaying = currentTtsId === char.name
           return (
             <div key={char.id} className="char-card">
