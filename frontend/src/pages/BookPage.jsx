@@ -130,7 +130,25 @@ export default function BookPage() {
   }
 
   const resumeCurrentTTS = () => {
-    if (!ttsQueueRef.current.length) return
+    if (!ttsQueueRef.current.length) {
+      const saved = loadTTSPos()
+      if (saved && chapters.length) {
+        const queue = buildQueue(book, chapters)
+        ttsQueueRef.current = queue; ttsActiveRef.current = true
+        setTtsPlaying(true); setTtsChapterPaused(false)
+        const idx = saved.idx || 0
+        const item = queue[idx]
+        if (!item) return
+        setTtsIndex(idx); setTtsChapter(item.id)
+        const raw = item.text.match(/[^.!?]+[.!?]+[\s]*/g) || [item.text]
+        const sentences = raw.map(s => s.trim()).filter(Boolean)
+        ttsSentencesRef.current = sentences
+        ttsSentIdxRef.current = saved.sentIdx || 0
+        _speakChapterSentence(sentences, saved.sentIdx || 0)
+        return
+      }
+      return
+    }
     ttsActiveRef.current = true
     setTtsPlaying(true); setTtsChapterPaused(false)
     _speakChapterSentence(ttsSentencesRef.current, ttsSentIdxRef.current)
@@ -138,7 +156,7 @@ export default function BookPage() {
 
   const stopTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsPlaying || ttsChapter || ttsChapterPaused)) {
-      if (!await confirm('¿Seguro que quieres parar la reproducción?')) return
+      if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el grado de avance guardado para este libro.')) return
     }
     ttsActiveRef.current = false
     window.speechSynthesis.cancel()
@@ -238,16 +256,40 @@ export default function BookPage() {
   }
 
   const pauseCharTTS = () => { ttsCharActiveRef.current = false; window.speechSynthesis.cancel(); setTtsCharPlaying(false); setTtsCharPaused(true) }
-  const resumeCharTTS = () => { if (!ttsCharQueueRef.current.length) return; ttsCharActiveRef.current = true; setTtsCharPlaying(true); setTtsCharPaused(false); _speakCharSentence(ttsCharSentRef.current, ttsCharSentIdxRef.current) }
+  const resumeCharTTS = () => {
+    if (!ttsCharQueueRef.current.length) {
+      // Intentar restaurar cola si hay datos guardados
+      const saved = localStorage.getItem(charStorageKey)
+      if (saved && characters.length) {
+        const { idx, sentIdx } = JSON.parse(saved)
+        const char = characters.find(c => characters.indexOf(c) === idx) || characters[0]
+        const queue = [{ name: char.name, text: characterToText(char) }]
+        ttsCharQueueRef.current = queue; ttsCharIndexRef.current = 0; ttsCharActiveRef.current = true
+        setTtsCharPlaying(true); setTtsCharPaused(false)
+        const raw = queue[0].text.match(/[^.!?]+[.!?]+[\s]*/g) || [queue[0].text]
+        const sentences = raw.map(s => s.trim()).filter(Boolean)
+        ttsCharSentRef.current = sentences
+        _speakCharSentence(sentences, sentIdx)
+        return
+      }
+      return
+    }
+    ttsCharActiveRef.current = true; setTtsCharPlaying(true); setTtsCharPaused(false); _speakCharSentence(ttsCharSentRef.current, ttsCharSentIdxRef.current) 
+  }
   const stopCharTTS = async (skipConfirm = false) => {
-    if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) { if (!await confirm('¿Parar reproducción de personajes?')) return }
-    ttsCharActiveRef.current = false; window.speechSynthesis.cancel(); setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
+    if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) {
+      if (!await confirm('¿Parar lectura de personajes? Se perderá el grado de avance guardado.')) return
+    }
+    ttsCharActiveRef.current = false; window.speechSynthesis.cancel()
+    setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
+    localStorage.removeItem(charStorageKey)
   }
 
   const _speakCharSentence = (sentences, sIdx) => {
     if (!ttsCharActiveRef.current) return
     if (sIdx >= sentences.length) { speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1); return }
     ttsCharSentIdxRef.current = sIdx
+    localStorage.setItem(charStorageKey, JSON.stringify({ idx: ttsCharIndexRef.current, sentIdx: sIdx }))
     const u = new SpeechSynthesisUtterance(sentences[sIdx])
     u.lang = 'es-ES'; u.rate = 0.95
     u.onend = () => { if (ttsCharActiveRef.current) _speakCharSentence(sentences, sIdx + 1) }
@@ -273,9 +315,10 @@ export default function BookPage() {
 
   const _speakInfoFromIndex = (sentences, idx) => {
     if (!ttsInfoActiveRef.current || idx >= sentences.length) {
-      if (ttsInfoActiveRef.current) { 
+      if (idx >= sentences.length && ttsInfoActiveRef.current) { 
         ttsInfoActiveRef.current = false; setTtsInfoPlaying(false); setTtsInfoPaused(false) 
         localStorage.removeItem(infoStorageKey)
+        localStorage.removeItem(infoStorageKey + '_type')
       }
       return
     }
@@ -298,6 +341,7 @@ export default function BookPage() {
   const playInfo = (book) => { 
     stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
     const text = book.synopsis || ''; if (!text) return; 
+    localStorage.setItem(infoStorageKey + '_type', 'synopsis')
     const saved = localStorage.getItem(infoStorageKey)
     const fromIdx = saved ? parseInt(saved) : 0
     setTtsInfoPlaying(true); _startInfoTTS(text, fromIdx) 
@@ -305,16 +349,65 @@ export default function BookPage() {
   const playSummary = (book) => { 
     stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
     if (!book.global_summary) return; 
+    localStorage.setItem(infoStorageKey + '_type', 'summary')
     const saved = localStorage.getItem(infoStorageKey)
     const fromIdx = saved ? parseInt(saved) : 0
     setTtsInfoPlaying(true); _startInfoTTS(book.global_summary, fromIdx) 
   }
   const pauseInfoTTS = () => { ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(true) }
-  const resumeInfoTTS = () => { if (!ttsInfoSentencesRef.current.length) return; setTtsInfoPlaying(true); setTtsInfoPaused(false); ttsInfoActiveRef.current = true; _speakInfoFromIndex(ttsInfoSentencesRef.current, ttsInfoIndexRef.current) }
+  const resumeInfoTTS = () => { 
+    if (!ttsInfoSentencesRef.current.length) {
+      const type = localStorage.getItem(infoStorageKey + '_type')
+      const saved = localStorage.getItem(infoStorageKey)
+      const text = type === 'summary' ? book.global_summary : book.synopsis
+      if (text && saved) {
+        setTtsInfoPlaying(true); setTtsInfoPaused(false); _startInfoTTS(text, parseInt(saved))
+        return
+      }
+      return
+    }
+    setTtsInfoPlaying(true); setTtsInfoPaused(false); ttsInfoActiveRef.current = true; _speakInfoFromIndex(ttsInfoSentencesRef.current, ttsInfoIndexRef.current) 
+  }
   const stopInfoTTS = async (skipConfirm = false) => {
-    if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) { if (!await confirm('¿Parar reproducción?')) return }
+    if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) {
+      if (!await confirm('¿Parar reproducción? Se perderá el grado de avance guardado.')) return
+    }
     ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(false)
     localStorage.removeItem(infoStorageKey)
+    localStorage.removeItem(infoStorageKey + '_type')
+  }
+
+  // Restore states from localStorage on mount
+  useEffect(() => {
+    const savedChapter = localStorage.getItem(storageKey)
+    if (savedChapter) setTtsChapterPaused(true)
+
+    const savedChar = localStorage.getItem(charStorageKey)
+    if (savedChar) setTtsCharPaused(true)
+
+    const savedInfo = localStorage.getItem(infoStorageKey)
+    if (savedInfo) setTtsInfoPaused(true)
+  }, [id])
+
+  const anyTtsPlaying = ttsPlaying || ttsCharPlaying || ttsInfoPlaying
+  const anyTtsPaused = ttsChapterPaused || ttsCharPaused || ttsInfoPaused
+
+  const resumeAnyTTS = () => {
+    if (ttsChapterPaused) resumeCurrentTTS()
+    else if (ttsCharPaused) resumeCharTTS()
+    else if (ttsInfoPaused) resumeInfoTTS()
+  }
+
+  const pauseAnyTTS = () => {
+    if (ttsPlaying) pauseTTS()
+    else if (ttsCharPlaying) pauseCharTTS()
+    else if (ttsInfoPlaying) pauseInfoTTS()
+  }
+
+  const stopAnyTTS = () => {
+    if (ttsPlaying || ttsChapterPaused) stopTTS()
+    else if (ttsCharPlaying || ttsCharPaused) stopCharTTS()
+    else if (ttsInfoPlaying || ttsInfoPaused) stopInfoTTS()
   }
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -619,13 +712,13 @@ export default function BookPage() {
                 <span>Reemplazar archivos</span>
               </label>
               
-              {(ttsInfoPlaying || ttsInfoPaused) && (
+              {(anyTtsPlaying || anyTtsPaused) && (
                 <>
-                  <button className="hero-action-btn pause-btn" onClick={ttsInfoPaused ? resumeInfoTTS : pauseInfoTTS}>
-                    {ttsInfoPaused ? <Play size={16} /> : <Pause size={16} />}
-                    <span>{ttsInfoPaused ? 'Reanudar' : 'Pausar'}</span>
+                  <button className="hero-action-btn pause-btn" onClick={anyTtsPaused ? resumeAnyTTS : pauseAnyTTS}>
+                    {anyTtsPaused ? <Play size={16} /> : <Pause size={16} />}
+                    <span>{anyTtsPaused ? 'Reanudar' : 'Pausar'}</span>
                   </button>
-                  <button className="hero-action-btn stop-btn" onClick={() => stopInfoTTS()}>
+                  <button className="hero-action-btn stop-btn" onClick={stopAnyTTS}>
                     <Square size={16} />
                     <span>Parar</span>
                   </button>
@@ -656,7 +749,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.6</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.7</span>
         </div>
 
         <AnimatePresence mode="wait">
