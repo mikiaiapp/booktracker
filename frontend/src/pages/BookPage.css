@@ -2081,3 +2081,6 @@
 .podcast-reanalyze-btn:hover svg { transform: rotate(180deg); }
 .tab-content { animation: fadeInTab 0.3s ease-out; }
 @keyframes fadeInTab { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+.animate-pulse { animation: pulse-opacity 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes pulse-opacity { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }

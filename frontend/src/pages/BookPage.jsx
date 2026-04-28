@@ -798,7 +798,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.0</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.2</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -1130,13 +1130,12 @@ const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, 
       <div className="tab-section-header">
         <h2>Resumen</h2>
         <div className="tab-header-actions">
-          {book.global_summary && (
-            <button className={`tts-btn ${isPlaying ? 'playing' : ''}`} onClick={isPlaying ? (isPaused ? onResume : onPause) : () => onPlay(book)}>
-              {isPlaying ? (isPaused ? <Play size={14} /> : <Pause size={14} />) : <Volume2 size={14} />}
-              <span>{isPlaying ? (isPaused ? 'Reanudar' : 'Pausar') : 'Escuchar'}</span>
+          {book.global_summary && !isPlaying && (
+            <button className="tts-btn" onClick={() => onPlay(book)}>
+              <Volume2 size={14} />
+              <span>Escuchar Resumen</span>
             </button>
           )}
-          {isPlaying && <button className="tts-btn stop" onClick={onStop}><Square size={14} /></button>}
         </div>
       </div>
       <p>{book.global_summary || 'No disponible'}</p>
@@ -1187,11 +1186,16 @@ const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onCha
                   </button>
                   
                   <div className="chapter-actions">
-                    {hasSummary && (
-                      <button className={`ch-action-btn tts ${isChPlaying ? 'active' : ''}`} 
-                        onClick={() => isChPlaying ? (isPaused ? onResume() : onPause()) : onPlay(ch, chapters)}>
-                        {isChPlaying ? (isPaused ? <Play size={12} /> : <Pause size={12} />) : <Volume2 size={12} />}
+                    {hasSummary && !isChPlaying && (
+                      <button className="ch-action-btn tts" title="Escuchar este capítulo"
+                        onClick={() => onPlay(ch, chapters)}>
+                        <Volume2 size={12} />
                       </button>
+                    )}
+                    {isChPlaying && (
+                      <div className="ch-action-btn active" title="Reproduciendo...">
+                        <Volume2 size={12} className="animate-pulse" />
+                      </div>
                     )}
                     <button className="ch-action-btn reanalyze" title="Rehacer resumen de este capítulo"
                       onClick={async () => {
@@ -1256,10 +1260,17 @@ const CharactersTab = React.memo(({ characters, bookId, status, isProcessing, on
                   <h3>{char.name}</h3>
                   {char.description && <span className="status-badge-done sm">Analizado</span>}
                   <div className="char-card-actions">
-                    <button className={`char-action-btn tts ${isCharPlaying ? 'active' : ''}`}
-                      onClick={() => isCharPlaying ? (isPaused ? onResume() : onPause()) : onPlay(char)}>
-                      {isCharPlaying ? (isPaused ? <Play size={12} /> : <Pause size={12} />) : <Volume2 size={12} />}
-                    </button>
+                    {char.description && !isCharPlaying && (
+                      <button className="char-action-btn tts" title="Escuchar estudio"
+                        onClick={() => onPlay(char)}>
+                        <Volume2 size={12} />
+                      </button>
+                    )}
+                    {isCharPlaying && (
+                      <div className="char-action-btn active" title="Reproduciendo...">
+                        <Volume2 size={12} className="animate-pulse" />
+                      </div>
+                    )}
                     <button className="char-action-btn reanalyze" title="Rehacer este personaje"
                       onClick={async () => {
                         try {
