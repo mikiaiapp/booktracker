@@ -16,31 +16,7 @@ import { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
 import './BookPage.css'
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-  static getDerivedStateFromError(error) {
-    return { hasError: true };
-  }
-  componentDidCatch(error, errorInfo) {
-    console.error("Tab Error:", error, errorInfo);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="error-placeholder" style={{ padding: '2rem', textAlign: 'center', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', marginTop: '2rem' }}>
-          <h3 style={{color: 'white', marginBottom: '1rem'}}>Algo salió mal al cargar esta sección</h3>
-          <button className="reanalyze-btn" onClick={() => window.location.reload()} style={{ margin: '0 auto' }}>
-            <RefreshCw size={14} /> Refrescar página
-          </button>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
+
 
 const TABS = [
   { id: 'info',       label: 'Ficha',          icon: BookOpen,     statusKey: 'phase1_done' },
@@ -821,7 +797,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.10.0</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.10.1</span>
         </div>
 
         <AnimatePresence mode="wait">
