@@ -163,6 +163,7 @@ export default function BookPage() {
     setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false); setTtsMode('single')
     ttsSentencesRef.current = []; ttsSentIdxRef.current = 0
     localStorage.removeItem(storageKey)
+    syncPlaybackToDB()
   }
 
   const _speakChapterSentence = (sentences, sIdx) => {
@@ -209,7 +210,11 @@ export default function BookPage() {
   }
 
   const saveTTSPos = (idx, queue, sentIdx = 0) => {
-    try { localStorage.setItem(storageKey, JSON.stringify({ idx, chapterId: queue[idx]?.id, sentIdx })) } catch {}
+    try { 
+      const pos = { idx, chapterId: queue[idx]?.id, sentIdx }
+      localStorage.setItem(storageKey, JSON.stringify(pos))
+      syncPlaybackToDB() 
+    } catch {}
   }
 
   const loadTTSPos = () => {
@@ -283,6 +288,7 @@ export default function BookPage() {
     ttsCharActiveRef.current = false; window.speechSynthesis.cancel()
     setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
     localStorage.removeItem(charStorageKey)
+    syncPlaybackToDB()
   }
 
   const _speakCharSentence = (sentences, sIdx) => {
@@ -290,6 +296,7 @@ export default function BookPage() {
     if (sIdx >= sentences.length) { speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1); return }
     ttsCharSentIdxRef.current = sIdx
     localStorage.setItem(charStorageKey, JSON.stringify({ idx: ttsCharIndexRef.current, sentIdx: sIdx }))
+    syncPlaybackToDB()
     const u = new SpeechSynthesisUtterance(sentences[sIdx])
     u.lang = 'es-ES'; u.rate = 0.95
     u.onend = () => { if (ttsCharActiveRef.current) _speakCharSentence(sentences, sIdx + 1) }
@@ -319,11 +326,13 @@ export default function BookPage() {
         ttsInfoActiveRef.current = false; setTtsInfoPlaying(false); setTtsInfoPaused(false) 
         localStorage.removeItem(infoStorageKey)
         localStorage.removeItem(infoStorageKey + '_type')
+        syncPlaybackToDB()
       }
       return
     }
     ttsInfoIndexRef.current = idx
     localStorage.setItem(infoStorageKey, idx.toString())
+    syncPlaybackToDB()
     const u = new SpeechSynthesisUtterance(sentences[idx])
     u.lang = 'es-ES'; u.rate = 0.95
     u.onend = () => { if (ttsInfoActiveRef.current) _speakInfoFromIndex(sentences, idx + 1) }
@@ -375,6 +384,25 @@ export default function BookPage() {
     ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(false)
     localStorage.removeItem(infoStorageKey)
     localStorage.removeItem(infoStorageKey + '_type')
+    syncPlaybackToDB()
+  }
+
+  const syncTimerRef = React.useRef(null)
+  const syncPlaybackToDB = () => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+    syncTimerRef.current = setTimeout(async () => {
+      try {
+        const state = {
+          chapters: JSON.parse(localStorage.getItem(storageKey) || 'null'),
+          characters: JSON.parse(localStorage.getItem(charStorageKey) || 'null'),
+          info: {
+            pos: JSON.parse(localStorage.getItem(infoStorageKey) || 'null'),
+            type: localStorage.getItem(infoStorageKey + '_type')
+          }
+        }
+        await booksAPI.update(id, { playback_state: state })
+      } catch {}
+    }, 2000)
   }
 
   // Restore states from localStorage on mount
@@ -441,6 +469,25 @@ export default function BookPage() {
       const statusRes = await analysisAPI.status(id)
       setData(bookRes.data)
       setStatus(statusRes.data)
+
+      // Restore playback state from DB if present
+      if (bookRes.data.book?.playback_state) {
+        const ps = bookRes.data.book.playback_state
+        if (ps.chapters) localStorage.setItem(storageKey, JSON.stringify(ps.chapters))
+        else localStorage.removeItem(storageKey)
+
+        if (ps.characters) localStorage.setItem(charStorageKey, JSON.stringify(ps.characters))
+        else localStorage.removeItem(charStorageKey)
+
+        if (ps.info?.pos) {
+          localStorage.setItem(infoStorageKey, JSON.stringify(ps.info.pos))
+          localStorage.setItem(infoStorageKey + '_type', ps.info.type)
+        } else {
+          localStorage.removeItem(infoStorageKey)
+          localStorage.removeItem(infoStorageKey + '_type')
+        }
+      }
+
       setRating(bookRes.data.book?.rating || 0)
       try {
         const { data: qState } = await queueAPI.get()
@@ -748,7 +795,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.8</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.9</span>
         </div>
 
         <AnimatePresence mode="wait">

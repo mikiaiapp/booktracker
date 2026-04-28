@@ -53,6 +53,7 @@ class Book(BookBase):
     read_status = Column(String, default="to_read")  # to_read | reading | read
     rating = Column(Float, nullable=True)
     notes = Column(Text, nullable=True)
+    playback_state = Column(JSON, nullable=True)  # {chapters: {}, characters: {}, info: {}}
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now())

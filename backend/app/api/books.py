@@ -342,6 +342,7 @@ async def get_book(
                 "has_file": bool(book.file_path),
                 "file_type": book.file_type,
                 "cover_local": book.cover_local,
+                "playback_state": _safe_json(book.playback_state, {}),
             },
             "chapters": [
                 {
@@ -375,6 +376,7 @@ class UpdateBookRequest(BaseModel):
     read_status: Optional[str] = None
     rating: Optional[float] = None
     notes: Optional[str] = None
+    playback_state: Optional[dict] = None
 
 
 @router.patch("/{book_id}")
@@ -395,6 +397,8 @@ async def update_book(
         book.rating = req.rating
     if req.notes is not None:
         book.notes = req.notes
+    if req.playback_state is not None:
+        book.playback_state = req.playback_state
 
     await db.commit()
     return {"ok": True}
