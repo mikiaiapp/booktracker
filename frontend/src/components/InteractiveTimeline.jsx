@@ -1,11 +1,12 @@
 import React from 'react'
 import { motion } from 'framer-motion'
-import { Calendar, Flag } from 'lucide-react'
+import { Flag, ChevronDown, BookOpen } from 'lucide-react'
 
 export default function InteractiveTimeline({ chapters }) {
   if (!chapters || chapters.length === 0) return (
     <div className="timeline-empty">
-      No hay capítulos procesados para generar la línea de tiempo.
+      <BookOpen size={48} style={{ opacity: 0.1, marginBottom: '1rem' }} />
+      <p>No hay capítulos procesados para generar la línea de tiempo.</p>
     </div>
   )
 
@@ -15,151 +16,183 @@ export default function InteractiveTimeline({ chapters }) {
       id: c.id,
       title: c.title,
       events: c.key_events || [],
-      index: i + 1
+      index: i + 1,
+      summary: c.summary
     }))
 
   return (
-    <div className="timeline-container">
-      <div className="timeline-track">
+    <div className="timeline-vertical-container">
+      <div className="timeline-vertical-track">
         {timelineItems.map((item, idx) => (
-          <div key={item.id} className="timeline-node">
-            {/* El punto en la línea */}
-            <div className="node-dot-wrap">
-              <div className="node-line-before" />
-              <motion.div 
-                className="node-dot"
-                whileHover={{ scale: 1.5 }}
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: idx * 0.1 }}
-              >
-                <span className="node-number">{item.index}</span>
-              </motion.div>
-              <div className="node-line-after" />
+          <motion.div 
+            key={item.id} 
+            className="timeline-vertical-item"
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: idx * 0.1 }}
+          >
+            <div className="timeline-left">
+              <div className="item-number-circle">{item.index}</div>
+              {idx < timelineItems.length - 1 && <div className="item-connector-line" />}
             </div>
+            
+            <div className="timeline-right">
+              <div className="timeline-card-premium">
+                <div className="card-accent-bar" />
+                <h4 className="item-title">{item.title}</h4>
+                
+                {item.summary && (
+                  <p className="item-summary-snippet">
+                    {item.summary.length > 200 ? item.summary.substring(0, 200) + '...' : item.summary}
+                  </p>
+                )}
 
-            {/* Contenido arriba/abajo alternado */}
-            <div className={`node-content ${idx % 2 === 0 ? 'top' : 'bottom'}`}>
-              <div className="node-card">
-                <h4 className="node-title">{item.title}</h4>
                 {item.events.length > 0 && (
-                  <ul className="node-events">
-                    {item.events.slice(0, 3).map((event, ei) => (
-                      <li key={ei}>
-                        <Flag size={10} style={{ marginRight: '6px', color: 'var(--gold)' }} />
-                        {event}
-                      </li>
+                  <div className="item-events-list">
+                    {item.events.map((event, ei) => (
+                      <div key={ei} className="event-pill">
+                        <Flag size={10} className="event-icon" />
+                        <span>{event}</span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
-      
+
       <style dangerouslySetInnerHTML={{ __html: `
-        .timeline-container {
+        .timeline-vertical-container {
           width: 100%;
-          overflow-x: auto;
-          padding: 100px 40px;
-          background: var(--paper-dark);
-          border-radius: 12px;
-          border: 1px solid var(--border);
-          scrollbar-width: thin;
+          max-width: 900px;
+          margin: 0 auto;
+          padding: 2rem 1rem;
         }
-        .timeline-track {
+        
+        .timeline-vertical-track {
           display: flex;
-          min-width: max-content;
-          align-items: center;
-          height: 300px;
-          position: relative;
+          flex-direction: column;
+          gap: 0;
         }
-        .timeline-node {
-          width: 250px;
+        
+        .timeline-vertical-item {
+          display: flex;
+          gap: 2rem;
+          min-height: 120px;
+        }
+        
+        .timeline-left {
           display: flex;
           flex-direction: column;
           align-items: center;
-          position: relative;
+          width: 40px;
+          flex-shrink: 0;
         }
-        .node-dot-wrap {
-          display: flex;
-          align-items: center;
-          width: 100%;
-          position: relative;
-        }
-        .node-dot {
-          width: 32px;
-          height: 32px;
+        
+        .item-number-circle {
+          width: 36px;
+          height: 36px;
           background: var(--ink);
           border: 3px solid var(--gold);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          z-index: 2;
           color: var(--gold);
-          font-weight: bold;
-          font-size: 0.8rem;
-          cursor: pointer;
-          box-shadow: 0 0 15px rgba(201, 169, 110, 0.3);
+          font-weight: 800;
+          font-size: 0.9rem;
+          z-index: 2;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
-        .node-line-before, .node-line-after {
+        
+        .item-connector-line {
+          width: 3px;
           flex: 1;
-          height: 2px;
-          background: var(--border);
+          background: linear-gradient(to bottom, var(--gold), transparent);
+          opacity: 0.3;
+          margin: 4px 0;
         }
-        .timeline-node:first-child .node-line-before { visibility: hidden; }
-        .timeline-node:last-child .node-line-after { visibility: hidden; }
         
-        .node-content {
-          position: absolute;
-          width: 220px;
-          text-align: center;
+        .timeline-right {
+          flex: 1;
+          padding-bottom: 3rem;
         }
-        .node-content.top { bottom: 50px; }
-        .node-content.bottom { top: 50px; }
         
-        .node-card {
-          background: var(--paper);
-          padding: 1rem;
-          border-radius: 8px;
+        .timeline-card-premium {
+          background: white;
+          padding: 1.5rem;
+          border-radius: 16px;
           border: 1px solid var(--border);
           box-shadow: var(--shadow-sm);
-          transition: transform 0.2s;
-        }
-        .node-card:hover {
-          transform: translateY(-5px);
-          border-color: var(--gold);
-        }
-        .node-title {
-          margin: 0 0 0.5rem 0;
-          font-size: 0.9rem;
-          color: var(--ink);
-          white-space: nowrap;
+          position: relative;
           overflow: hidden;
-          text-overflow: ellipsis;
+          transition: all 0.3s ease;
         }
-        .node-events {
-          margin: 0;
-          padding: 0;
-          list-style: none;
-          text-align: left;
+        
+        .timeline-card-premium:hover {
+          transform: translateX(10px);
+          border-color: var(--gold);
+          box-shadow: var(--shadow-md);
         }
-        .node-events li {
-          font-size: 0.75rem;
+        
+        .card-accent-bar {
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 4px;
+          background: var(--gold);
+          opacity: 0.5;
+        }
+        
+        .item-title {
+          margin: 0 0 1rem 0;
+          font-size: 1.1rem;
+          color: var(--ink);
+          font-family: var(--font-display);
+          font-weight: 700;
+        }
+        
+        .item-summary-snippet {
+          font-size: 0.9rem;
           color: var(--slate);
-          margin-bottom: 4px;
-          line-height: 1.2;
-          display: flex;
-          align-items: flex-start;
+          line-height: 1.5;
+          margin-bottom: 1.25rem;
+          font-style: italic;
         }
+        
+        .item-events-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+        
+        .event-pill {
+          background: var(--paper-dark);
+          color: var(--ink);
+          padding: 0.3rem 0.7rem;
+          border-radius: 20px;
+          font-size: 0.75rem;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          border: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        .event-icon {
+          color: var(--gold);
+        }
+        
         .timeline-empty {
-          padding: 3rem;
+          padding: 5rem;
           text-align: center;
           color: var(--slate);
           background: var(--paper-dark);
-          border-radius: 12px;
+          border-radius: 24px;
+          border: 2px dashed rgba(0,0,0,0.05);
         }
       `}} />
     </div>

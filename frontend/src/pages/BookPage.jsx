@@ -323,17 +323,9 @@ export default function BookPage() {
 
   const handleTabChange = (newTab) => {
     if (newTab === tab) return
-    // Si entramos o salimos del mapa mental, forzamos recarga física por seguridad (D3/Memory)
-    if (tab === 'mindmap' || newTab === 'mindmap') {
-      window.location.href = `/book/${id}?tab=${newTab}`
-      return
-    }
-    // Para el resto, refresco virtual "limpio"
-    setTab(null)
-    setTimeout(() => {
-      setTab(newTab)
-      setSearchParams({ tab: newTab })
-    }, 10)
+    // Siguiendo la sugerencia del usuario: Refresco físico total en cada cambio para máxima estabilidad
+    // Esto limpia completamente la memoria de D3 y evita el pantallazo blanco
+    window.location.href = `/book/${id}?tab=${newTab}`
   }
 
   // Sincronizar si cambia la URL directamente
@@ -664,7 +656,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.5</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.9.6</span>
         </div>
 
         <AnimatePresence mode="wait">
