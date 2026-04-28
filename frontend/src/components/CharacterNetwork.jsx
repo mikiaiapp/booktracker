@@ -26,161 +26,165 @@ export default function CharacterNetwork({ characters }) {
     }
     lastCharactersLengthRef.current = characters.length
 
-    // 1. Preparar datos
-    const nodes = characters.map(c => ({ 
-      id: c.name, 
-      group: c.is_main ? 1 : 2,
-      role: c.role || '',
-      fullData: c
-    }))
+    try {
+      // 1. Preparar datos
+      const nodes = characters.map(c => ({ 
+        id: c.name, 
+        group: c.is_main ? 1 : 2,
+        role: c.role || '',
+        fullData: c
+      }))
 
-    const links = []
-    characters.forEach(char => {
-      if (char.relationships) {
-        Object.entries(char.relationships).forEach(([target, relation]) => {
-          if (characters.find(c => c.name === target)) {
-            links.push({
-              id: `${char.name}-${target}`,
-              source: char.name,
-              target: target,
-              value: relation
-            })
-          }
-        })
-      }
-    })
-
-    // 2. Configurar SVG
-    const width = 800
-    const height = isFullScreen ? 700 : 500
-    const svg = d3.select(svgRef.current)
-    svg.selectAll("*").remove() 
-
-    // Definir flechas (markers)
-    svg.append("defs").append("marker")
-      .attr("id", "arrowhead")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 25) 
-      .attr("refY", 0)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "var(--slate)")
-      .attr("opacity", 0.6)
-
-    const container = svg
-      .attr("viewBox", [0, 0, width, height])
-      .append("g")
-
-    // Zoom
-    const zoom = d3.zoom().on("zoom", (event) => {
-      container.attr("transform", event.transform)
-    })
-    svg.call(zoom)
-
-    // Simulación de fuerzas
-    const simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links).id(d => d.id).distance(220))
-      .force("charge", d3.forceManyBody().strength(-600))
-      .force("center", d3.forceCenter(width / 2, height / 2))
-
-    // Enlaces (líneas con flechas)
-    const link = container.append("g")
-      .selectAll("line")
-      .data(links)
-      .join("line")
-      .attr("stroke", "var(--paper-darker, #cbd5e1)")
-      .attr("stroke-opacity", 0.6)
-      .attr("stroke-width", 2)
-      .attr("marker-end", "url(#arrowhead)")
-
-    // Etiquetas de enlaces
-    const linkText = container.append("g")
-      .selectAll("text")
-      .data(links)
-      .join("text")
-      .attr("font-size", "10px")
-      .attr("fill", "var(--slate)")
-      .attr("text-anchor", "middle")
-      .attr("dy", -5)
-      .text(d => d.value)
-
-    // Nodos
-    const node = container.append("g")
-      .selectAll("g")
-      .data(nodes)
-      .join("g")
-      .attr("cursor", "pointer")
-      .on("click", (event, d) => {
-        setSelectedChar(d.fullData)
-        event.stopPropagation()
+      const links = []
+      characters.forEach(char => {
+        if (char.relationships) {
+          Object.entries(char.relationships).forEach(([target, relation]) => {
+            if (characters.find(c => c.name === target)) {
+              links.push({
+                id: `${char.name}-${target}`,
+                source: char.name,
+                target: target,
+                value: relation
+              })
+            }
+          })
+        }
       })
-      .call(drag(simulation))
 
-    node.append("circle")
-      .attr("r", d => d.group === 1 ? 18 : 14)
-      .attr("fill", d => d.group === 1 ? "var(--gold)" : "white")
-      .attr("stroke", d => d.group === 1 ? "var(--gold-dark)" : "var(--slate)")
-      .attr("stroke-width", 2.5)
+      // 2. Configurar SVG
+      const width = 800
+      const height = isFullScreen ? 700 : 500
+      const svg = d3.select(svgRef.current)
+      svg.selectAll("*").remove() 
 
-    node.append("text")
-      .attr("x", 22)
-      .attr("y", 4)
-      .attr("font-size", "14px")
-      .attr("font-weight", "800")
-      .attr("fill", "black")
-      .text(d => d.id)
+      // Definir flechas (markers)
+      svg.append("defs").append("marker")
+        .attr("id", "arrowhead")
+        .attr("viewBox", "0 -5 10 10")
+        .attr("refX", 25) 
+        .attr("refY", 0)
+        .attr("markerWidth", 6)
+        .attr("markerHeight", 6)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-5L10,0L0,5")
+        .attr("fill", "var(--slate)")
+        .attr("opacity", 0.6)
 
-    node.append("text")
-      .attr("x", 22)
-      .attr("y", 18)
-      .attr("font-size", "10px")
-      .attr("fill", "var(--slate)")
-      .text(d => d.role.length > 30 ? d.role.substring(0, 30) + '...' : d.role)
+      const container = svg
+        .attr("viewBox", [0, 0, width, height])
+        .append("g")
 
-    simulation.on("tick", () => {
-      link
-        .attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y)
+      // Zoom
+      const zoom = d3.zoom().on("zoom", (event) => {
+        container.attr("transform", event.transform)
+      })
+      svg.call(zoom)
 
-      linkText
-        .attr("x", d => (d.source.x + d.target.x) / 2)
-        .attr("y", d => (d.source.y + d.target.y) / 2)
+      // Simulación de fuerzas
+      const simulation = d3.forceSimulation(nodes)
+        .force("link", d3.forceLink(links).id(d => d.id).distance(220))
+        .force("charge", d3.forceManyBody().strength(-600))
+        .force("center", d3.forceCenter(width / 2, height / 2))
 
-      node
-        .attr("transform", d => `translate(${d.x},${d.y})`)
-    })
+      // Enlaces (líneas con flechas)
+      const link = container.append("g")
+        .selectAll("line")
+        .data(links)
+        .join("line")
+        .attr("stroke", "var(--paper-darker, #cbd5e1)")
+        .attr("stroke-opacity", 0.6)
+        .attr("stroke-width", 2)
+        .attr("marker-end", "url(#arrowhead)")
 
-    function drag(simulation) {
-      function dragstarted(event) {
-        if (!event.active) simulation.alphaTarget(0.3).restart()
-        event.subject.fx = event.subject.x
-        event.subject.fy = event.subject.y
+      // Etiquetas de enlaces
+      const linkText = container.append("g")
+        .selectAll("text")
+        .data(links)
+        .join("text")
+        .attr("font-size", "10px")
+        .attr("fill", "var(--slate)")
+        .attr("text-anchor", "middle")
+        .attr("dy", -5)
+        .text(d => d.value)
+
+      // Nodos
+      const node = container.append("g")
+        .selectAll("g")
+        .data(nodes)
+        .join("g")
+        .attr("cursor", "pointer")
+        .on("click", (event, d) => {
+          setSelectedChar(d.fullData)
+          event.stopPropagation()
+        })
+        .call(drag(simulation))
+
+      node.append("circle")
+        .attr("r", d => d.group === 1 ? 18 : 14)
+        .attr("fill", d => d.group === 1 ? "var(--gold)" : "white")
+        .attr("stroke", d => d.group === 1 ? "var(--gold-dark)" : "var(--slate)")
+        .attr("stroke-width", 2.5)
+
+      node.append("text")
+        .attr("x", 22)
+        .attr("y", 4)
+        .attr("font-size", "14px")
+        .attr("font-weight", "800")
+        .attr("fill", "black")
+        .text(d => d.id)
+
+      node.append("text")
+        .attr("x", 22)
+        .attr("y", 18)
+        .attr("font-size", "10px")
+        .attr("fill", "var(--slate)")
+        .text(d => d.role.length > 30 ? d.role.substring(0, 30) + '...' : d.role)
+
+      simulation.on("tick", () => {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y)
+
+        linkText
+          .attr("x", d => (d.source.x + d.target.x) / 2)
+          .attr("y", d => (d.source.y + d.target.y) / 2)
+
+        node
+          .attr("transform", d => `translate(${d.x},${d.y})`)
+      })
+
+      function drag(simulation) {
+        function dragstarted(event) {
+          if (!event.active) simulation.alphaTarget(0.3).restart()
+          event.subject.fx = event.subject.x
+          event.subject.fy = event.subject.y
+        }
+        function dragged(event) {
+          event.subject.fx = event.x
+          event.subject.fy = event.y
+        }
+        function dragended(event) {
+          if (!event.active) simulation.alphaTarget(0)
+          event.subject.fx = null
+          event.subject.fy = null
+        }
+        return d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended)
       }
-      function dragged(event) {
-        event.subject.fx = event.x
-        event.subject.fy = event.y
-      }
-      function dragended(event) {
-        if (!event.active) simulation.alphaTarget(0)
-        event.subject.fx = null
-        event.subject.fy = null
-      }
-      return d3.drag()
-        .on("start", dragstarted)
-        .on("drag", dragged)
-        .on("end", dragended)
-    }
 
-    svg.on("click", () => setSelectedChar(null))
+      svg.on("click", () => setSelectedChar(null))
 
-    return () => {
-      simulation.stop()
-      simulation.on("tick", null)
+      return () => {
+        simulation.stop()
+        simulation.on("tick", null)
+      }
+    } catch (err) {
+      console.error("D3 CharacterNetwork Error:", err)
     }
 
   }, [characters, isFullScreen])
