@@ -456,15 +456,6 @@ export default function BookPage() {
   }, [currentTab])
   const [mindmapView, setMindmapView] = useState('tree')
   const [chaptersView, setChaptersView] = useState('timeline')
-  const [displayTab, setDisplayTab] = useState(tab || 'ficha')
-
-  useEffect(() => {
-    if (tab !== displayTab) {
-      setDisplayTab(null) // Reset total virtual
-      const timer = setTimeout(() => setDisplayTab(tab), 30) // Re-montaje limpio
-      return () => clearTimeout(timer)
-    }
-  }, [tab])
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [coverPickerOpen, setCoverPickerOpen] = useState(false)
   const [coverKey, setCoverKey] = useState(0)
@@ -807,22 +798,22 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.3</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.4</span>
         </div>
 
         <AnimatePresence mode="wait">
-          {displayTab && (
+          {tab && (
             <motion.div
-              key={displayTab || 'reset'}
+              key={tab}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{ duration: 0.25 }}
+              exit={{ opacity: 0, y: -5 }}
+              transition={{ duration: 0.2 }}
               className="tab-content"
               style={{ minHeight: '500px' }}
             >
-              <ErrorBoundary key={displayTab}>
-                {displayTab === 'info' && (
+              <ErrorBoundary key={tab}>
+                {tab === 'info' && (
                   <InfoTab 
                     book={book} 
                     status={statusInfo} 
@@ -836,7 +827,7 @@ export default function BookPage() {
                     onPause={pauseInfoTTS} 
                   />
                 )}
-                {displayTab === 'capitulos' && (
+                {tab === 'capitulos' && (
                   <ChaptersTab 
                     chapters={chapters} 
                     expanded={expandedChapter} 
@@ -857,7 +848,7 @@ export default function BookPage() {
                     onPause={pauseTTS}
                   />
                 )}
-                {displayTab === 'personajes' && (
+                {tab === 'personajes' && (
                   <CharactersTab 
                     characters={characters} 
                     bookId={id}
@@ -874,7 +865,7 @@ export default function BookPage() {
                     onRefresh={() => load(false)}
                   />
                 )}
-                {displayTab === 'resumen' && (
+                {tab === 'summary' && (
                   <SummaryTab 
                     book={book} 
                     status={statusInfo} 
@@ -888,7 +879,7 @@ export default function BookPage() {
                     onPause={pauseInfoTTS}
                   />
                 )}
-                {displayTab === 'mindmap' && (
+                {tab === 'mindmap' && (
                   <div className="prose-content">
                     <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
                     {statusInfo.has_mindmap ? (
@@ -902,7 +893,7 @@ export default function BookPage() {
                     ) : <p className="empty-tab">Generando el mapa mental...</p>}
                   </div>
                 )}
-                {displayTab === 'podcast' && (
+                {tab === 'podcast' && (
                   <PodcastTab 
                     book={book} 
                     status={statusInfo} 
@@ -916,12 +907,12 @@ export default function BookPage() {
                     onDownload={handleDownloadAudio}
                   />
                 )}
-                {displayTab === 'chat' && (
+                {tab === 'chat' && (
                   <div className="prose-content" style={{height:'80vh'}}>
                     <LiteraryDialogue bookId={id} bookTitle={book.title} />
                   </div>
                 )}
-                {displayTab === 'refs' && (
+                {tab === 'refs' && (
                   <ReferencesTab 
                     book={book} 
                     status={statusInfo} 
@@ -1118,13 +1109,12 @@ const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onS
       <div className="tab-section-header">
         <h3>Sinopsis</h3>
         <div className="tab-header-actions">
-          {book.synopsis && (
-            <button className={`tts-btn ${isPlaying ? 'playing' : ''}`} onClick={isPlaying ? (isPaused ? onResume : onPause) : () => onPlay(book)}>
-              {isPlaying ? (isPaused ? <Play size={14} /> : <Pause size={14} />) : <Volume2 size={14} />}
-              <span>{isPlaying ? (isPaused ? 'Reanudar' : 'Pausar') : 'Escuchar'}</span>
+          {book.synopsis && !isPlaying && (
+            <button className="tts-btn" onClick={() => onPlay(book)}>
+              <Volume2 size={14} />
+              <span>Escuchar Sinopsis</span>
             </button>
           )}
-          {isPlaying && <button className="tts-btn stop" onClick={onStop}><Square size={14} /></button>}
         </div>
       </div>
       <p>{book.synopsis || 'Analizando...'}</p>
