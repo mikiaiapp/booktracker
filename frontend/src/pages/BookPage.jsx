@@ -455,7 +455,7 @@ export default function BookPage() {
     if (currentTab !== tab && tab !== null) setTab(currentTab)
   }, [currentTab])
   const [mindmapView, setMindmapView] = useState('tree')
-  const [chaptersView, setChaptersView] = useState('list')
+  const [chaptersView, setChaptersView] = useState('timeline')
   const [expandedChapter, setExpandedChapter] = useState(null)
   const [coverPickerOpen, setCoverPickerOpen] = useState(false)
   const [coverKey, setCoverKey] = useState(0)
@@ -696,7 +696,19 @@ export default function BookPage() {
         <div className="hero-content">
           <div className="hero-cover" onClick={() => setCoverPickerOpen(true)}><HeroCover book={book} /></div>
           <div className="hero-info">
-            <h1>{book.title || 'Sin Título'}</h1>
+            <div className="hero-title-wrap" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '0.5rem' }}>
+              <h1>{book.title || 'Sin Título'}</h1>
+              {(anyTtsPlaying || anyTtsPaused) && (
+                <div className="hero-playback-controls">
+                  <button className="playback-btn-premium pause-blue" onClick={anyTtsPaused ? resumeAnyTTS : pauseAnyTTS} title={anyTtsPaused ? 'Reanudar' : 'Pausar'}>
+                    {anyTtsPaused ? <Play size={20} fill="currentColor" /> : <Pause size={20} fill="currentColor" />}
+                  </button>
+                  <button className="playback-btn-premium stop-red" onClick={stopAnyTTS} title="Parar reproducción">
+                    <Square size={20} fill="currentColor" />
+                  </button>
+                </div>
+              )}
+            </div>
             <Link to={`/author/${encodeURIComponent(book.author || '')}`} className="hero-author-link">
               {book.author}
             </Link>
@@ -760,18 +772,7 @@ export default function BookPage() {
                 <span>Reemplazar archivos</span>
               </label>
               
-              {(anyTtsPlaying || anyTtsPaused) && (
-                <>
-                  <button className="hero-action-btn pause-btn" onClick={anyTtsPaused ? resumeAnyTTS : pauseAnyTTS}>
-                    {anyTtsPaused ? <Play size={16} /> : <Pause size={16} />}
-                    <span>{anyTtsPaused ? 'Reanudar' : 'Pausar'}</span>
-                  </button>
-                  <button className="hero-action-btn stop-btn" onClick={stopAnyTTS}>
-                    <Square size={16} />
-                    <span>Parar</span>
-                  </button>
-                </>
-              )}
+
             </div>
           </div>
           <button className="delete-btn" onClick={handleDelete}><Trash2 size={20} /></button>
@@ -797,7 +798,7 @@ export default function BookPage() {
               </button>
             )
           })}
-          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.10.1</span>
+          <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.0</span>
         </div>
 
         <AnimatePresence mode="wait">
@@ -1015,6 +1016,10 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
                   <Download size={18} />
                   <span>Descargar MP3</span>
                 </button>
+                <button className="podcast-reanalyze-btn" title="Rehacer análisis del podcast" onClick={() => onTrigger(6, true)}>
+                  <RefreshCw size={18} />
+                  <span>Rehacer</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1156,8 +1161,8 @@ const ChaptersTab = React.memo(({ chapters, expanded, setExpanded, bookId, onCha
       
       <div className="chapters-controls">
         <div className="view-toggle-wrap">
-          <button className={`view-toggle-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}><List size={14} /> Lista</button>
-          <button className={`view-toggle-btn ${view === 'timeline' ? 'active' : ''}`} onClick={() => setView('timeline')}><GitBranch size={14} /> Línea</button>
+          <button className={`view-toggle-btn ${view === 'timeline' ? 'active' : ''}`} onClick={() => setView('timeline')}><GitBranch size={14} /> Breve</button>
+          <button className={`view-toggle-btn ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}><List size={14} /> Detallado</button>
         </div>
       </div>
 
