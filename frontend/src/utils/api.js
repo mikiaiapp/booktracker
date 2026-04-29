@@ -31,8 +31,8 @@ export const authAPI = {
 
 // Books
 export const booksAPI = {
-  list: () => api.get('/books/'),
-  get: (id) => api.get(`/books/${id}`),
+  list: () => api.get(`/books/?t=${Date.now()}`),
+  get: (id) => api.get(`/books/${id}?t=${Date.now()}`),
   upload: (file, onProgress) => {
     const form = new FormData()
     form.append('file', file)
@@ -71,7 +71,7 @@ export const taskAPI = {
 
 // Analysis
 export const analysisAPI = {
-  status: (bookId) => api.get(`/analysis/${bookId}/status`),
+  status: (bookId) => api.get(`/analysis/${bookId}/status?t=${Date.now()}`),
   triggerPhase1: (bookId, force = false) => api.post(`/analysis/${bookId}/phase1?force=${force}`),
   triggerPhase2: (bookId, force = false) => api.post(`/analysis/${bookId}/phase2?force=${force}`),
   triggerPhase3: (bookId, force = false) => api.post(`/analysis/${bookId}/phase3?force=${force}`),

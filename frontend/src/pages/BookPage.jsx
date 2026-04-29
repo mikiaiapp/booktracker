@@ -1194,7 +1194,7 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
         phase={2} 
         label="Capítulos" 
         doneProp="phase2_done" 
-        status={{...status, phase2_done: allDone}} 
+        status={{...status, phase2_done: status?.phase2_done || allDone}} 
         isProcessing={isProcessing} 
         onTrigger={onTrigger} 
       />
