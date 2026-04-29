@@ -334,7 +334,10 @@ export default function LibraryPage() {
   const queueTotal       = (queueState?.active ? 1 : 0) + (queueState?.queue?.length || 0)
   const legacyProcessing = books.filter(b => PROCESSING_STATUSES.includes(b.status))
   const queueCount       = Math.max(queueTotal, legacyProcessing.length)
-  const queueIsActive    = !!queueState?.active || legacyProcessing.length > 0
+  // Solo consideramos "activo" si hay algo en el worker real o un libro legacy en estado de trabajo directo
+  const queueIsActive    = !!queueState?.active || legacyProcessing.some(b => 
+    !['uploaded', 'queued'].includes(b.status)
+  )
   const queueIsPaused    = queueState?.paused
 
   const load = async () => {

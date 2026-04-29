@@ -812,7 +812,7 @@ export default function BookPage() {
             >
               {TABS.map(t => (
                 <option key={t.id} value={t.id}>
-                  {t.label} {statusInfo?.[t.statusKey] ? '✓' : ''}
+                  {t.label} {statusInfo?.[t.statusKey] ? '🟢' : ''}
                 </option>
               ))}
             </select>
@@ -980,7 +980,7 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
   return (
     <div className="tab-phase-bar" style={{display:'flex', justifyContent:'space-between', marginBottom:'2rem'}}>
       <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
-        {isDone ? <CheckCircle size={20} color="var(--gold)" /> : <div className="phase-dot">{phase}</div>}
+        {isDone ? <CheckCircle size={20} color="#10b981" /> : <div className="phase-dot">{phase}</div>}
         <div>
           <strong>Fase {phase}: {label}</strong>
           {showProcessing && (
@@ -1041,24 +1041,26 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
               </div>
             </div>
             <div className="podcast-info">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="podcast-info-header">
                 <h3>Podcast Literario</h3>
                 <span className="podcast-duration-badge">{formatDuration(book.podcast_duration)}</span>
               </div>
-              <p>Análisis en formato de audio generado por IA</p>
+              <p className="podcast-subtitle">Análisis en formato de audio generado por IA</p>
               <div className="podcast-controls">
                 <button className="podcast-play-btn" onClick={onToggleAudio}>
                   {audioPlaying ? <Pause size={20} /> : <Play size={20} />}
                   <span>{audioPlaying ? 'Pausar' : 'Escuchar Podcast'}</span>
                 </button>
-                <button className="podcast-download-btn-premium" onClick={onDownload}>
-                  <Download size={18} />
-                  <span>Descargar MP3</span>
-                </button>
-                <button className="podcast-reanalyze-btn" title="Rehacer análisis del podcast" onClick={() => onTrigger(6, true)}>
-                  <RefreshCw size={18} />
-                  <span>Rehacer</span>
-                </button>
+                <div className="podcast-secondary-actions">
+                  <button className="podcast-download-btn-premium" onClick={onDownload} title="Descargar MP3">
+                    <Download size={18} />
+                    <span className="btn-text">MP3</span>
+                  </button>
+                  <button className="podcast-reanalyze-btn" title="Rehacer análisis del podcast" onClick={() => onTrigger(6, true)}>
+                    <RefreshCw size={18} />
+                    <span className="btn-text">Rehacer</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
