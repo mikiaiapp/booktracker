@@ -803,6 +803,23 @@ export default function BookPage() {
           <span style={{ fontSize: '0.6rem', opacity: 0.2, alignSelf: 'center', marginLeft: 'auto', paddingRight: '1rem' }}>v2.11.10</span>
         </div>
 
+        <div className="tabs-select-mobile">
+          <div className="tabs-select-wrapper">
+            <select 
+              className="tabs-select" 
+              value={tab} 
+              onChange={(e) => handleTabChange(e.target.value)}
+            >
+              {TABS.map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.label} {statusInfo?.[t.statusKey] ? '✓' : ''}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={18} className="tabs-select-arrow" />
+          </div>
+        </div>
+
         <AnimatePresence mode="wait">
           {tab && (
             <motion.div
