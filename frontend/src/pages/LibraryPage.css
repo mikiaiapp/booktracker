@@ -799,6 +799,52 @@
   margin-left: 4px;
   line-height: 1.6;
 }
+
+.sync-btn {
+  background: var(--paper-dark);
+  color: var(--slate);
+  border: 1.5px solid var(--paper-dark);
+  border-radius: var(--radius);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+
+.sync-btn:hover:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: var(--white);
+}
+
+.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .library-controls {
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+  
+  .search-wrap {
+    flex: 1;
+  }
+}
 .filter-tab.active .analysis-tab-count {
   background: rgba(255,255,255,0.25);
 }

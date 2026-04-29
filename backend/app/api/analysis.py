@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -238,7 +238,65 @@ async def repair_all_events(
 
 # ── Cancelación ────────────────────────────────────────────────
 
-# (Endpoint eliminado y movido al final para consolidación)
+# ── Queue Management ──────────────────────────────────────────
+
+@router.get("/queue")
+async def get_queue_state(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    from app.workers.queue_manager import get_state, on_done
+    state = get_state(current_user.id)
+    
+    # Auto-limpieza: Si hay libros en 'infos' pero ya están marcados como complete en DB, limpiar Redis
+    active_id = state.get("active")
+    if active_id:
+        res = await db.execute(select(Book).where(Book.id == active_id))
+        book = res.scalar_one_or_none()
+        if book and book.status == "complete":
+            on_done(current_user.id, active_id)
+            state = get_state(current_user.id) # Refrescar estado tras limpieza
+
+    return state
+
+
+@router.post("/queue/pause")
+async def pause_queue(
+    current_user: User = Depends(get_current_user)
+):
+    from app.workers.queue_manager import pause
+    pause(current_user.id)
+    return {"status": "paused"}
+
+
+@router.post("/queue/resume")
+async def resume_queue(
+    current_user: User = Depends(get_current_user)
+):
+    from app.workers.queue_manager import resume
+    resume(current_user.id)
+    return {"status": "resumed"}
+
+
+@router.delete("/queue")
+async def clear_queue(
+    current_user: User = Depends(get_current_user)
+):
+    from app.workers.queue_manager import cancel_all
+    cancel_all(current_user.id)
+    return {"status": "cleared"}
+
+
+@router.delete("/queue/{book_id}")
+async def cancel_book_queue(
+    book_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    from app.workers.queue_manager import cancel
+    res = cancel(current_user.id, book_id)
+    return {"status": res}
 
 
 # ── Status ────────────────────────────────────────────────────
@@ -246,14 +304,34 @@ async def repair_all_events(
 @router.get("/{book_id}/status")
 async def get_status(
     book_id: str,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     
     if not book:
         raise HTTPException(404, f"Book status not found: {book_id}")
+
+    # Auto-recuperación: Si el status en DB es de procesamiento pero no hay nada activo en Redis
+    from app.workers.queue_manager import get_state, on_done
+    from app.workers.tasks import _finalize_book_status
+    
+    q_state = get_state(current_user.id)
+    is_in_redis = (q_state.get("active") == book_id) or (book_id in q_state.get("infos", {}))
+    
+    # Si el libro dice estar procesando pero no está en Redis, forzar re-evaluación
+    if book.status in ("queued", "identifying", "analyzing", "structuring", "summarizing") and not is_in_redis:
+        print(f"[RECOVERY] Book {book_id} stuck in status '{book.status}' without Redis task. Finalizing...")
+        await _finalize_book_status(db, book)
+        # Si después de finalizar sigue igual o cambia a complete, aseguramos limpieza de Redis
+        on_done(current_user.id, book_id)
+    
+    # Si el libro está completo, nos aseguramos de que no queden restos en Redis
+    if book.status == "complete" and is_in_redis:
+        on_done(current_user.id, book_id)
 
     jobs_result = await db.execute(
         select(AnalysisJob).where(AnalysisJob.book_id == book_id).order_by(AnalysisJob.created_at.desc())

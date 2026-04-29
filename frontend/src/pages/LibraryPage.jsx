@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { booksAPI, queueAPI } from '../utils/api'
-import { BookOpen, Star, Search, Layers, X, Pause, Play, Trash2, ChevronDown } from 'lucide-react'
+import { BookOpen, Star, Search, Layers, X, Pause, Play, Trash2, ChevronDown, RefreshCw } from 'lucide-react'
 import BookCover, { coverSrc } from '../components/BookCover'
 import CoverPicker from '../components/CoverPicker'
 import './LibraryPage.css'
@@ -340,10 +340,20 @@ export default function LibraryPage() {
   )
   const queueIsPaused    = queueState?.paused
 
-  const load = async () => {
+  const load = async (isManual = false) => {
     try {
+      if (isManual) setLoading(true)
       const { data } = await booksAPI.list()
       setBooks(data)
+      
+      // Sincronizar cola global
+      const q = await queueAPI.get()
+      setQueueState(q.data)
+      
+      if (isManual) toast.success('Biblioteca sincronizada')
+    } catch (err) {
+      console.error("[DEBUG] Error al cargar biblioteca:", err)
+      if (isManual) toast.error('Error al sincronizar')
     } finally {
       setLoading(false)
     }
@@ -427,6 +437,14 @@ export default function LibraryPage() {
             value={search} onChange={e => setSearch(e.target.value)}
           />
         </div>
+        <button 
+          className="sync-btn" 
+          onClick={() => load(true)} 
+          title="Sincronizar ahora"
+          disabled={loading}
+        >
+          <RefreshCw size={18} className={loading ? 'spinning' : ''} />
+        </button>
         <div className="filter-tabs">
           {READ_FILTERS.map(f => (
             <button key={f} className={`filter-tab ${filter === f ? 'active' : ''}`}

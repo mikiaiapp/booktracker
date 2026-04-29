@@ -2,11 +2,29 @@ import axios from 'axios'
 
 const BASE = import.meta.env.VITE_API_URL || '/api'
 
-export const api = axios.create({ baseURL: BASE })
+export const api = axios.create({ 
+  baseURL: BASE,
+  headers: {
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  }
+})
 
 api.interceptors.request.use(cfg => {
   const token = localStorage.getItem('bt_token')
   if (token) cfg.headers.Authorization = `Bearer ${token}`
+  
+  // Forzar no-cache en todas las peticiones GET si no tienen ya un timestamp
+  if (cfg.method === 'get') {
+    const separator = cfg.url.includes('?') ? '&' : '?'
+    if (!cfg.url.includes('t=')) {
+      cfg.url = `${cfg.url}${separator}t=${Date.now()}`
+    }
+    // Añadir cabecera aleatoria para saltar caches de algunos proxies/móviles
+    cfg.headers['X-Cache-Bypass'] = Math.random().toString(36).substring(7)
+  }
+  
   return cfg
 })
 

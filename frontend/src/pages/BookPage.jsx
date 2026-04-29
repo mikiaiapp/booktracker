@@ -694,7 +694,10 @@ export default function BookPage() {
   return (
     <div className="book-page">
       <div className="book-hero">
-        <button className="back-btn" onClick={() => navigate('/')}><ArrowLeft size={16} /> Biblioteca</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <button className="back-btn" onClick={() => navigate('/')}><ArrowLeft size={16} /> Biblioteca</button>
+          <button className="sync-btn-small" onClick={() => load(true)} title="Sincronizar estado"><RefreshCw size={16} className={loading ? 'spinning' : ''} /></button>
+        </div>
         <div className="hero-content">
           <div className="hero-cover" onClick={() => setCoverPickerOpen(true)}><HeroCover book={book} /></div>
           <div className="hero-info">
