@@ -99,6 +99,7 @@ export const analysisAPI = {
   cancel: (bookId) => api.post(`/analysis/${bookId}/cancel`),
   triggerPodcast: (bookId, force = false) => api.post(`/analysis/${bookId}/podcast?force=${force}`),
   podcastAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/podcast/audio`,
+  ttsAudioUrl: (bookId) => `${BASE}/analysis/${bookId}/tts/audio`,
   downloadUrl: (bookId) => `${BASE}/analysis/${bookId}/download`,
   repairAllEvents: () => api.post('/analysis/repair-all-events'),
 }

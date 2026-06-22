@@ -134,7 +134,7 @@ export default function BookPage() {
     }
 
     const token = localStorage.getItem('bt_token')
-    let url = `${booksAPI.baseURL}/${id}/tts/audio?type=${type}&token=${encodeURIComponent(token)}`
+    let url = `${analysisAPI.ttsAudioUrl(id)}?type=${type}&token=${encodeURIComponent(token)}`
     if (chapterId) url += `&chapter_id=${chapterId}`
     if (characterId) url += `&character_id=${characterId}`
 
@@ -1066,7 +1066,7 @@ export default function BookPage() {
                   onClick={async () => {
                     try {
                       const token = localStorage.getItem('bt_token')
-                      const url = `${booksAPI.baseURL}/${id}/download`
+                      const url = `${analysisAPI.downloadUrl(id)}`
                       const resp = await fetch(url, {
                         headers: { Authorization: `Bearer ${token}` }
                       })
