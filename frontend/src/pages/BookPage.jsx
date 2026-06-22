@@ -18,6 +18,8 @@ import './BookPage.css'
 
 
 
+const SILENCE_URL = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
+
 const TABS = [
   { id: 'info',       label: 'Ficha',          icon: BookOpen,     statusKey: 'phase1_done' },
   { id: 'chapters',   label: 'Capítulos',       icon: List,         statusKey: 'phase2_done' },
@@ -451,10 +453,10 @@ export default function BookPage() {
     else if (ttsInfoPlaying) pauseInfoTTS()
   }
 
-  const stopAnyTTS = () => {
-    if (ttsPlaying || ttsChapterPaused) stopTTS()
-    else if (ttsCharPlaying || ttsCharPaused) stopCharTTS()
-    else if (ttsInfoPlaying || ttsInfoPaused) stopInfoTTS()
+  const stopAnyTTS = (skipConfirm = false) => {
+    if (ttsPlaying || ttsChapterPaused) stopTTS(skipConfirm)
+    else if (ttsCharPlaying || ttsCharPaused) stopCharTTS(skipConfirm)
+    else if (ttsInfoPlaying || ttsInfoPaused) stopInfoTTS(skipConfirm)
   }
 
   const [searchParams, setSearchParams] = useSearchParams()
@@ -558,6 +560,92 @@ export default function BookPage() {
       }
     }
   }, [id])
+
+  // Reactive Media Session / Background Audio Sync for TTS
+  const currentTtsType = ttsPlaying ? 'chapter' : (ttsCharPlaying ? 'character' : (ttsInfoPlaying ? 'info' : null))
+  const currentTtsPausedType = ttsChapterPaused ? 'chapter' : (ttsCharPaused ? 'character' : (ttsInfoPaused ? 'info' : null))
+
+  useEffect(() => {
+    if (audioPlaying || audioPaused) return
+
+    const el = audioRef.current
+    if (!el) return
+
+    const isTtsActive = !!currentTtsType
+    const isTtsPaused = !!currentTtsPausedType
+
+    if (isTtsActive) {
+      let title = 'Lectura'
+      let artist = book?.author || 'BookTracker'
+      if (currentTtsType === 'chapter') {
+        const ch = chapters.find(c => c.id === ttsChapter)
+        title = ch ? ch.title : 'Lectura de Capítulo'
+      } else if (currentTtsType === 'character') {
+        title = `Personaje: ${ttsCharacter || 'Lectura'}`
+      } else if (currentTtsType === 'info') {
+        const type = localStorage.getItem(infoStorageKey + '_type')
+        title = type === 'summary' ? 'Análisis Global' : 'Sinopsis'
+      }
+
+      if ('mediaSession' in navigator) {
+        const relativeSrc = coverSrc(book) || '/default-cover.png'
+        const absoluteCoverUrl = relativeSrc.startsWith('http')
+          ? relativeSrc
+          : `${window.location.origin}${relativeSrc}`
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: title,
+          artist: artist,
+          album: book?.title || 'Lectura de Libro',
+          artwork: [
+            { src: absoluteCoverUrl, sizes: '192x192', type: 'image/png' },
+            { src: absoluteCoverUrl, sizes: '512x512', type: 'image/png' }
+          ]
+        })
+
+        navigator.mediaSession.playbackState = 'playing'
+
+        navigator.mediaSession.setActionHandler('play', () => {
+          resumeAnyTTS()
+        })
+        navigator.mediaSession.setActionHandler('pause', () => {
+          pauseAnyTTS()
+        })
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          stopAnyTTS(true)
+        })
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          stopAnyTTS(true)
+        })
+      }
+
+      if (el.src !== SILENCE_URL) {
+        el.src = SILENCE_URL
+        el.loop = true
+      }
+      el.play().catch(() => {})
+
+    } else if (isTtsPaused) {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused'
+      }
+      if (el.src === SILENCE_URL) {
+        el.pause()
+      }
+    } else {
+      if ('mediaSession' in navigator) {
+        if (!audioRef.current || audioRef.current.src === SILENCE_URL) {
+          navigator.mediaSession.playbackState = 'none'
+          navigator.mediaSession.metadata = null
+        }
+      }
+      if (el.src === SILENCE_URL) {
+        el.pause()
+        el.src = ''
+        try { el.load() } catch {}
+      }
+    }
+  }, [currentTtsType, currentTtsPausedType, ttsChapter, ttsCharacter, audioPlaying, audioPaused, id, book, chapters])
 
   useEffect(() => {
     if (!status) return
