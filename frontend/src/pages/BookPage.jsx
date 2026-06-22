@@ -97,6 +97,14 @@ export default function BookPage() {
   const [loading, setLoading] = useState(true)
   const [progressMsg, setProgressMsg] = useState('')
 
+  const activeData = data || prevData
+  const book = activeData?.book || {}
+  const statusInfo = status || {}
+  const chapters = activeData?.chapters || []
+  const characters = activeData?.characters || []
+  const isProcessing = PROCESSING_STATUSES.includes(statusInfo.status)
+
+
   const [ttsPlaying,       setTtsPlaying]       = useState(false)
   const [ttsChapterPaused, setTtsChapterPaused] = useState(false)
   const [ttsChapter,       setTtsChapter]       = useState(null)
@@ -971,12 +979,6 @@ export default function BookPage() {
 
   const handleDelete = async () => { if (await confirm(`¿Eliminar "${data?.book?.title}"?`)) { await booksAPI.delete(id); navigate('/') } }
 
-  const activeData = data || prevData
-  const book = activeData?.book || {}
-  const statusInfo = status || {}
-  const chapters = activeData?.chapters || []
-  const characters = activeData?.characters || []
-  const isProcessing = PROCESSING_STATUSES.includes(statusInfo.status)
 
   if (loading) return <div className="book-loading"><Loader size={28} className="spin" /><p>Cargando...</p></div>
   if (!book.id) return <div className="book-loading"><button onClick={() => navigate("/")}>Volver</button></div>
