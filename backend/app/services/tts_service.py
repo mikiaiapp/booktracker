@@ -112,16 +112,8 @@ async def synthesize_elevenlabs(lines: List[Tuple[str, str]], output_path: str):
             f.write(chunk)
 
 
-async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
-    """Synthesize a single block of text using OpenAI TTS, chunking if necessary."""
-    openai_key = api_keys.get("openai") if api_keys else None
-    if not openai_key:
-        raise ValueError("Se requiere una API Key de OpenAI para generar el audio.")
-    
-    from openai import AsyncOpenAI
-    client = AsyncOpenAI(api_key=openai_key)
-    
-    # Split text into chunks under 4000 characters (by paragraph or sentence)
+def split_text_to_chunks(text: str) -> List[str]:
+    """Split text into chunks under 4000 characters by sentence."""
     chunks = []
     current_chunk = ""
     for sentence in re.split(r"([.!?]+\s*)", text):
@@ -136,6 +128,19 @@ async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
         
     if not chunks:
         chunks = [text]
+    return chunks
+
+
+async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
+    """Synthesize a single block of text using OpenAI TTS, chunking if necessary."""
+    openai_key = api_keys.get("openai") if api_keys else None
+    if not openai_key:
+        raise ValueError("Se requiere una API Key de OpenAI para generar el audio.")
+    
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=openai_key)
+    
+    chunks = split_text_to_chunks(text)
 
     audio_chunks = []
     for chunk in chunks:
@@ -154,4 +159,49 @@ async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
     with open(output_path, "wb") as f:
         for audio_chunk in audio_chunks:
             f.write(audio_chunk)
+
+
+async def stream_synthesize_text(text: str, temp_path: str, final_path: str, api_keys: dict = None):
+    """Synthesize text using OpenAI TTS, stream MP3 chunks, and cache them locally."""
+    openai_key = api_keys.get("openai") if api_keys else None
+    if not openai_key:
+        raise ValueError("Se requiere una API Key de OpenAI para generar el audio.")
+    
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=openai_key)
+    
+    chunks = split_text_to_chunks(text)
+    
+    try:
+        # Abrir archivo temporal para guardar la caché
+        with open(temp_path, "wb") as f:
+            for chunk in chunks:
+                response = await client.audio.speech.create(
+                    model="tts-1",
+                    voice="alloy",
+                    input=chunk,
+                    response_format="mp3",
+                )
+                content = response.content
+                f.write(content)
+                yield content
+        
+        # Guardar en la caché final al completar con éxito
+        if os.path.exists(temp_path):
+            os.makedirs(os.path.dirname(final_path), exist_ok=True)
+            if os.path.exists(final_path):
+                try:
+                    os.remove(final_path)
+                except:
+                    pass
+            os.rename(temp_path, final_path)
+    except Exception as e:
+        print(f"[TTS STREAM ERROR] {e}")
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        raise
+
 

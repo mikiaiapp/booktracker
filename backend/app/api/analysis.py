@@ -617,13 +617,17 @@ async def get_tts_audio(
                 "openai": current_user.openai_api_key,
                 "gemini": current_user.gemini_api_key
             }
-            try:
-                await synthesize_text(text_to_speak, final_path, api_keys=keys)
-            except Exception as e:
-                print(f"[API TTS ERROR] {e}")
-                raise HTTPException(500, f"Error al generar síntesis de voz: {str(e)}")
+            temp_path = final_path + ".tmp"
+            from fastapi.responses import StreamingResponse
+            from app.services.tts_service import stream_synthesize_text
+
+            return StreamingResponse(
+                stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys),
+                media_type="audio/mpeg"
+            )
 
         return FileResponse(final_path, media_type="audio/mpeg")
+
 
 
 # ── Descarga del archivo original ────────────────────────────
