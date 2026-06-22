@@ -415,46 +415,83 @@ async def get_status(
 @router.get("/{book_id}/podcast/audio")
 async def get_podcast_audio(
     book_id: str,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    request: Request,
+    token: Optional[str] = None,
 ):
-    result = await db.execute(select(Book).where(Book.id == book_id))
-    book = result.scalar_one_or_none()
-    
-    if not book:
-        raise HTTPException(404, "Podcast not available")
+    # 1. Obtener token del query parameter o de la cabecera Authorization
+    auth_header = request.headers.get("Authorization")
+    actual_token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        actual_token = auth_header.split(" ")[1]
+    elif token:
+        actual_token = token
 
-    # 1. Intentar ruta guardada en DB (si existe)
-    paths_to_try = []
-    if book.podcast_audio_path:
-        paths_to_try.append(book.podcast_audio_path)
-    
-    # 2. Intentar ruta estándar actual
-    paths_to_try.append(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3"))
-    
-    # 3. Intentar ruta legado (sin subcarpeta de usuario)
-    paths_to_try.append(os.path.join(settings.AUDIO_DIR, f"{book.id}.mp3"))
+    if not actual_token:
+        raise HTTPException(401, "Not authenticated")
 
-    final_path = None
-    for p in paths_to_try:
-        if p and os.path.exists(p):
-            final_path = p
-            break
-    
-    if not final_path:
-        # Último recurso: buscar cualquier mp3 que empiece por el ID en la carpeta del usuario
-        import glob
-        user_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
-        if os.path.exists(user_dir):
-            matches = glob.glob(os.path.join(user_dir, f"{book.id}*.mp3"))
-            if matches:
-                final_path = matches[0]
+    from jose import JWTError, jwt
+    from app.core.config import settings
+    from app.models.user import User
+    from app.core.database import _global_session_factory, get_user_db
 
-    if not final_path:
-        print(f"[API] Podcast no encontrado para {book.id}. Intentamos: {paths_to_try}")
-        raise HTTPException(404, "El archivo de audio del podcast no se encuentra en el servidor.")
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+    )
+    try:
+        payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None or payload.get("temp"):
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
 
-    return FileResponse(final_path, media_type="audio/mpeg")
+    async with _global_session_factory() as global_db:
+        res = await global_db.execute(select(User).where(User.id == user_id))
+        current_user = res.scalar_one_or_none()
+
+    if not current_user:
+        raise credentials_exception
+
+    # 2. Utilizar base de datos del usuario
+    async for db in get_user_db(current_user.id):
+        result = await db.execute(select(Book).where(Book.id == book_id))
+        book = result.scalar_one_or_none()
+        
+        if not book:
+            raise HTTPException(404, "Podcast not available")
+
+        # 1. Intentar ruta guardada en DB (si existe)
+        paths_to_try = []
+        if book.podcast_audio_path:
+            paths_to_try.append(book.podcast_audio_path)
+        
+        # 2. Intentar ruta estándar actual
+        paths_to_try.append(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3"))
+        
+        # 3. Intentar ruta legado (sin subcarpeta de usuario)
+        paths_to_try.append(os.path.join(settings.AUDIO_DIR, f"{book.id}.mp3"))
+
+        final_path = None
+        for p in paths_to_try:
+            if p and os.path.exists(p):
+                final_path = p
+                break
+        
+        if not final_path:
+            # Último recurso: buscar cualquier mp3 que empiece por el ID en la carpeta del usuario
+            import glob
+            user_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
+            if os.path.exists(user_dir):
+                matches = glob.glob(os.path.join(user_dir, f"{book.id}*.mp3"))
+                if matches:
+                    final_path = matches[0]
+
+        if not final_path:
+            print(f"[API] Podcast no encontrado para {book.id}. Intentamos: {paths_to_try}")
+            raise HTTPException(404, "El archivo de audio del podcast no se encuentra en el servidor.")
+
+        return FileResponse(final_path, media_type="audio/mpeg")
 
 
 # ── Descarga del archivo original ────────────────────────────

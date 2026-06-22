@@ -124,6 +124,8 @@ export default function BookPage() {
   const ttsInfoIndexRef     = React.useRef(0)
   const ttsInfoActiveRef    = React.useRef(false)
   const infoStorageKey = `tts_info_pos_${id}`
+  const podcastStorageKey = `podcast_pos_${id}`
+  const audioRef = React.useRef(null)
 
   const pauseTTS = () => {
     ttsActiveRef.current = false
@@ -401,7 +403,8 @@ export default function BookPage() {
           info: {
             pos: JSON.parse(localStorage.getItem(infoStorageKey) || 'null'),
             type: localStorage.getItem(infoStorageKey + '_type')
-          }
+          },
+          podcast: JSON.parse(localStorage.getItem(podcastStorageKey) || 'null')
         }
         await booksAPI.update(id, { playback_state: state })
       } catch {}
@@ -418,6 +421,19 @@ export default function BookPage() {
 
     const savedInfo = localStorage.getItem(infoStorageKey)
     if (savedInfo) setTtsInfoPaused(true)
+
+    const savedPodcast = localStorage.getItem(podcastStorageKey)
+    if (savedPodcast) {
+      try {
+        const { currentTime, duration } = JSON.parse(savedPodcast)
+        setAudioCurrentTime(currentTime || 0)
+        setAudioDuration(duration || 0)
+        setAudioPaused(true)
+      } catch {}
+    } else {
+      setAudioCurrentTime(0)
+      setAudioDuration(0)
+    }
   }, [id])
 
   const anyTtsPlaying = ttsPlaying || ttsCharPlaying || ttsInfoPlaying
@@ -464,6 +480,8 @@ export default function BookPage() {
   const [audioPlaying, setAudioPlaying] = useState(false)
   const [audioPaused, setAudioPaused] = useState(false)
   const [audioEl, setAudioEl] = useState(null)
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
   const [rating, setRating] = useState(0)
 
   const load = async (isFirst = false) => {
@@ -490,6 +508,16 @@ export default function BookPage() {
           localStorage.removeItem(infoStorageKey)
           localStorage.removeItem(infoStorageKey + '_type')
         }
+
+        if (ps.podcast) {
+          localStorage.setItem(podcastStorageKey, JSON.stringify(ps.podcast))
+          setAudioCurrentTime(ps.podcast.currentTime || 0)
+          setAudioDuration(ps.podcast.duration || 0)
+        } else {
+          localStorage.removeItem(podcastStorageKey)
+          setAudioCurrentTime(0)
+          setAudioDuration(0)
+        }
       }
 
       setRating(bookRes.data.book?.rating || 0)
@@ -506,6 +534,28 @@ export default function BookPage() {
   }
 
   useEffect(() => { load(true) }, [id])
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current = null
+        setAudioEl(null)
+        setAudioPlaying(false)
+        setAudioPaused(false)
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = null
+          navigator.mediaSession.setActionHandler('play', null)
+          navigator.mediaSession.setActionHandler('pause', null)
+          navigator.mediaSession.setActionHandler('seekbackward', null)
+          navigator.mediaSession.setActionHandler('seekforward', null)
+          if ('seekto' in navigator.mediaSession) {
+            navigator.mediaSession.setActionHandler('seekto', null)
+          }
+        }
+      }
+    }
+  }, [id])
 
   useEffect(() => {
     if (!status) return
@@ -539,30 +589,157 @@ export default function BookPage() {
   const handleReadStatus = async (s) => { await booksAPI.update(id, { read_status: s }); load() }
 
   const [audioUrl, setAudioUrl] = useState(null)
-  const loadAudio = async () => {
-    try {
-      const token = localStorage.getItem('bt_token')
-      const resp = await fetch(analysisAPI.podcastAudioUrl(id), { headers: { Authorization: `Bearer ${token}` } })
-      if (!resp.ok) throw new Error('No audio')
-      const blob = await resp.blob(); const url = URL.createObjectURL(blob); setAudioUrl(url); return url
-    } catch { toast.error('Error al cargar audio'); return null }
+
+  const stopAnyTTSWithoutConfirm = () => {
+    stopTTS(true)
+    stopCharTTS(true)
+    stopInfoTTS(true)
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+  }
+
+  const updateMediaSession = (el) => {
+    if ('mediaSession' in navigator) {
+      const coverUrl = book.cover_url || book.cover_local || '/default-cover.png'
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: book.title || 'Podcast',
+        artist: book.author || 'BookTracker',
+        album: 'Análisis de BookTracker',
+        artwork: [
+          { src: coverUrl, sizes: '192x192', type: 'image/png' },
+          { src: coverUrl, sizes: '512x512', type: 'image/png' }
+        ]
+      })
+
+      navigator.mediaSession.setActionHandler('play', () => {
+        el.play().catch(() => {})
+      })
+      navigator.mediaSession.setActionHandler('pause', () => {
+        el.pause()
+      })
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        const offset = details.seekOffset || 10
+        el.currentTime = Math.max(el.currentTime - offset, 0)
+      })
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        const offset = details.seekOffset || 10
+        el.currentTime = Math.min(el.currentTime + offset, el.duration || 0)
+      })
+      try {
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+          if (details.fastSeek && 'fastSeek' in el) {
+            el.fastSeek(details.seekTime)
+          } else {
+            el.currentTime = details.seekTime
+          }
+        })
+      } catch (e) {
+        console.warn('seekto not supported', e)
+      }
+    }
+  }
+
+  const updateMediaSessionPosition = (el) => {
+    if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+      if (el.duration && !isNaN(el.duration)) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: el.duration,
+            playbackRate: el.playbackRate || 1.0,
+            position: el.currentTime
+          })
+        } catch (e) {
+          console.warn('Error setting position state', e)
+        }
+      }
+    }
+  }
+
+  const initAudio = () => {
+    if (audioRef.current) return audioRef.current
+
+    const token = localStorage.getItem('bt_token')
+    const url = `${analysisAPI.podcastAudioUrl(id)}?token=${encodeURIComponent(token)}`
+    const el = new Audio(url)
+    audioRef.current = el
+    setAudioEl(el)
+
+    el.addEventListener('play', () => {
+      setAudioPlaying(true)
+      setAudioPaused(false)
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing'
+      }
+      stopAnyTTSWithoutConfirm()
+    })
+
+    el.addEventListener('pause', () => {
+      setAudioPlaying(false)
+      setAudioPaused(true)
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused'
+      }
+    })
+
+    el.addEventListener('ended', () => {
+      setAudioPlaying(false)
+      setAudioPaused(false)
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'none'
+      }
+      localStorage.removeItem(podcastStorageKey)
+      syncPlaybackToDB()
+    })
+
+    el.addEventListener('timeupdate', () => {
+      setAudioCurrentTime(el.currentTime)
+      const progress = {
+        currentTime: el.currentTime,
+        duration: el.duration
+      }
+      localStorage.setItem(podcastStorageKey, JSON.stringify(progress))
+      syncPlaybackToDB()
+      updateMediaSessionPosition(el)
+    })
+
+    el.addEventListener('durationchange', () => {
+      setAudioDuration(el.duration)
+    })
+
+    el.addEventListener('loadedmetadata', () => {
+      setAudioDuration(el.duration)
+      updateMediaSession(el)
+      updateMediaSessionPosition(el)
+      
+      const saved = localStorage.getItem(podcastStorageKey)
+      if (saved) {
+        const { currentTime } = JSON.parse(saved)
+        if (currentTime > 0 && currentTime < el.duration) {
+          el.currentTime = currentTime
+        }
+      }
+    })
+
+    return el
   }
 
   const toggleAudio = async () => {
-    if (!audioEl) {
-      const url = audioUrl || await loadAudio(); if (!url) return
-      const el = new Audio(url); el.onended = () => { setAudioPlaying(false); setAudioPaused(false) }
-      setAudioEl(el); el.play(); setAudioPlaying(true); setAudioPaused(false)
+    const el = initAudio()
+    if (audioPlaying) {
+      el.pause()
     } else {
-      if (audioPlaying) { audioEl.pause(); setAudioPlaying(false); setAudioPaused(true) }
-      else { audioEl.play(); setAudioPlaying(true); setAudioPaused(false) }
+      el.play().catch(err => {
+        toast.error('Error al reproducir audio')
+        console.error(err)
+      })
     }
   }
 
   const handleDownloadAudio = async () => {
     try {
       const token = localStorage.getItem('bt_token')
-      const resp = await fetch(analysisAPI.podcastAudioUrl(id), { headers: { Authorization: `Bearer ${token}` } })
+      const resp = await fetch(`${analysisAPI.podcastAudioUrl(id)}?token=${encodeURIComponent(token)}`)
       const blob = await resp.blob(); const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = `${book.title}_podcast.mp3`; a.click()
     } catch { toast.error('Error al descargar') }
@@ -920,6 +1097,13 @@ export default function BookPage() {
                     audioPaused={audioPaused}
                     onToggleAudio={toggleAudio}
                     onDownload={handleDownloadAudio}
+                    audioCurrentTime={audioCurrentTime}
+                    audioDuration={audioDuration}
+                    onSeek={(time) => {
+                      const el = initAudio()
+                      el.currentTime = time
+                      setAudioCurrentTime(time)
+                    }}
                   />
                 )}
                 {tab === 'chat' && (
@@ -1002,7 +1186,7 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
   )
 }
 
-const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg, audioUrl, audioPlaying, audioPaused, onToggleAudio, onDownload }) => {
+const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progressMsg, audioUrl, audioPlaying, audioPaused, onToggleAudio, onDownload, audioCurrentTime, audioDuration, onSeek }) => {
   const formatDuration = (s) => {
     if (s === undefined || s === null) return '--:--'
     const totalSeconds = Math.max(0, Math.floor(s))
@@ -1049,7 +1233,25 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
                 <span className="podcast-duration-badge">{formatDuration(book.podcast_duration)}</span>
               </div>
               <p className="podcast-subtitle">Análisis en formato de audio generado por IA</p>
-              <div className="podcast-controls">
+              
+              {status.podcast_done && (
+                <div className="podcast-progress-container">
+                  <div className="podcast-time-labels">
+                    <span>{formatDuration(audioCurrentTime)}</span>
+                    <span>{formatDuration(audioDuration || book.podcast_duration)}</span>
+                  </div>
+                  <input 
+                    type="range" 
+                    className="podcast-progress-slider"
+                    min={0}
+                    max={audioDuration || book.podcast_duration || 100}
+                    value={audioCurrentTime}
+                    onChange={(e) => onSeek(parseFloat(e.target.value))}
+                  />
+                </div>
+              )}
+
+              <div className="podcast-controls" style={{ marginTop: '1rem' }}>
                 <button className="podcast-play-btn" onClick={onToggleAudio}>
                   {audioPlaying ? <Pause size={20} /> : <Play size={20} />}
                   <span>{audioPlaying ? 'Pausar' : 'Escuchar Podcast'}</span>
