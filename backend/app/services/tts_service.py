@@ -110,3 +110,48 @@ async def synthesize_elevenlabs(lines: List[Tuple[str, str]], output_path: str):
     with open(output_path, "wb") as f:
         for chunk in audio_chunks:
             f.write(chunk)
+
+
+async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
+    """Synthesize a single block of text using OpenAI TTS, chunking if necessary."""
+    openai_key = api_keys.get("openai") if api_keys else None
+    if not openai_key:
+        raise ValueError("Se requiere una API Key de OpenAI para generar el audio.")
+    
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=openai_key)
+    
+    # Split text into chunks under 4000 characters (by paragraph or sentence)
+    chunks = []
+    current_chunk = ""
+    for sentence in re.split(r"([.!?]+\s*)", text):
+        if len(current_chunk) + len(sentence) < 4000:
+            current_chunk += sentence
+        else:
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+            current_chunk = sentence
+    if current_chunk.strip():
+        chunks.append(current_chunk.strip())
+        
+    if not chunks:
+        chunks = [text]
+
+    audio_chunks = []
+    for chunk in chunks:
+        try:
+            response = await client.audio.speech.create(
+                model="tts-1",
+                voice="alloy",
+                input=chunk,
+                response_format="mp3",
+            )
+            audio_chunks.append(response.content)
+        except Exception as e:
+            print(f"TTS text chunk error: {e}")
+            continue
+
+    with open(output_path, "wb") as f:
+        for audio_chunk in audio_chunks:
+            f.write(audio_chunk)
+

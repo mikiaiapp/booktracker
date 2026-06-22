@@ -150,6 +150,13 @@ async def summarize_single_chapter(
     from app.workers.tasks import summarize_chapter_task
     try:
         task = summarize_chapter_task.delay(current_user.id, book_id, chapter_id)
+        # Invalidar cache de audio TTS de este capítulo
+        try:
+            cache_file = os.path.join(settings.AUDIO_DIR, current_user.id, f"tts_{book_id}_chapter_{chapter_id}.mp3")
+            if os.path.exists(cache_file):
+                os.remove(cache_file)
+        except Exception as e:
+            print(f"Error removing cached TTS file: {e}")
     except Exception as e:
         print(f"[API] Error lanzando tarea: {e}")
         raise HTTPException(500, f"Error al encolar tarea: {str(e)}")
@@ -490,6 +497,131 @@ async def get_podcast_audio(
         if not final_path:
             print(f"[API] Podcast no encontrado para {book.id}. Intentamos: {paths_to_try}")
             raise HTTPException(404, "El archivo de audio del podcast no se encuentra en el servidor.")
+
+        return FileResponse(final_path, media_type="audio/mpeg")
+
+
+# ── Audio TTS para Sinopsis, Capítulos y Personajes ───────────
+
+@router.get("/{book_id}/tts/audio")
+async def get_tts_audio(
+    book_id: str,
+    type: str,  # 'synopsis', 'global_summary', 'chapter', 'character'
+    request: Request,
+    chapter_id: Optional[str] = None,
+    character_id: Optional[str] = None,
+    token: Optional[str] = None,
+):
+    # 1. Obtener token del query parameter o de la cabecera Authorization
+    auth_header = request.headers.get("Authorization")
+    actual_token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        actual_token = auth_header.split(" ")[1]
+    elif token:
+        actual_token = token
+
+    if not actual_token:
+        raise HTTPException(401, "Not authenticated")
+
+    from jose import JWTError, jwt
+    from app.core.config import settings
+    from app.models.user import User
+    from app.core.database import _global_session_factory, get_user_db
+    from app.services.tts_service import synthesize_text
+
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+    )
+    try:
+        payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None or payload.get("temp"):
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    async with _global_session_factory() as global_db:
+        res = await global_db.execute(select(User).where(User.id == user_id))
+        current_user = res.scalar_one_or_none()
+
+    if not current_user:
+        raise credentials_exception
+
+    # 2. Utilizar base de datos del usuario
+    async for db in get_user_db(current_user.id):
+        result = await db.execute(select(Book).where(Book.id == book_id))
+        book = result.scalar_one_or_none()
+        
+        if not book:
+            raise HTTPException(404, "Book not found")
+
+        # 3. Determinar el texto a sintetizar
+        text_to_speak = ""
+        cache_filename = f"tts_{book_id}_{type}"
+        
+        if type == "synopsis":
+            text_to_speak = book.synopsis or ""
+        elif type == "global_summary":
+            text_to_speak = book.global_summary or ""
+        elif type == "chapter":
+            if not chapter_id:
+                raise HTTPException(400, "chapter_id is required for type=chapter")
+            ch_res = await db.execute(
+                select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id)
+            )
+            chapter = ch_res.scalar_one_or_none()
+            if not chapter:
+                raise HTTPException(404, "Chapter not found")
+            
+            text_to_speak = f"{chapter.title}. {chapter.summary or ''}"
+            if chapter.key_events:
+                try:
+                    import json
+                    events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
+                    if events:
+                        text_to_speak += ". Eventos clave: " + ". ".join(events)
+                except Exception:
+                    pass
+            cache_filename = f"tts_{book_id}_chapter_{chapter_id}"
+            
+        elif type == "character":
+            if not character_id:
+                raise HTTPException(400, "character_id is required for type=character")
+            char_res = await db.execute(
+                select(Character).where(Character.id == character_id, Character.book_id == book_id)
+            )
+            character = char_res.scalar_one_or_none()
+            if not character:
+                raise HTTPException(404, "Character not found")
+            
+            text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
+            if character.personality:
+                text_to_speak += f" Personalidad: {character.personality}."
+            if character.arc:
+                text_to_speak += f" Evolución: {character.arc}."
+            cache_filename = f"tts_{book_id}_character_{character_id}"
+        else:
+            raise HTTPException(400, "Invalid type")
+
+        if not text_to_speak.strip():
+            raise HTTPException(400, "No content to read")
+
+        # 4. Comprobar cache
+        user_audio_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
+        os.makedirs(user_audio_dir, exist_ok=True)
+        final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
+
+        if not os.path.exists(final_path):
+            keys = {
+                "openai": current_user.openai_api_key,
+                "gemini": current_user.gemini_api_key
+            }
+            try:
+                await synthesize_text(text_to_speak, final_path, api_keys=keys)
+            except Exception as e:
+                print(f"[API TTS ERROR] {e}")
+                raise HTTPException(500, f"Error al generar síntesis de voz: {str(e)}")
 
         return FileResponse(final_path, media_type="audio/mpeg")
 
@@ -913,6 +1045,16 @@ async def reanalyze_characters(
 
     # Mark characters for re-analysis
     await db.execute(delete(Character).where(Character.book_id == book_id))
+    # Invalidar cache de audio TTS de los personajes de este libro
+    try:
+        import glob
+        user_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
+        if os.path.exists(user_dir):
+            for p in glob.glob(os.path.join(user_dir, f"tts_{book_id}_character_*.mp3")):
+                try: os.remove(p)
+                except: pass
+    except Exception as e:
+        print(f"Error removing cached character TTS files: {e}")
     book.phase3_done = False
     book.status = "queued"
     await db.commit()

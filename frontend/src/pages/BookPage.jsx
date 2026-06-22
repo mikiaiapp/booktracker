@@ -108,302 +108,387 @@ export default function BookPage() {
   const [ttsPlaying,       setTtsPlaying]       = useState(false)
   const [ttsChapterPaused, setTtsChapterPaused] = useState(false)
   const [ttsChapter,       setTtsChapter]       = useState(null)
-  const [ttsMode,          setTtsMode]          = useState('single')
-  const [ttsQueue,         setTtsQueue]         = useState([])
-  const [ttsIndex,         setTtsIndex]         = useState(0)
-  const ttsQueueRef       = React.useRef([])
-  const ttsIndexRef       = React.useRef(0)
-  const ttsActiveRef      = React.useRef(false)
-  const ttsSentencesRef   = React.useRef([])
-  const ttsSentIdxRef     = React.useRef(0)
   const storageKey        = `tts_pos_${id}`
 
   const [ttsCharPlaying, setTtsCharPlaying] = useState(false)
   const [ttsCharPaused,  setTtsCharPaused]  = useState(false)
   const [ttsCharacter, setTtsCharacter] = useState(null)
-  const ttsCharQueueRef    = React.useRef([])
-  const ttsCharIndexRef    = React.useRef(0)
-  const ttsCharActiveRef   = React.useRef(false)
-  const ttsCharSentRef     = React.useRef([])
-  const ttsCharSentIdxRef  = React.useRef(0)
   const charStorageKey = `tts_char_pos_${id}`
 
   const [ttsInfoPlaying, setTtsInfoPlaying] = useState(false)
   const [ttsInfoPaused,  setTtsInfoPaused]  = useState(false)
-  const ttsInfoSentencesRef = React.useRef([])
-  const ttsInfoIndexRef     = React.useRef(0)
-  const ttsInfoActiveRef    = React.useRef(false)
   const infoStorageKey = `tts_info_pos_${id}`
   const podcastStorageKey = `podcast_pos_${id}`
   const audioRef = React.useRef(null)
+  const ttsAudioRef = React.useRef(null)
+
+  const initTtsAudio = (type, chapterId = null, characterId = null) => {
+    const el = ttsAudioRef.current
+    if (!el) return null
+
+    // Detener podcast si está sonando
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause()
+      setAudioPlaying(false)
+      setAudioPaused(true)
+    }
+
+    const token = localStorage.getItem('bt_token')
+    let url = `${booksAPI.baseURL}/${id}/tts/audio?type=${type}&token=${encodeURIComponent(token)}`
+    if (chapterId) url += `&chapter_id=${chapterId}`
+    if (characterId) url += `&character_id=${characterId}`
+
+    if (el.src !== url) {
+      el.src = url
+      el.load()
+    }
+
+    if (!el._hasListeners) {
+      el._hasListeners = true
+      
+      el.addEventListener('play', () => {
+        const params = new URLSearchParams(el.src.split('?')[1])
+        const t = params.get('type')
+
+        if (t === 'chapter') {
+          setTtsPlaying(true)
+          setTtsChapterPaused(false)
+        } else if (t === 'character') {
+          setTtsCharPlaying(true)
+          setTtsCharPaused(false)
+        } else if (t === 'synopsis' || t === 'global_summary') {
+          setTtsInfoPlaying(true)
+          setTtsInfoPaused(false)
+        }
+
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing'
+        }
+      })
+
+      el.addEventListener('pause', () => {
+        const params = new URLSearchParams(el.src.split('?')[1])
+        const t = params.get('type')
+
+        if (t === 'chapter') {
+          setTtsPlaying(false)
+          setTtsChapterPaused(true)
+        } else if (t === 'character') {
+          setTtsCharPlaying(false)
+          setTtsCharPaused(true)
+        } else if (t === 'synopsis' || t === 'global_summary') {
+          setTtsInfoPlaying(false)
+          setTtsInfoPaused(true)
+        }
+
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused'
+        }
+      })
+
+      el.addEventListener('ended', () => {
+        const params = new URLSearchParams(el.src.split('?')[1])
+        const t = params.get('type')
+        const chId = params.get('chapter_id')
+
+        // Comportamiento de lista de reproducción para capítulos
+        if (t === 'chapter') {
+          const currentIndex = chapters.findIndex(c => c.id === chId)
+          if (currentIndex !== -1 && currentIndex < chapters.length - 1) {
+            const nextChapter = chapters[currentIndex + 1]
+            setTtsChapter(nextChapter.id)
+            const nextEl = initTtsAudio('chapter', nextChapter.id)
+            if (nextEl) {
+              nextEl.play().catch(err => console.warn(err))
+              return
+            }
+          }
+        }
+
+        setTtsPlaying(false)
+        setTtsChapterPaused(false)
+        setTtsChapter(null)
+
+        setTtsCharPlaying(false)
+        setTtsCharPaused(false)
+        setTtsCharacter(null)
+
+        setTtsInfoPlaying(false)
+        setTtsInfoPaused(false)
+
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'none'
+          navigator.mediaSession.metadata = null
+        }
+
+        if (t === 'chapter') {
+          localStorage.removeItem(storageKey)
+        } else if (t === 'character') {
+          localStorage.removeItem(charStorageKey)
+        } else if (t === 'synopsis' || t === 'global_summary') {
+          localStorage.removeItem(infoStorageKey)
+          localStorage.removeItem(infoStorageKey + '_type')
+        }
+        syncPlaybackToDB()
+      })
+
+      el.addEventListener('timeupdate', () => {
+        const params = new URLSearchParams(el.src.split('?')[1])
+        const t = params.get('type')
+        const chId = params.get('chapter_id')
+        const charId = params.get('character_id')
+
+        if (t === 'chapter') {
+          const progress = { chapterId: chId, currentTime: el.currentTime }
+          localStorage.setItem(storageKey, JSON.stringify(progress))
+        } else if (t === 'character') {
+          const progress = { characterId: charId, currentTime: el.currentTime }
+          localStorage.setItem(charStorageKey, JSON.stringify(progress))
+        } else if (t === 'synopsis' || t === 'global_summary') {
+          const progress = { type: t, currentTime: el.currentTime }
+          localStorage.setItem(infoStorageKey, JSON.stringify(progress))
+        }
+        syncPlaybackToDB()
+      })
+
+      el.addEventListener('loadedmetadata', () => {
+        const params = new URLSearchParams(el.src.split('?')[1])
+        const t = params.get('type')
+        const chId = params.get('chapter_id')
+        const charId = params.get('character_id')
+
+        let savedTime = 0
+        if (t === 'chapter') {
+          const saved = localStorage.getItem(storageKey)
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (parsed.chapterId === chId) savedTime = parsed.currentTime || 0
+          }
+        } else if (t === 'character') {
+          const saved = localStorage.getItem(charStorageKey)
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (parsed.characterId === charId) savedTime = parsed.currentTime || 0
+          }
+        } else if (t === 'synopsis' || t === 'global_summary') {
+          const saved = localStorage.getItem(infoStorageKey)
+          if (saved) {
+            const parsed = JSON.parse(saved)
+            if (parsed.type === t) savedTime = parsed.currentTime || 0
+          }
+        }
+
+        if (savedTime > 0 && savedTime < el.duration) {
+          el.currentTime = savedTime
+        }
+        updateTtsMediaSession(t, chId, charId)
+      })
+    }
+
+    return el
+  }
+
+  const updateTtsMediaSession = (type, chapterId = null, characterId = null) => {
+    if (!('mediaSession' in navigator)) return
+
+    let title = 'Lectura'
+    let artist = book?.author || 'BookTracker'
+    
+    if (type === 'chapter') {
+      const ch = chapters.find(c => c.id === chapterId)
+      title = ch ? ch.title : 'Lectura de Capítulo'
+    } else if (type === 'character') {
+      const char = characters.find(c => c.id === characterId)
+      title = `Personaje: ${char ? char.name : 'Estudio'}`
+    } else if (type === 'synopsis') {
+      title = 'Sinopsis'
+    } else if (type === 'global_summary') {
+      title = 'Resumen Global'
+    }
+
+    const relativeSrc = coverSrc(book) || '/default-cover.png'
+    const absoluteCoverUrl = relativeSrc.startsWith('http')
+      ? relativeSrc
+      : `${window.location.origin}${relativeSrc}`
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: title,
+      artist: artist,
+      album: book?.title || 'Lectura de Libro',
+      artwork: [
+        { src: absoluteCoverUrl, sizes: '192x192', type: 'image/png' },
+        { src: absoluteCoverUrl, sizes: '512x512', type: 'image/png' }
+      ]
+    })
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (ttsAudioRef.current) ttsAudioRef.current.play().catch(() => {})
+    })
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (ttsAudioRef.current) ttsAudioRef.current.pause()
+    })
+    navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+      const el = ttsAudioRef.current
+      if (el) {
+        const offset = details.seekOffset || 10
+        el.currentTime = Math.max(el.currentTime - offset, 0)
+      }
+    })
+    navigator.mediaSession.setActionHandler('seekforward', (details) => {
+      const el = ttsAudioRef.current
+      if (el) {
+        const offset = details.seekOffset || 10
+        el.currentTime = Math.min(el.currentTime + offset, el.duration || 0)
+      }
+    })
+    try {
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        const el = ttsAudioRef.current
+        if (el) {
+          if (details.fastSeek && 'fastSeek' in el) {
+            el.fastSeek(details.seekTime)
+          } else {
+            el.currentTime = details.seekTime
+          }
+        }
+      })
+    } catch (e) {
+      console.warn('seekto not supported', e)
+    }
+  }
 
   const pauseTTS = () => {
-    ttsActiveRef.current = false
-    window.speechSynthesis.cancel()
-    setTtsPlaying(false)
-    setTtsChapterPaused(true)
+    if (ttsAudioRef.current) ttsAudioRef.current.pause()
   }
 
   const resumeCurrentTTS = () => {
-    startSilentAudioForTts()
-    if (!ttsQueueRef.current.length) {
-      const saved = loadTTSPos()
-      if (saved && chapters.length) {
-        const queue = buildQueue(book, chapters)
-        ttsQueueRef.current = queue; ttsActiveRef.current = true
-        setTtsPlaying(true); setTtsChapterPaused(false)
-        const idx = saved.idx || 0
-        const item = queue[idx]
-        if (!item) return
-        setTtsIndex(idx); setTtsChapter(item.id)
-        const raw = item.text.match(/[^.!?]+[.!?]+[\s]*/g) || [item.text]
-        const sentences = raw.map(s => s.trim()).filter(Boolean)
-        ttsSentencesRef.current = sentences
-        ttsSentIdxRef.current = saved.sentIdx || 0
-        _speakChapterSentence(sentences, saved.sentIdx || 0)
-        return
+    const el = ttsAudioRef.current
+    if (el) {
+      if (!el.src || el.src === '') {
+        const saved = localStorage.getItem(storageKey)
+        if (saved) {
+          const { chapterId } = JSON.parse(saved)
+          setTtsChapter(chapterId)
+          initTtsAudio('chapter', chapterId)
+        }
       }
-      return
+      el.play().catch(() => {})
     }
-    ttsActiveRef.current = true
-    setTtsPlaying(true); setTtsChapterPaused(false)
-    _speakChapterSentence(ttsSentencesRef.current, ttsSentIdxRef.current)
   }
 
   const stopTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsPlaying || ttsChapter || ttsChapterPaused)) {
       if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el grado de avance guardado para este libro.')) return
     }
-    ttsActiveRef.current = false
-    window.speechSynthesis.cancel()
-    setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false); setTtsMode('single')
-    ttsSentencesRef.current = []; ttsSentIdxRef.current = 0
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current.src = ''
+    }
+    setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
     localStorage.removeItem(storageKey)
     syncPlaybackToDB()
   }
 
-  const _speakChapterSentence = (sentences, sIdx) => {
-    if (!ttsActiveRef.current) return
-    if (sIdx >= sentences.length) {
-      const nextIdx = ttsIndexRef.current + 1
-      const queue = ttsQueueRef.current
-      if (queue._mode === 'single' && nextIdx >= queue.length) {
-        ttsActiveRef.current = false
-        setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
-        localStorage.removeItem(storageKey)
-      } else {
-        speakItem(queue, nextIdx)
-      }
-      return
-    }
-    ttsSentIdxRef.current = sIdx
-    saveTTSPos(ttsIndexRef.current, ttsQueueRef.current, sIdx)
-    const u = new SpeechSynthesisUtterance(sentences[sIdx])
-    u.lang = 'es-ES'; u.rate = 0.95
-    u.onend = () => { if (ttsActiveRef.current) _speakChapterSentence(sentences, sIdx + 1) }
-    u.onerror = (e) => { if (e.error !== 'interrupted' && ttsActiveRef.current) _speakChapterSentence(sentences, sIdx + 1) }
-    window.speechSynthesis.speak(u)
-  }
-
-  const speakItem = (queue, idx) => {
-    if (!ttsActiveRef.current || idx >= queue.length) {
-        if (idx >= queue.length) {
-            ttsActiveRef.current = false
-            setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
-            localStorage.removeItem(storageKey)
-        }
-        return
-    }
-    const item = queue[idx]
-    ttsIndexRef.current = idx; ttsQueueRef.current = queue
-    saveTTSPos(idx, queue, 0)
-    setTtsIndex(idx); setTtsChapter(item.id)
-    const raw = item.text.match(/[^.!?]+[.!?]+[\s]*/g) || [item.text]
-    const sentences = raw.map(s => s.trim()).filter(Boolean)
-    ttsSentencesRef.current = sentences
-    ttsSentIdxRef.current = 0
-    _speakChapterSentence(sentences, 0)
-  }
-
-  const saveTTSPos = (idx, queue, sentIdx = 0) => {
-    try { 
-      const pos = { idx, chapterId: queue[idx]?.id, sentIdx }
-      localStorage.setItem(storageKey, JSON.stringify(pos))
-      syncPlaybackToDB() 
-    } catch {}
-  }
-
-  const loadTTSPos = () => {
-    try { const saved = localStorage.getItem(storageKey); return saved ? JSON.parse(saved) : null } catch { return null }
-  }
-
-  const chapterToText = (c) => {
-    let text = `${c.title}. ${c.summary || ''}`
-    if (c.key_events?.length > 0) text += '. Eventos clave: ' + c.key_events.join('. ')
-    return text
-  }
-
-  const buildQueue = (book, chapters, fromIdx = 0) => {
-    const queue = []
-    if (fromIdx === 0 && book.synopsis) queue.push({ id: 'synopsis', title: 'Sinopsis', text: book.synopsis })
-    chapters.filter(c => c.summary && c.summary_status === 'done')
-      .forEach(c => queue.push({ id: c.id, title: c.title, text: chapterToText(c) }))
-    return queue
-  }
-
   const playFromBeginning = (book, chapters) => {
-    startSilentAudioForTts()
-    stopTTS(true)
-    const queue = buildQueue(book, chapters)
-    if (!queue.length) return
-    ttsQueueRef.current = queue; ttsIndexRef.current = 0; ttsActiveRef.current = true
-    setTtsPlaying(true); speakItem(queue, 0)
+    stopAnyTTSWithoutConfirm()
+    if (chapters.length > 0) {
+      const firstChapter = chapters[0]
+      setTtsChapter(firstChapter.id)
+      const el = initTtsAudio('chapter', firstChapter.id)
+      if (el) el.play().catch(e => console.warn(e))
+    }
   }
 
   const playFromChapter = (chapter, chapters) => {
-    startSilentAudioForTts()
-    stopTTS(true)
-    const doneChapters = chapters.filter(c => c.summary && c.summary_status === 'done')
-    const idx = doneChapters.findIndex(c => c.id === chapter.id)
-    const queue = Object.assign(doneChapters.slice(idx < 0 ? 0 : idx).map(c => ({ id: c.id, title: c.title, text: chapterToText(c) })), { _mode: 'from' })
-    if (!queue.length) return
-    ttsQueueRef.current = queue; ttsIndexRef.current = 0; setTtsMode('from'); ttsActiveRef.current = true
-    setTtsPlaying(true); speakItem(queue, 0)
+    stopAnyTTSWithoutConfirm()
+    setTtsChapter(chapter.id)
+    const el = initTtsAudio('chapter', chapter.id)
+    if (el) el.play().catch(e => console.warn(e))
   }
 
-  const characterToText = (char) => {
-    let text = `Personaje: ${char.name}. ${char.role || ''}. ${char.description || ''}.`
-    if (char.personality) text += ` Personalidad: ${char.personality}.`
-    if (char.arc) text += ` Evolución: ${char.arc}.`
-    return text
+  const pauseCharTTS = () => {
+    if (ttsAudioRef.current) ttsAudioRef.current.pause()
   }
 
-  const pauseCharTTS = () => { ttsCharActiveRef.current = false; window.speechSynthesis.cancel(); setTtsCharPlaying(false); setTtsCharPaused(true) }
   const resumeCharTTS = () => {
-    startSilentAudioForTts()
-    if (!ttsCharQueueRef.current.length) {
-      // Intentar restaurar cola si hay datos guardados
-      const saved = localStorage.getItem(charStorageKey)
-      if (saved && characters.length) {
-        const { idx, sentIdx } = JSON.parse(saved)
-        const char = characters.find(c => characters.indexOf(c) === idx) || characters[0]
-        const queue = [{ name: char.name, text: characterToText(char) }]
-        ttsCharQueueRef.current = queue; ttsCharIndexRef.current = 0; ttsCharActiveRef.current = true
-        setTtsCharPlaying(true); setTtsCharPaused(false)
-        const raw = queue[0].text.match(/[^.!?]+[.!?]+[\s]*/g) || [queue[0].text]
-        const sentences = raw.map(s => s.trim()).filter(Boolean)
-        ttsCharSentRef.current = sentences
-        _speakCharSentence(sentences, sentIdx)
-        return
+    const el = ttsAudioRef.current
+    if (el) {
+      if (!el.src || el.src === '') {
+        const saved = localStorage.getItem(charStorageKey)
+        if (saved) {
+          const { characterId } = JSON.parse(saved)
+          const char = characters.find(c => c.id === characterId)
+          if (char) {
+            setTtsCharacter(char.name)
+            initTtsAudio('character', null, characterId)
+          }
+        }
       }
-      return
+      el.play().catch(() => {})
     }
-    ttsCharActiveRef.current = true; setTtsCharPlaying(true); setTtsCharPaused(false); _speakCharSentence(ttsCharSentRef.current, ttsCharSentIdxRef.current) 
   }
+
   const stopCharTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) {
       if (!await confirm('¿Parar lectura de personajes? Se perderá el grado de avance guardado.')) return
     }
-    ttsCharActiveRef.current = false; window.speechSynthesis.cancel()
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current.src = ''
+    }
     setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
     localStorage.removeItem(charStorageKey)
     syncPlaybackToDB()
   }
 
-  const _speakCharSentence = (sentences, sIdx) => {
-    if (!ttsCharActiveRef.current) return
-    if (sIdx >= sentences.length) { speakCharItem(ttsCharQueueRef.current, ttsCharIndexRef.current + 1); return }
-    ttsCharSentIdxRef.current = sIdx
-    localStorage.setItem(charStorageKey, JSON.stringify({ idx: ttsCharIndexRef.current, sentIdx: sIdx }))
-    syncPlaybackToDB()
-    const u = new SpeechSynthesisUtterance(sentences[sIdx])
-    u.lang = 'es-ES'; u.rate = 0.95
-    u.onend = () => { if (ttsCharActiveRef.current) _speakCharSentence(sentences, sIdx + 1) }
-    u.onerror = (e) => { if (e.error !== 'interrupted' && ttsCharActiveRef.current) _speakCharSentence(sentences, sIdx + 1) }
-    window.speechSynthesis.speak(u)
+  const playCharacter = (char) => {
+    stopAnyTTSWithoutConfirm()
+    setTtsCharacter(char.name)
+    const el = initTtsAudio('character', null, char.id)
+    if (el) el.play().catch(e => console.warn(e))
   }
 
-  const speakCharItem = (queue, idx) => {
-    if (!ttsCharActiveRef.current || idx >= queue.length) {
-      if (idx >= queue.length) { ttsCharActiveRef.current = false; setTtsCharPlaying(false); setTtsCharacter(null) }
-      return
-    }
-    const item = queue[idx]
-    ttsCharIndexRef.current = idx; ttsCharQueueRef.current = queue
-    setTtsCharacter(item.name)
-    const raw = item.text.match(/[^.!?]+[.!?]+[\s]*/g) || [item.text]
-    const sentences = raw.map(s => s.trim()).filter(Boolean)
-    ttsCharSentRef.current = sentences; ttsCharSentIdxRef.current = 0
-    _speakCharSentence(sentences, 0)
-  }
-
-  const playCharacter = (char) => { startSilentAudioForTts(); stopCharTTS(true); stopTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); const queue = [{ name: char.name, text: characterToText(char) }]; ttsCharQueueRef.current = queue; ttsCharIndexRef.current = 0; ttsCharActiveRef.current = true; setTtsCharPlaying(true); speakCharItem(queue, 0) }
-
-  const _speakInfoFromIndex = (sentences, idx) => {
-    if (!ttsInfoActiveRef.current || idx >= sentences.length) {
-      if (idx >= sentences.length && ttsInfoActiveRef.current) { 
-        ttsInfoActiveRef.current = false; setTtsInfoPlaying(false); setTtsInfoPaused(false) 
-        localStorage.removeItem(infoStorageKey)
-        localStorage.removeItem(infoStorageKey + '_type')
-        syncPlaybackToDB()
-      }
-      return
-    }
-    ttsInfoIndexRef.current = idx
-    localStorage.setItem(infoStorageKey, idx.toString())
-    syncPlaybackToDB()
-    const u = new SpeechSynthesisUtterance(sentences[idx])
-    u.lang = 'es-ES'; u.rate = 0.95
-    u.onend = () => { if (ttsInfoActiveRef.current) _speakInfoFromIndex(sentences, idx + 1) }
-    u.onerror = (e) => { if (e.error !== 'interrupted' && ttsInfoActiveRef.current) _speakInfoFromIndex(sentences, idx + 1) }
-    window.speechSynthesis.speak(u)
-  }
-
-  const _startInfoTTS = (text, fromIdx = 0) => {
-    const raw = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text]
-    const sentences = raw.map(s => s.trim()).filter(Boolean)
-    ttsInfoSentencesRef.current = sentences; ttsInfoIndexRef.current = fromIdx; ttsInfoActiveRef.current = true
-    _speakInfoFromIndex(sentences, fromIdx)
-  }
-
-  const playInfo = (book) => { 
-    startSilentAudioForTts()
-    stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
-    const text = book.synopsis || ''; if (!text) return; 
+  const playInfo = (book) => {
+    stopAnyTTSWithoutConfirm()
     localStorage.setItem(infoStorageKey + '_type', 'synopsis')
-    const saved = localStorage.getItem(infoStorageKey)
-    const fromIdx = saved ? parseInt(saved) : 0
-    setTtsInfoPlaying(true); _startInfoTTS(text, fromIdx) 
+    const el = initTtsAudio('synopsis')
+    if (el) el.play().catch(e => console.warn(e))
   }
-  const playSummary = (book) => { 
-    startSilentAudioForTts()
-    stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
-    if (!book.global_summary) return; 
-    localStorage.setItem(infoStorageKey + '_type', 'summary')
-    const saved = localStorage.getItem(infoStorageKey)
-    const fromIdx = saved ? parseInt(saved) : 0
-    setTtsInfoPlaying(true); _startInfoTTS(book.global_summary, fromIdx) 
+
+  const playSummary = (book) => {
+    stopAnyTTSWithoutConfirm()
+    localStorage.setItem(infoStorageKey + '_type', 'global_summary')
+    const el = initTtsAudio('global_summary')
+    if (el) el.play().catch(e => console.warn(e))
   }
-  const pauseInfoTTS = () => { ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(true) }
-  const resumeInfoTTS = () => { 
-    startSilentAudioForTts()
-    if (!ttsInfoSentencesRef.current.length) {
-      const type = localStorage.getItem(infoStorageKey + '_type')
-      const saved = localStorage.getItem(infoStorageKey)
-      const text = type === 'summary' ? book.global_summary : book.synopsis
-      if (text && saved) {
-        setTtsInfoPlaying(true); setTtsInfoPaused(false); _startInfoTTS(text, parseInt(saved))
-        return
+
+  const pauseInfoTTS = () => {
+    if (ttsAudioRef.current) ttsAudioRef.current.pause()
+  }
+
+  const resumeInfoTTS = () => {
+    const el = ttsAudioRef.current
+    if (el) {
+      if (!el.src || el.src === '') {
+        const saved = localStorage.getItem(infoStorageKey)
+        const type = localStorage.getItem(infoStorageKey + '_type')
+        if (type) {
+          initTtsAudio(type)
+        }
       }
-      return
+      el.play().catch(() => {})
     }
-    setTtsInfoPlaying(true); setTtsInfoPaused(false); ttsInfoActiveRef.current = true; _speakInfoFromIndex(ttsInfoSentencesRef.current, ttsInfoIndexRef.current) 
   }
+
   const stopInfoTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsInfoPlaying || ttsInfoPaused)) {
       if (!await confirm('¿Parar reproducción? Se perderá el grado de avance guardado.')) return
     }
-    ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(false)
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current.src = ''
+    }
+    setTtsInfoPlaying(false); setTtsInfoPaused(false)
     localStorage.removeItem(infoStorageKey)
     localStorage.removeItem(infoStorageKey + '_type')
     syncPlaybackToDB()
@@ -557,116 +642,27 @@ export default function BookPage() {
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current.src = ''
-        try {
-          audioRef.current.load()
-        } catch (e) {}
-        setAudioPlaying(false)
-        setAudioPaused(false)
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.metadata = null
-          navigator.mediaSession.setActionHandler('play', null)
-          navigator.mediaSession.setActionHandler('pause', null)
-          navigator.mediaSession.setActionHandler('seekbackward', null)
-          navigator.mediaSession.setActionHandler('seekforward', null)
-          if ('seekto' in navigator.mediaSession) {
-            navigator.mediaSession.setActionHandler('seekto', null)
-          }
+        try { audioRef.current.load() } catch (e) {}
+      }
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause()
+        ttsAudioRef.current.src = ''
+        try { ttsAudioRef.current.load() } catch (e) {}
+      }
+      setAudioPlaying(false)
+      setAudioPaused(false)
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = null
+        navigator.mediaSession.setActionHandler('play', null)
+        navigator.mediaSession.setActionHandler('pause', null)
+        navigator.mediaSession.setActionHandler('seekbackward', null)
+        navigator.mediaSession.setActionHandler('seekforward', null)
+        if ('seekto' in navigator.mediaSession) {
+          navigator.mediaSession.setActionHandler('seekto', null)
         }
       }
     }
   }, [id])
-
-  // Reactive Media Session / Background Audio Sync for TTS
-  const currentTtsType = ttsPlaying ? 'chapter' : (ttsCharPlaying ? 'character' : (ttsInfoPlaying ? 'info' : null))
-  const currentTtsPausedType = ttsChapterPaused ? 'chapter' : (ttsCharPaused ? 'character' : (ttsInfoPaused ? 'info' : null))
-
-  useEffect(() => {
-    if (audioPlaying) return
-
-    const el = audioRef.current
-    if (!el) return
-
-    const isTtsActive = !!currentTtsType
-    const isTtsPaused = !!currentTtsPausedType
-
-    if (!isTtsActive && !isTtsPaused) {
-      if (audioPaused && el.src !== SILENCE_URL && el.src !== '') {
-        return
-      }
-    }
-
-    if (isTtsActive) {
-      let title = 'Lectura'
-      let artist = book?.author || 'BookTracker'
-      if (currentTtsType === 'chapter') {
-        const ch = chapters.find(c => c.id === ttsChapter)
-        title = ch ? ch.title : 'Lectura de Capítulo'
-      } else if (currentTtsType === 'character') {
-        title = `Personaje: ${ttsCharacter || 'Lectura'}`
-      } else if (currentTtsType === 'info') {
-        const type = localStorage.getItem(infoStorageKey + '_type')
-        title = type === 'summary' ? 'Análisis Global' : 'Sinopsis'
-      }
-
-      if ('mediaSession' in navigator) {
-        const relativeSrc = coverSrc(book) || '/default-cover.png'
-        const absoluteCoverUrl = relativeSrc.startsWith('http')
-          ? relativeSrc
-          : `${window.location.origin}${relativeSrc}`
-
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: title,
-          artist: artist,
-          album: book?.title || 'Lectura de Libro',
-          artwork: [
-            { src: absoluteCoverUrl, sizes: '192x192', type: 'image/png' },
-            { src: absoluteCoverUrl, sizes: '512x512', type: 'image/png' }
-          ]
-        })
-
-        navigator.mediaSession.playbackState = 'playing'
-
-        navigator.mediaSession.setActionHandler('play', () => {
-          resumeAnyTTS()
-        })
-        navigator.mediaSession.setActionHandler('pause', () => {
-          pauseAnyTTS()
-        })
-        navigator.mediaSession.setActionHandler('previoustrack', () => {
-          stopAnyTTS(true)
-        })
-        navigator.mediaSession.setActionHandler('nexttrack', () => {
-          stopAnyTTS(true)
-        })
-      }
-
-      if (el.src !== SILENCE_URL) {
-        el.src = SILENCE_URL
-        el.loop = true
-      }
-      el.play().catch(() => {})
-
-    } else if (isTtsPaused) {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.playbackState = 'paused'
-      }
-      if (el.src === SILENCE_URL) {
-        el.pause()
-      }
-    } else {
-      if ('mediaSession' in navigator) {
-        if (!audioRef.current || audioRef.current.src === SILENCE_URL) {
-          navigator.mediaSession.playbackState = 'none'
-          navigator.mediaSession.metadata = null
-        }
-      }
-      if (el.src === SILENCE_URL) {
-        el.pause()
-        el.src = ''
-        try { el.load() } catch {}
-      }
-    }
-  }, [currentTtsType, currentTtsPausedType, ttsChapter, ttsCharacter, audioPlaying, audioPaused, id, book, chapters])
 
   useEffect(() => {
     if (!status) return
@@ -1309,6 +1305,7 @@ export default function BookPage() {
       
       {/* Elemento audio oculto en el DOM para reproducir en segundo plano en móviles */}
       <audio ref={audioRef} style={{ display: 'none' }} preload="metadata" />
+      <audio ref={ttsAudioRef} style={{ display: 'none' }} preload="metadata" />
     </div>
   )
 }
