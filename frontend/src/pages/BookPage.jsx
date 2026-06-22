@@ -601,14 +601,18 @@ export default function BookPage() {
 
   const updateMediaSession = (el) => {
     if ('mediaSession' in navigator) {
-      const coverUrl = book.cover_url || book.cover_local || '/default-cover.png'
+      const relativeSrc = coverSrc(book) || '/default-cover.png'
+      const absoluteCoverUrl = relativeSrc.startsWith('http')
+        ? relativeSrc
+        : `${window.location.origin}${relativeSrc}`
+
       navigator.mediaSession.metadata = new MediaMetadata({
         title: book.title || 'Podcast',
         artist: book.author || 'BookTracker',
         album: 'Análisis de BookTracker',
         artwork: [
-          { src: coverUrl, sizes: '192x192', type: 'image/png' },
-          { src: coverUrl, sizes: '512x512', type: 'image/png' }
+          { src: absoluteCoverUrl, sizes: '192x192', type: 'image/png' },
+          { src: absoluteCoverUrl, sizes: '512x512', type: 'image/png' }
         ]
       })
 
@@ -642,7 +646,7 @@ export default function BookPage() {
 
   const updateMediaSessionPosition = (el) => {
     if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
-      if (el.duration && !isNaN(el.duration)) {
+      if (el.duration && isFinite(el.duration) && !isNaN(el.duration) && el.duration > 0) {
         try {
           navigator.mediaSession.setPositionState({
             duration: el.duration,
@@ -665,12 +669,16 @@ export default function BookPage() {
     audioRef.current = el
     setAudioEl(el)
 
+    // Registrar inmediatamente los metadatos de reproducción antes de iniciar
+    updateMediaSession(el)
+
     el.addEventListener('play', () => {
       setAudioPlaying(true)
       setAudioPaused(false)
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing'
       }
+      updateMediaSession(el)
       stopAnyTTSWithoutConfirm()
     })
 
@@ -704,11 +712,15 @@ export default function BookPage() {
     })
 
     el.addEventListener('durationchange', () => {
-      setAudioDuration(el.duration)
+      if (el.duration && isFinite(el.duration)) {
+        setAudioDuration(el.duration)
+      }
     })
 
     el.addEventListener('loadedmetadata', () => {
-      setAudioDuration(el.duration)
+      if (el.duration && isFinite(el.duration)) {
+        setAudioDuration(el.duration)
+      }
       updateMediaSession(el)
       updateMediaSessionPosition(el)
       
