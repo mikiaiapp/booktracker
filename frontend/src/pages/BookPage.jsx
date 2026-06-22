@@ -539,8 +539,10 @@ export default function BookPage() {
     return () => {
       if (audioRef.current) {
         audioRef.current.pause()
-        audioRef.current = null
-        setAudioEl(null)
+        audioRef.current.src = ''
+        try {
+          audioRef.current.load()
+        } catch (e) {}
         setAudioPlaying(false)
         setAudioPaused(false)
         if ('mediaSession' in navigator) {
@@ -661,12 +663,25 @@ export default function BookPage() {
   }
 
   const initAudio = () => {
-    if (audioRef.current) return audioRef.current
+    const el = audioRef.current
+    if (!el) return null
 
+    if (el._hasListeners) {
+      const token = localStorage.getItem('bt_token')
+      const url = `${analysisAPI.podcastAudioUrl(id)}?token=${encodeURIComponent(token)}`
+      if (el.src !== url) {
+        el.src = url
+        el.load()
+        updateMediaSession(el)
+      }
+      return el
+    }
+
+    el._hasListeners = true
     const token = localStorage.getItem('bt_token')
     const url = `${analysisAPI.podcastAudioUrl(id)}?token=${encodeURIComponent(token)}`
-    const el = new Audio(url)
-    audioRef.current = el
+    el.src = url
+    el.load()
     setAudioEl(el)
 
     // Registrar inmediatamente los metadatos de reproducción antes de iniciar
@@ -1166,6 +1181,9 @@ export default function BookPage() {
 
       {confirmModal}
       {coverPickerOpen && <CoverPicker book={book} onClose={() => setCoverPickerOpen(false)} onSelect={async (url) => { await booksAPI.update(id, { cover_url: url }); setCoverKey(k => k+1); setCoverPickerOpen(false); load() }} />}
+      
+      {/* Elemento audio oculto en el DOM para reproducir en segundo plano en móviles */}
+      <audio ref={audioRef} style={{ display: 'none' }} preload="metadata" />
     </div>
   )
 }
