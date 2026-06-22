@@ -1287,6 +1287,17 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
                   <span>{audioPlaying ? 'Pausar' : 'Escuchar Podcast'}</span>
                 </button>
                 <div className="podcast-secondary-actions">
+                  <a
+                    className="podcast-download-btn-premium"
+                    href={`${analysisAPI.podcastAudioUrl(book.id)}?token=${encodeURIComponent(localStorage.getItem('bt_token'))}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Abrir en el reproductor nativo del sistema"
+                    style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.6rem' }}
+                  >
+                    <ExternalLink size={18} />
+                    <span className="btn-text">Abrir en Sistema</span>
+                  </a>
                   <button className="podcast-download-btn-premium" onClick={onDownload} title="Descargar MP3">
                     <Download size={18} />
                     <span className="btn-text">MP3</span>
