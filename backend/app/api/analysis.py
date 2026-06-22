@@ -501,6 +501,75 @@ async def get_podcast_audio(
         return FileResponse(final_path, media_type="audio/mpeg")
 
 
+# ── Muestra de Audio TTS para Ajustes ─────────────────────────
+
+@router.get("/tts/sample")
+async def get_tts_sample(
+    voice: str,
+    request: Request,
+    token: Optional[str] = None,
+):
+    auth_header = request.headers.get("Authorization")
+    actual_token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        actual_token = auth_header.split(" ")[1]
+    elif token:
+        actual_token = token
+
+    if not actual_token:
+        raise HTTPException(401, "Not authenticated")
+
+    from jose import JWTError, jwt
+    from app.core.config import settings
+    from app.models.user import User
+    from app.core.database import _global_session_factory
+
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+    )
+    try:
+        payload = jwt.decode(actual_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None or payload.get("temp"):
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    async with _global_session_factory() as global_db:
+        res = await global_db.execute(select(User).where(User.id == user_id))
+        current_user = res.scalar_one_or_none()
+
+    if not current_user:
+        raise credentials_exception
+
+    allowed_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
+    if voice not in allowed_voices:
+        raise HTTPException(400, "Voice not allowed")
+
+    samples_dir = os.path.join(settings.AUDIO_DIR, "samples")
+    os.makedirs(samples_dir, exist_ok=True)
+    final_path = os.path.join(samples_dir, f"sample_{voice}.mp3")
+
+    if not os.path.exists(final_path):
+        keys = {
+            "openai": current_user.openai_api_key,
+            "gemini": current_user.gemini_api_key
+        }
+        text_to_speak = f"Hola, esta es una muestra de la voz {voice.title()} en BookTracker."
+        temp_path = final_path + ".tmp"
+        
+        from fastapi.responses import StreamingResponse
+        from app.services.tts_service import stream_synthesize_text
+
+        return StreamingResponse(
+            stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys, voice=voice),
+            media_type="audio/mpeg"
+        )
+
+    return FileResponse(final_path, media_type="audio/mpeg")
+
+
 # ── Audio TTS para Sinopsis, Capítulos y Personajes ───────────
 
 @router.get("/{book_id}/tts/audio")

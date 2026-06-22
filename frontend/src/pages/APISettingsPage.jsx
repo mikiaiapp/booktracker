@@ -82,6 +82,45 @@ export default function APISettingsPage() {
   // Para evitar guardar la carga inicial
   const lastSavedSettings = useRef(null)
   const debounceTimer = useRef(null)
+  const sampleAudioRef = useRef(null)
+
+  const playVoiceSample = useCallback((voiceId, speedVal) => {
+    if (sampleAudioRef.current) {
+      sampleAudioRef.current.pause()
+      sampleAudioRef.current = null
+    }
+
+    const token = localStorage.getItem('bt_token')
+    // Usar la ruta global del api de análisis para la muestra
+    const url = `/api/analysis/tts/sample?voice=${voiceId}&token=${encodeURIComponent(token)}`
+    
+    const audio = new Audio(url)
+    audio.playbackRate = parseFloat(speedVal || '1.0') || 1.0
+    audio.play().catch(e => console.warn("Muestra de audio bloqueada por autoplay:", e))
+    sampleAudioRef.current = audio
+  }, [])
+
+  const handleVoiceChange = (voiceId) => {
+    setSettings(prev => {
+      const next = { ...prev, tts_voice: voiceId }
+      playVoiceSample(voiceId, next.tts_speed)
+      return next
+    })
+  }
+
+  const handleSpeedRelease = () => {
+    playVoiceSample(settings.tts_voice, settings.tts_speed)
+  }
+
+  // Detener reproducción al desmontar el componente
+  useEffect(() => {
+    return () => {
+      if (sampleAudioRef.current) {
+        sampleAudioRef.current.pause()
+      }
+    }
+  }, [])
+
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -290,7 +329,7 @@ export default function APISettingsPage() {
                   <label key={voice.id} className={`luxury-card ${isActive ? 'active' : ''}`}>
                     <input type="radio" name="tts_voice" value={voice.id}
                       checked={isActive}
-                      onChange={e => setSettings({ ...settings, tts_voice: e.target.value })}
+                      onChange={() => handleVoiceChange(voice.id)}
                       style={{ display: 'none' }}
                     />
                     <div className="luxury-card-header">
@@ -314,6 +353,8 @@ export default function APISettingsPage() {
                 step="0.1" 
                 value={parseFloat(settings.tts_speed || 1.0)} 
                 onChange={e => setSettings({ ...settings, tts_speed: e.target.value })}
+                onMouseUp={handleSpeedRelease}
+                onTouchEnd={handleSpeedRelease}
                 className="luxury-slider"
                 style={{ flex: 1, accentColor: 'var(--gold)' }}
               />
