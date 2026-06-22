@@ -197,6 +197,8 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         "totp_enabled": current_user.totp_enabled,
         "email_otp_enabled": current_user.email_otp_enabled,
         "avatar_color": current_user.avatar_color,
+        "tts_voice": getattr(current_user, 'tts_voice', 'alloy') or 'alloy',
+        "tts_speed": getattr(current_user, 'tts_speed', '1.0') or '1.0',
         "api_settings": {
             "gemini_api_key": current_user.gemini_api_key,
             "openai_api_key": current_user.openai_api_key,

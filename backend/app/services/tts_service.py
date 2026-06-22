@@ -131,7 +131,7 @@ def split_text_to_chunks(text: str) -> List[str]:
     return chunks
 
 
-async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
+async def synthesize_text(text: str, output_path: str, api_keys: dict = None, voice: str = "alloy"):
     """Synthesize a single block of text using OpenAI TTS, chunking if necessary."""
     openai_key = api_keys.get("openai") if api_keys else None
     if not openai_key:
@@ -147,7 +147,7 @@ async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
         try:
             response = await client.audio.speech.create(
                 model="tts-1",
-                voice="alloy",
+                voice=voice,
                 input=chunk,
                 response_format="mp3",
             )
@@ -161,7 +161,7 @@ async def synthesize_text(text: str, output_path: str, api_keys: dict = None):
             f.write(audio_chunk)
 
 
-async def stream_synthesize_text(text: str, temp_path: str, final_path: str, api_keys: dict = None):
+async def stream_synthesize_text(text: str, temp_path: str, final_path: str, api_keys: dict = None, voice: str = "alloy"):
     """Synthesize text using OpenAI TTS, stream MP3 chunks, and cache them locally."""
     openai_key = api_keys.get("openai") if api_keys else None
     if not openai_key:
@@ -178,7 +178,7 @@ async def stream_synthesize_text(text: str, temp_path: str, final_path: str, api
             for chunk in chunks:
                 response = await client.audio.speech.create(
                     model="tts-1",
-                    voice="alloy",
+                    voice=voice,
                     input=chunk,
                     response_format="mp3",
                 )
@@ -203,5 +203,6 @@ async def stream_synthesize_text(text: str, temp_path: str, final_path: str, api
             except:
                 pass
         raise
+
 
 

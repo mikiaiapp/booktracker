@@ -51,7 +51,9 @@ async def init_global_db():
             ("pending_otp_expires", "DATETIME"),
             ("last_login", "DATETIME"),
             ("is_verified", "BOOLEAN DEFAULT 1"),
-            ("is_active", "BOOLEAN DEFAULT 1")
+            ("is_active", "BOOLEAN DEFAULT 1"),
+            ("tts_voice", "TEXT DEFAULT 'alloy'"),
+            ("tts_speed", "TEXT DEFAULT '1.0'")
         ]
         for col_name, col_type in cols:
             try: 
@@ -62,6 +64,10 @@ async def init_global_db():
                     await conn.execute(text("UPDATE users SET is_verified = 1 WHERE is_verified IS NULL"))
                 if col_name == "is_active":
                     await conn.execute(text("UPDATE users SET is_active = 1 WHERE is_active IS NULL"))
+                if col_name == "tts_voice":
+                    await conn.execute(text("UPDATE users SET tts_voice = 'alloy' WHERE tts_voice IS NULL"))
+                if col_name == "tts_speed":
+                    await conn.execute(text("UPDATE users SET tts_speed = '1.0' WHERE tts_speed IS NULL"))
             except: 
                 pass
 

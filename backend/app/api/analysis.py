@@ -558,7 +558,8 @@ async def get_tts_audio(
 
         # 3. Determinar el texto a sintetizar
         text_to_speak = ""
-        cache_filename = f"tts_{book_id}_{type}"
+        voice = getattr(current_user, 'tts_voice', 'alloy') or 'alloy'
+        cache_filename = f"tts_{book_id}_{type}_{voice}"
         
         if type == "synopsis":
             text_to_speak = book.synopsis or ""
@@ -583,7 +584,7 @@ async def get_tts_audio(
                         text_to_speak += ". Eventos clave: " + ". ".join(events)
                 except Exception:
                     pass
-            cache_filename = f"tts_{book_id}_chapter_{chapter_id}"
+            cache_filename = f"tts_{book_id}_chapter_{chapter_id}_{voice}"
             
         elif type == "character":
             if not character_id:
@@ -600,7 +601,7 @@ async def get_tts_audio(
                 text_to_speak += f" Personalidad: {character.personality}."
             if character.arc:
                 text_to_speak += f" Evolución: {character.arc}."
-            cache_filename = f"tts_{book_id}_character_{character_id}"
+            cache_filename = f"tts_{book_id}_character_{character_id}_{voice}"
         else:
             raise HTTPException(400, "Invalid type")
 
@@ -622,7 +623,7 @@ async def get_tts_audio(
             from app.services.tts_service import stream_synthesize_text
 
             return StreamingResponse(
-                stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys),
+                stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys, voice=voice),
                 media_type="audio/mpeg"
             )
 

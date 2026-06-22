@@ -8,6 +8,7 @@ import {
   ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X, MessageSquare, Download, Share2, GitBranch, Layout
 } from 'lucide-react'
 import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI } from '../utils/api'
+import { useAuthStore } from '../store/authStore'
 import MindMap from '../components/MindMap'
 import LiteraryDialogue from '../components/LiteraryDialogue'
 import CharacterNetwork from '../components/CharacterNetwork'
@@ -97,6 +98,9 @@ export default function BookPage() {
   const [loading, setLoading] = useState(true)
   const [progressMsg, setProgressMsg] = useState('')
 
+  const user = useAuthStore(s => s.user)
+  const ttsSpeed = parseFloat(user?.tts_speed || '1.0') || 1.0
+
   const activeData = data || prevData
   const book = activeData?.book || {}
   const statusInfo = status || {}
@@ -147,6 +151,7 @@ export default function BookPage() {
       el._hasListeners = true
       
       el.addEventListener('play', () => {
+        el.playbackRate = ttsSpeed
         const params = new URLSearchParams(el.src.split('?')[1])
         const t = params.get('type')
 
@@ -252,6 +257,7 @@ export default function BookPage() {
       })
 
       el.addEventListener('loadedmetadata', () => {
+        el.playbackRate = ttsSpeed
         const params = new URLSearchParams(el.src.split('?')[1])
         const t = params.get('type')
         const chId = params.get('chapter_id')
@@ -810,6 +816,7 @@ export default function BookPage() {
 
     el.addEventListener('play', () => {
       if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
+      el.playbackRate = ttsSpeed
       setAudioPlaying(true)
       setAudioPaused(false)
       if ('mediaSession' in navigator) {
@@ -860,6 +867,7 @@ export default function BookPage() {
 
     el.addEventListener('loadedmetadata', () => {
       if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
+      el.playbackRate = ttsSpeed
       if (el.duration && isFinite(el.duration)) {
         setAudioDuration(el.duration)
       }

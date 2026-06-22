@@ -14,6 +14,8 @@ class UserSettingsUpdate(BaseModel):
     openai_api_key: Optional[str] = None
     groq_api_key: Optional[str] = None
     preferred_model: Optional[str] = None
+    tts_voice: Optional[str] = None
+    tts_speed: Optional[str] = None
 
 class TestAPIRequest(BaseModel):
     provider: str
@@ -51,6 +53,8 @@ async def get_profile(
         "has_gemini": bool(current_user.gemini_api_key),
         "has_openai": bool(current_user.openai_api_key),
         "has_groq": bool(getattr(current_user, 'groq_api_key', None)),
+        "tts_voice": getattr(current_user, 'tts_voice', 'alloy') or 'alloy',
+        "tts_speed": getattr(current_user, 'tts_speed', '1.0') or '1.0',
     }
 
 @router.get("/settings")
@@ -64,6 +68,8 @@ async def get_settings(current_user: User = Depends(get_current_user)):
         "has_gemini": bool(current_user.gemini_api_key),
         "has_openai": bool(current_user.openai_api_key),
         "has_groq": bool(getattr(current_user, 'groq_api_key', None)),
+        "tts_voice": getattr(current_user, 'tts_voice', 'alloy') or 'alloy',
+        "tts_speed": getattr(current_user, 'tts_speed', '1.0') or '1.0',
     }
 
 @router.put("/settings")
@@ -84,6 +90,10 @@ async def update_settings(
             pass
     if settings_data.preferred_model is not None:
         current_user.preferred_model = settings_data.preferred_model
+    if settings_data.tts_voice is not None:
+        current_user.tts_voice = settings_data.tts_voice
+    if settings_data.tts_speed is not None:
+        current_user.tts_speed = settings_data.tts_speed
     
     await db.merge(current_user)
     await db.commit()

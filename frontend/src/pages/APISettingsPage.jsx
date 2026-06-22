@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowLeft, Cpu, Key, Zap, CheckCircle2, XCircle, Loader2, CloudCheck, CloudUpload } from 'lucide-react'
+import { ArrowLeft, Cpu, Key, Zap, CheckCircle2, XCircle, Loader2, CloudCheck, CloudUpload, Volume2 } from 'lucide-react'
 import { api } from '../utils/api'
 import './APISettingsPage.css'
 
@@ -12,6 +12,15 @@ const MODELS = [
   { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'Alta velocidad, contexto extenso (Groq).', badge: 'Gratis', badgeColor: '#10b981' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', desc: 'Económico y preciso (OpenAI).', badge: 'Pago', badgeColor: '#f59e0b' },
   { id: 'gpt-4o', name: 'GPT-4o', desc: 'Máxima potencia disponible (OpenAI).', badge: 'Pago', badgeColor: '#ef4444' },
+]
+
+const VOICES = [
+  { id: 'alloy', name: 'Alloy', desc: 'Voz equilibrada y neutra (Unisex)' },
+  { id: 'echo', name: 'Echo', desc: 'Voz masculina cálida y clara' },
+  { id: 'fable', name: 'Fable', desc: 'Voz dramática y con acento británico' },
+  { id: 'onyx', name: 'Onyx', desc: 'Voz masculina profunda y autoritaria' },
+  { id: 'nova', name: 'Nova', desc: 'Voz femenina enérgica y profesional' },
+  { id: 'shimmer', name: 'Shimmer', desc: 'Voz femenina dulce y profesional' },
 ]
 
 const PROVIDERS = [
@@ -63,6 +72,8 @@ export default function APISettingsPage() {
     openai_api_key: '',
     groq_api_key: '',
     preferred_model: 'gemini-1.5-flash',
+    tts_voice: 'alloy',
+    tts_speed: '1.0',
     has_gemini: false,
     has_openai: false,
     has_groq: false,
@@ -261,6 +272,63 @@ export default function APISettingsPage() {
                 </div>
               )
             })}
+          </div>
+        </section>
+
+        <section>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+            <Volume2 size={20} color="var(--gold)" />
+            <h3 style={{ margin: 0 }}>Lectura de Voz (TTS)</h3>
+          </div>
+          
+          <div style={{ marginBottom: '2rem' }}>
+            <label className="premium-label" style={{ marginBottom: '0.75rem', display: 'block' }}>Voz de Lectura (OpenAI)</label>
+            <div className="model-grid-luxury" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+              {VOICES.map(voice => {
+                const isActive = settings.tts_voice === voice.id
+                return (
+                  <label key={voice.id} className={`luxury-card ${isActive ? 'active' : ''}`}>
+                    <input type="radio" name="tts_voice" value={voice.id}
+                      checked={isActive}
+                      onChange={e => setSettings({ ...settings, tts_voice: e.target.value })}
+                      style={{ display: 'none' }}
+                    />
+                    <div className="luxury-card-header">
+                      <span className="luxury-name">{voice.name}</span>
+                    </div>
+                    <div className="luxury-desc">{voice.desc}</div>
+                    {isActive && <div className="luxury-check">SELECCIONADA ✓</div>}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="premium-label" style={{ marginBottom: '0.75rem', display: 'block' }}>Velocidad de Lectura</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+              <input 
+                type="range" 
+                min="0.5" 
+                max="2.0" 
+                step="0.1" 
+                value={parseFloat(settings.tts_speed || 1.0)} 
+                onChange={e => setSettings({ ...settings, tts_speed: e.target.value })}
+                className="luxury-slider"
+                style={{ flex: 1, accentColor: 'var(--gold)' }}
+              />
+              <span className="luxury-speed-badge" style={{ 
+                background: 'var(--paper-dark)', 
+                padding: '0.4rem 0.8rem', 
+                borderRadius: '6px', 
+                color: 'var(--gold)',
+                fontWeight: 'bold',
+                minWidth: '3.5rem',
+                textAlign: 'center' 
+              }}>
+                {parseFloat(settings.tts_speed || 1.0).toFixed(1)}x
+              </span>
+            </div>
           </div>
         </section>
       </div>

@@ -31,3 +31,5 @@ class User(Base):
     anthropic_api_key = Column(Text, nullable=True)
     groq_api_key = Column(Text, nullable=True)
     preferred_model = Column(String, nullable=True)
+    tts_voice = Column(String, default="alloy", nullable=True)
+    tts_speed = Column(String, default="1.0", nullable=True)
