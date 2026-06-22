@@ -145,6 +145,7 @@ export default function BookPage() {
   }
 
   const resumeCurrentTTS = () => {
+    startSilentAudioForTts()
     if (!ttsQueueRef.current.length) {
       const saved = loadTTSPos()
       if (saved && chapters.length) {
@@ -251,6 +252,7 @@ export default function BookPage() {
   }
 
   const playFromBeginning = (book, chapters) => {
+    startSilentAudioForTts()
     stopTTS(true)
     const queue = buildQueue(book, chapters)
     if (!queue.length) return
@@ -259,6 +261,7 @@ export default function BookPage() {
   }
 
   const playFromChapter = (chapter, chapters) => {
+    startSilentAudioForTts()
     stopTTS(true)
     const doneChapters = chapters.filter(c => c.summary && c.summary_status === 'done')
     const idx = doneChapters.findIndex(c => c.id === chapter.id)
@@ -277,6 +280,7 @@ export default function BookPage() {
 
   const pauseCharTTS = () => { ttsCharActiveRef.current = false; window.speechSynthesis.cancel(); setTtsCharPlaying(false); setTtsCharPaused(true) }
   const resumeCharTTS = () => {
+    startSilentAudioForTts()
     if (!ttsCharQueueRef.current.length) {
       // Intentar restaurar cola si hay datos guardados
       const saved = localStorage.getItem(charStorageKey)
@@ -333,7 +337,7 @@ export default function BookPage() {
     _speakCharSentence(sentences, 0)
   }
 
-  const playCharacter = (char) => { stopCharTTS(true); stopTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); const queue = [{ name: char.name, text: characterToText(char) }]; ttsCharQueueRef.current = queue; ttsCharIndexRef.current = 0; ttsCharActiveRef.current = true; setTtsCharPlaying(true); speakCharItem(queue, 0) }
+  const playCharacter = (char) => { startSilentAudioForTts(); stopCharTTS(true); stopTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); const queue = [{ name: char.name, text: characterToText(char) }]; ttsCharQueueRef.current = queue; ttsCharIndexRef.current = 0; ttsCharActiveRef.current = true; setTtsCharPlaying(true); speakCharItem(queue, 0) }
 
   const _speakInfoFromIndex = (sentences, idx) => {
     if (!ttsInfoActiveRef.current || idx >= sentences.length) {
@@ -363,6 +367,7 @@ export default function BookPage() {
   }
 
   const playInfo = (book) => { 
+    startSilentAudioForTts()
     stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
     const text = book.synopsis || ''; if (!text) return; 
     localStorage.setItem(infoStorageKey + '_type', 'synopsis')
@@ -371,6 +376,7 @@ export default function BookPage() {
     setTtsInfoPlaying(true); _startInfoTTS(text, fromIdx) 
   }
   const playSummary = (book) => { 
+    startSilentAudioForTts()
     stopTTS(true); stopCharTTS(true); stopInfoTTS(true); window.speechSynthesis.cancel(); 
     if (!book.global_summary) return; 
     localStorage.setItem(infoStorageKey + '_type', 'summary')
@@ -380,6 +386,7 @@ export default function BookPage() {
   }
   const pauseInfoTTS = () => { ttsInfoActiveRef.current = false; window.speechSynthesis.cancel(); setTtsInfoPlaying(false); setTtsInfoPaused(true) }
   const resumeInfoTTS = () => { 
+    startSilentAudioForTts()
     if (!ttsInfoSentencesRef.current.length) {
       const type = localStorage.getItem(infoStorageKey + '_type')
       const saved = localStorage.getItem(infoStorageKey)
@@ -574,13 +581,19 @@ export default function BookPage() {
   const currentTtsPausedType = ttsChapterPaused ? 'chapter' : (ttsCharPaused ? 'character' : (ttsInfoPaused ? 'info' : null))
 
   useEffect(() => {
-    if (audioPlaying || audioPaused) return
+    if (audioPlaying) return
 
     const el = audioRef.current
     if (!el) return
 
     const isTtsActive = !!currentTtsType
     const isTtsPaused = !!currentTtsPausedType
+
+    if (!isTtsActive && !isTtsPaused) {
+      if (audioPaused && el.src !== SILENCE_URL && el.src !== '') {
+        return
+      }
+    }
 
     if (isTtsActive) {
       let title = 'Lectura'
@@ -697,6 +710,22 @@ export default function BookPage() {
     }
   }
 
+  const startSilentAudioForTts = () => {
+    const el = audioRef.current
+    if (el) {
+      if (audioPlaying) {
+        el.pause()
+        setAudioPlaying(false)
+        setAudioPaused(true)
+      }
+      if (el.src !== SILENCE_URL) {
+        el.src = SILENCE_URL
+        el.loop = true
+      }
+      el.play().catch(e => console.warn('Silence play blocked', e))
+    }
+  }
+
   const updateMediaSession = (el) => {
     if ('mediaSession' in navigator) {
       const relativeSrc = coverSrc(book) || '/default-cover.png'
@@ -784,6 +813,7 @@ export default function BookPage() {
     updateMediaSession(el)
 
     el.addEventListener('play', () => {
+      if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
       setAudioPlaying(true)
       setAudioPaused(false)
       if ('mediaSession' in navigator) {
@@ -794,6 +824,7 @@ export default function BookPage() {
     })
 
     el.addEventListener('pause', () => {
+      if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
       setAudioPlaying(false)
       setAudioPaused(true)
       if ('mediaSession' in navigator) {
@@ -802,6 +833,7 @@ export default function BookPage() {
     })
 
     el.addEventListener('ended', () => {
+      if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
       setAudioPlaying(false)
       setAudioPaused(false)
       if ('mediaSession' in navigator) {
@@ -812,6 +844,7 @@ export default function BookPage() {
     })
 
     el.addEventListener('timeupdate', () => {
+      if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
       setAudioCurrentTime(el.currentTime)
       const progress = {
         currentTime: el.currentTime,
@@ -823,12 +856,14 @@ export default function BookPage() {
     })
 
     el.addEventListener('durationchange', () => {
+      if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
       if (el.duration && isFinite(el.duration)) {
         setAudioDuration(el.duration)
       }
     })
 
     el.addEventListener('loadedmetadata', () => {
+      if (el.src === SILENCE_URL || el.src.startsWith('data:')) return
       if (el.duration && isFinite(el.duration)) {
         setAudioDuration(el.duration)
       }
