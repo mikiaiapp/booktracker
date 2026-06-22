@@ -549,14 +549,14 @@ async def get_tts_sample(
 
     samples_dir = os.path.join(settings.AUDIO_DIR, "samples")
     os.makedirs(samples_dir, exist_ok=True)
-    final_path = os.path.join(samples_dir, f"sample_{voice}.mp3")
+    final_path = os.path.join(samples_dir, f"sample_{voice}_v2.mp3")
 
     if not os.path.exists(final_path):
         keys = {
             "openai": current_user.openai_api_key,
             "gemini": current_user.gemini_api_key
         }
-        text_to_speak = f"Hola, esta es una muestra de la voz {voice.title()} en BookTracker."
+        text_to_speak = f"Hola, soy la voz {voice.title()}."
         temp_path = final_path + ".tmp"
         
         from fastapi.responses import StreamingResponse
@@ -567,7 +567,10 @@ async def get_tts_sample(
             media_type="audio/mpeg"
         )
 
-    return FileResponse(final_path, media_type="audio/mpeg")
+    headers = {
+        "Cache-Control": "private, max-age=86400"
+    }
+    return FileResponse(final_path, media_type="audio/mpeg", headers=headers)
 
 
 # ── Audio TTS para Sinopsis, Capítulos y Personajes ───────────

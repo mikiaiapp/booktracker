@@ -83,19 +83,48 @@ export default function APISettingsPage() {
   const lastSavedSettings = useRef(null)
   const debounceTimer = useRef(null)
   const sampleAudioRef = useRef(null)
+  const audioCacheRef = useRef({})
+
+  // Pre-cargar todos los audios de muestra al montar para reproducción instantánea
+  useEffect(() => {
+    const token = localStorage.getItem('bt_token')
+    if (!token) return
+    
+    VOICES.forEach(voice => {
+      const url = `/api/analysis/tts/sample?voice=${voice.id}&token=${encodeURIComponent(token)}`
+      const audio = new Audio(url)
+      audio.preload = "auto"
+      audioCacheRef.current[voice.id] = audio
+    })
+
+    return () => {
+      if (sampleAudioRef.current) {
+        sampleAudioRef.current.pause()
+      }
+      Object.values(audioCacheRef.current).forEach(audio => {
+        try {
+          audio.pause()
+        } catch (e) {}
+      })
+    }
+  }, [])
 
   const playVoiceSample = useCallback((voiceId, speedVal) => {
     if (sampleAudioRef.current) {
       sampleAudioRef.current.pause()
-      sampleAudioRef.current = null
     }
 
-    const token = localStorage.getItem('bt_token')
-    // Usar la ruta global del api de análisis para la muestra
-    const url = `/api/analysis/tts/sample?voice=${voiceId}&token=${encodeURIComponent(token)}`
-    
-    const audio = new Audio(url)
+    let audio = audioCacheRef.current[voiceId]
+    if (!audio) {
+      const token = localStorage.getItem('bt_token')
+      const url = `/api/analysis/tts/sample?voice=${voiceId}&token=${encodeURIComponent(token)}`
+      audio = new Audio(url)
+      audio.preload = "auto"
+      audioCacheRef.current[voiceId] = audio
+    }
+
     audio.playbackRate = parseFloat(speedVal || '1.0') || 1.0
+    audio.currentTime = 0
     audio.play().catch(e => console.warn("Muestra de audio bloqueada por autoplay:", e))
     sampleAudioRef.current = audio
   }, [])
@@ -111,15 +140,6 @@ export default function APISettingsPage() {
   const handleSpeedRelease = () => {
     playVoiceSample(settings.tts_voice, settings.tts_speed)
   }
-
-  // Detener reproducción al desmontar el componente
-  useEffect(() => {
-    return () => {
-      if (sampleAudioRef.current) {
-        sampleAudioRef.current.pause()
-      }
-    }
-  }, [])
 
 
   const fetchSettings = useCallback(async () => {
