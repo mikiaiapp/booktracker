@@ -95,11 +95,23 @@ async def send_otp_email(email: str, otp: str):
     msg["From"] = settings.SMTP_FROM
     msg["To"] = email
 
-    await aiosmtplib.send(
-        msg,
-        hostname=settings.SMTP_HOST,
-        port=settings.SMTP_PORT,
-        username=settings.SMTP_USER,
-        password=settings.SMTP_PASS,
-        start_tls=True,
-    )
+    try:
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_USER,
+            password=settings.SMTP_PASS,
+            start_tls=True,
+        )
+    except Exception as e:
+        import datetime
+        err_msg = f"Fallo al enviar correo a {email}: {str(e)} (Host: {settings.SMTP_HOST}:{settings.SMTP_PORT}, User: {settings.SMTP_USER}, From: {settings.SMTP_FROM})"
+        print(f"[SMTP ERROR] {err_msg}")
+        try:
+            with open("/data/smtp_error.log", "a", encoding="utf-8") as f:
+                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"[{now}] {err_msg}\n")
+        except:
+            pass
+        raise e
