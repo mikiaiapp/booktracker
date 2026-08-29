@@ -10,6 +10,7 @@ import UploadPage from './pages/UploadPage'
 import AuthorsPage from './pages/AuthorsPage'
 import ProfilePage from './pages/ProfilePage'
 import APISettingsPage from './pages/APISettingsPage'
+import FriendsPage from './pages/FriendsPage'
 import Layout from './components/Layout'
 import { analysisAPI } from './utils/api'
 
@@ -24,7 +25,7 @@ export default function App() {
   
   useEffect(() => { init() }, [init])
 
-  // Disparar reparacin de eventos clave una sola vez tras la actualizacin
+  // Disparar reparación de eventos clave una sola vez tras la actualización
   useEffect(() => {
     if (token && !localStorage.getItem('repair_v3')) {
       const triggerRepair = async () => {
@@ -59,6 +60,7 @@ export default function App() {
           <Route index element={<LibraryPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="authors" element={<AuthorsPage />} />
+          <Route path="friends" element={<FriendsPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="profile/api" element={<APISettingsPage />} />
           <Route path="book/:id" element={<BookPage />} />

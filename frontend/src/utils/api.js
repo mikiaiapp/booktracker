@@ -160,3 +160,17 @@ export const chatAPI = {
   sendMessage: (bookId, message, mode, model) => api.post(`/chat/${bookId}/send`, { message, mode, model }),
   clearHistory: (bookId) => api.delete(`/chat/${bookId}/clear`),
 }
+
+// Social
+export const socialAPI = {
+  getFriends: () => api.get('/social/friends'),
+  getRequests: () => api.get('/social/requests'),
+  invite: (usernameOrEmail) => api.post('/social/invite', { username_or_email: usernameOrEmail }),
+  accept: (requestId) => api.post(`/social/accept/${requestId}`),
+  reject: (requestId) => api.post(`/social/reject/${requestId}`),
+  removeFriend: (friendId) => api.post(`/social/remove/${friendId}`),
+  searchUsers: (q) => api.get(`/social/search-users?q=${encodeURIComponent(q)}`),
+  shareBook: (bookId, friendId) => api.post('/social/share', { book_id: bookId, friend_id: friendId }),
+  unshareBook: (bookId, friendId) => api.post('/social/unshare', { book_id: bookId, friend_id: friendId }),
+  getBookShares: (bookId) => api.get(`/social/book-shares/${bookId}`),
+}

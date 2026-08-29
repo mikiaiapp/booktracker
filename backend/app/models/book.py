@@ -49,6 +49,11 @@ class Book(BookBase):
     podcast_script = Column(Text, nullable=True)
     podcast_duration = Column(Integer, nullable=True)  # duration in seconds
 
+    # Sharing attributes
+    shared_by_user_id = Column(String, nullable=True)
+    original_book_id = Column(String, nullable=True)
+    owner_username = Column(String, nullable=True)
+
     # Reading tracking
     read_status = Column(String, default="to_read")  # to_read | reading | read
     rating = Column(Float, nullable=True)

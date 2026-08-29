@@ -37,8 +37,8 @@ const PHASE_LABELS = {
   podcast:  'Podcast',
 }
 
-const READ_FILTERS = ['all', 'to_read', 'reading', 'read']
-const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos' }
+const READ_FILTERS = ['all', 'to_read', 'reading', 'read', 'shared']
+const READ_LABELS  = { all: 'Todos', to_read: 'Por leer', reading: 'Leyendo', read: 'Leídos', shared: 'Compartidos' }
 
 const ANALYSIS_GROUPS = {
   analyzed:   { label: 'Analizados', statuses: ['complete'] },
@@ -390,7 +390,11 @@ export default function LibraryPage() {
   console.log("DEBUG: Libros tras filtrado:", allBooks.length);
 
   const filtered = allBooks
-    .filter(b => filter === 'all' || b.read_status === filter)
+    .filter(b => {
+      if (filter === 'all') return true
+      if (filter === 'shared') return b.is_shared === true
+      return b.read_status === filter
+    })
     .filter(b => {
       if (analysisFilter === 'all') return true
       const group = ANALYSIS_GROUPS[analysisFilter]
@@ -529,7 +533,9 @@ export default function LibraryPage() {
                     title="Cambiar portada"
                   >✏</button>
                   <div className="cover-status">
-                    {book.status === 'complete' ? (
+                    {book.is_shared ? (
+                      <span className="cover-badge shared-badge-tag" style={{background: 'var(--ink)', color: 'var(--gold)', border: '1px solid var(--gold)', boxShadow: '0 2px 8px rgba(0,0,0,0.2)'}}>👥 Compartido</span>
+                    ) : book.status === 'complete' ? (
                       <span className="cover-badge analyzed">✦ Analizado</span>
                     ) : book.status === 'queued' ? (
                       <span className="cover-badge queued">En cola</span>

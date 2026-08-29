@@ -315,3 +315,168 @@
     display: flex;
   }
 }
+
+/* Badge roja para notificaciones en menú lateral */
+.nav-badge-red {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--ink);
+  line-height: 1;
+}
+
+/* Globo flotante rojo animado al entrar a la app */
+.floating-notification-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: slideInUpSocial 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.toast-glow-red {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle, rgba(239, 68, 68, 0.4) 0%, rgba(239, 68, 68, 0) 70%);
+  filter: blur(8px);
+  border-radius: 12px;
+  z-index: -1;
+  animation: pulseGlowSocial 2s infinite ease-in-out;
+}
+
+.toast-content {
+  background: rgba(26, 26, 26, 0.85);
+  backdrop-filter: blur(12px) saturate(190%);
+  -webkit-backdrop-filter: blur(12px) saturate(190%);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  padding: 0.85rem 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--paper);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  max-width: 320px;
+}
+
+.toast-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #ef4444;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px #ef4444;
+}
+
+.toast-text {
+  flex: 1;
+}
+
+.toast-text h4 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--paper);
+}
+
+.toast-text p {
+  margin: 2px 0 0 0;
+  font-size: 0.75rem;
+  color: var(--mist);
+}
+
+.toast-action-btn {
+  background: #ef4444;
+  border: none;
+  color: white;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+}
+
+.toast-action-btn:hover {
+  background: #dc2626;
+}
+
+.toast-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--mist);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.toast-close-btn:hover {
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes slideInUpSocial {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pulseGlowSocial {
+  0%, 100% {
+    transform: scale(0.98);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+.animate-ping {
+  animation: pingSocial 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes pingSocial {
+  75%, 100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* En móvil, reposicionar el toast flotante */
+@media (max-width: 768px) {
+  .floating-notification-toast {
+    bottom: 80px; /* Sobre la barra de navegación inferior */
+    right: 16px;
+    left: 16px;
+  }
+  .toast-content {
+    max-width: 100%;
+    width: 100%;
+  }
+}

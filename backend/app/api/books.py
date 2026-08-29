@@ -215,9 +215,10 @@ async def list_books(
     response = []
     for b in books:
         # FILTRO ABSOLUTO: Si no tiene archivo físico real, NO es un libro de la biblioteca personal
+        is_shared = getattr(b, 'shared_by_user_id', None) is not None
         is_shell = b.status == "shell"
         no_file = not b.file_path or b.file_path.lower() in ("none", "", "null")
-        if is_shell or no_file:
+        if is_shell or (no_file and not is_shared):
             continue
 
         # Detectar si el libro está realmente en proceso
@@ -254,7 +255,10 @@ async def list_books(
             "phase5_done": p5_done, "phase6_done": p6_done,
             "created_at": b.created_at,
             "has_chapters": has_chapters,
-            "has_characters": char_counts.get(b.id, 0) > 0
+            "has_characters": char_counts.get(b.id, 0) > 0,
+            "is_shared": is_shared,
+            "shared_by_user_id": getattr(b, 'shared_by_user_id', None),
+            "owner_username": getattr(b, 'owner_username', None),
         })
     
     return response
@@ -268,7 +272,7 @@ async def get_book(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        # 1. Obtener el libro base
+        # 1. Obtener el libro base en la BD del usuario actual
         result = await db.execute(select(Book).where(Book.id == book_id))
         book = result.scalar_one_or_none()
         
@@ -283,35 +287,87 @@ async def get_book(
         if not book:
             raise HTTPException(404, f"Book {book_id} not found")
         
-        print(f"[API] Cargando detalle libro: {book.title}")
+        # Variables de compartición
+        is_shared = getattr(book, 'shared_by_user_id', None) is not None
+        shared_by_user_id = getattr(book, 'shared_by_user_id', None)
+        original_book_id = getattr(book, 'original_book_id', None)
+        owner_username = getattr(book, 'owner_username', None)
+        
+        print(f"[API] Cargando detalle libro: {book.title} (Compartido: {is_shared})")
 
-        # 2. Capítulos
-        ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
-        chapters = ch_result.scalars().all()
-
-        # 3. Personajes
-        char_result = await db.execute(select(Character).where(Character.book_id == book_id))
-        characters = char_result.scalars().all()
-
-        # 4. Otros libros del autor (con seguridad ante nulos)
+        orig_book = book
+        chapters = []
+        characters = []
         other_books = []
-        if book.author:
-            from sqlalchemy import desc
-            others_result = await db.execute(
-                select(Book)
-                .where(Book.author == book.author, Book.id != book_id)
-                .order_by(desc(Book.year).nulls_last(), Book.title)
-            )
-            for b in others_result.scalars().all():
-                try:
-                    other_books.append({
-                        "id": b.id, "title": b.title, "isbn": b.isbn,
-                        "cover_local": b.cover_local, "year": b.year,
-                        "status": b.status, 
-                        "phase3_done": getattr(b, 'phase3_done', False),
-                        "synopsis": b.synopsis,
-                    })
-                except Exception: continue
+
+        if is_shared:
+            # Cargar los datos desde la BD del propietario
+            async for owner_db in get_user_db(shared_by_user_id):
+                orig_result = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                loaded_orig = orig_result.scalar_one_or_none()
+                if not loaded_orig:
+                    raise HTTPException(404, "El libro original ya no está disponible en la biblioteca del propietario")
+                
+                orig_book = loaded_orig
+
+                # 2. Capítulos del propietario
+                ch_result = await owner_db.execute(select(Chapter).where(Chapter.book_id == original_book_id).order_by(Chapter.order))
+                chapters = ch_result.scalars().all()
+
+                # 3. Personajes del propietario
+                char_result = await owner_db.execute(select(Character).where(Character.book_id == original_book_id))
+                characters = char_result.scalars().all()
+
+                # 4. Otros libros del autor del propietario
+                if orig_book.author:
+                    from sqlalchemy import desc
+                    others_result = await owner_db.execute(
+                        select(Book)
+                        .where(Book.author == orig_book.author, Book.id != original_book_id)
+                        .order_by(desc(Book.year).nulls_last(), Book.title)
+                    )
+                    for b in others_result.scalars().all():
+                        try:
+                            # Omitir libros que son compartidos en su biblioteca
+                            if getattr(b, 'shared_by_user_id', None) is not None:
+                                continue
+                            other_books.append({
+                                "id": b.id, "title": b.title, "isbn": b.isbn,
+                                "cover_local": b.cover_local, "year": b.year,
+                                "status": b.status, 
+                                "phase3_done": getattr(b, 'phase3_done', False),
+                                "synopsis": b.synopsis,
+                            })
+                        except Exception: continue
+        else:
+            # 2. Capítulos propios
+            ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
+            chapters = ch_result.scalars().all()
+
+            # 3. Personajes propios
+            char_result = await db.execute(select(Character).where(Character.book_id == book_id))
+            characters = char_result.scalars().all()
+
+            # 4. Otros libros del autor propios
+            if book.author:
+                from sqlalchemy import desc
+                others_result = await db.execute(
+                    select(Book)
+                    .where(Book.author == book.author, Book.id != book_id)
+                    .order_by(desc(Book.year).nulls_last(), Book.title)
+                )
+                for b in others_result.scalars().all():
+                    try:
+                        if getattr(b, 'shared_by_user_id', None) is not None:
+                            continue
+                        other_books.append({
+                            "id": b.id, "title": b.title, "isbn": b.isbn,
+                            "cover_local": b.cover_local, "year": b.year,
+                            "status": b.status, 
+                            "phase3_done": getattr(b, 'phase3_done', False),
+                            "synopsis": b.synopsis,
+                        })
+                    except Exception: continue
 
         def _safe_json(val, default=[]):
             if not val: return default
@@ -324,29 +380,38 @@ async def get_book(
         return {
             "book": {
                 "id": book.id,
-                "title": book.title,
-                "author": book.author,
-                "isbn": book.isbn,
-                "synopsis": book.synopsis or "",
-                "author_bio": book.author_bio or "",
-                "genre": book.genre or "",
-                "year": book.year,
-                "status": book.status,
-                "phase1_done": book.phase1_done,
-                "phase2_done": book.phase2_done,
-                "phase3_done": book.phase3_done,
-                "phase4_done": book.phase4_done,
-                "phase5_done": book.phase5_done,
-                "phase6_done": book.phase6_done,
-                "global_summary": book.global_summary or "",
-                "mindmap_data": _safe_json(book.mindmap_data, {"center": book.title, "branches": []}),
-                "podcast_script": book.podcast_script or "",
-                "podcast_audio_path": book.podcast_audio_path or "",
-                "podcast_duration": book.podcast_duration or (int(len(book.podcast_script.split()) / 2.5) if book.podcast_script else 0),
-                "has_file": bool(book.file_path),
-                "file_type": book.file_type,
-                "cover_local": book.cover_local,
+                "title": orig_book.title,
+                "author": orig_book.author,
+                "isbn": orig_book.isbn,
+                "synopsis": orig_book.synopsis or "",
+                "author_bio": orig_book.author_bio or "",
+                "genre": orig_book.genre or "",
+                "year": orig_book.year,
+                "status": orig_book.status,
+                "phase1_done": orig_book.phase1_done,
+                "phase2_done": orig_book.phase2_done,
+                "phase3_done": orig_book.phase3_done,
+                "phase4_done": orig_book.phase4_done,
+                "phase5_done": orig_book.phase5_done,
+                "phase6_done": orig_book.phase6_done,
+                "global_summary": orig_book.global_summary or "",
+                "mindmap_data": _safe_json(orig_book.mindmap_data, {"center": orig_book.title, "branches": []}),
+                "podcast_script": orig_book.podcast_script or "",
+                "podcast_audio_path": orig_book.podcast_audio_path or "",
+                "podcast_duration": orig_book.podcast_duration or (int(len(orig_book.podcast_script.split()) / 2.5) if orig_book.podcast_script else 0),
+                "has_file": bool(orig_book.file_path) if not is_shared else False,
+                "file_type": orig_book.file_type,
+                "cover_local": orig_book.cover_local,
+                # Local reading progress and notes
+                "read_status": book.read_status,
+                "rating": book.rating,
+                "notes": book.notes or "",
                 "playback_state": _safe_json(book.playback_state, {}),
+                # Sharing metadata
+                "is_shared": is_shared,
+                "shared_by_user_id": shared_by_user_id,
+                "owner_username": owner_username,
+                "original_book_id": original_book_id,
             },
             "chapters": [
                 {
@@ -454,11 +519,19 @@ async def delete_book(
     book_id: str,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    global_db: AsyncSession = Depends(get_global_db),
 ):
+    from app.core.database import get_global_db
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
+
+    # Si es un libro compartido, simplemente borramos el enlace local de nuestra biblioteca
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        await db.delete(book)
+        await db.commit()
+        return {"ok": True}
 
     author = book.author
 
@@ -480,11 +553,37 @@ async def delete_book(
     # Borrar registros relacionados (manualmente ya que no hay cascada en DB)
     from sqlalchemy import delete
     from app.models.book import Chapter, Character, AnalysisJob, ChatMessage
+    from app.models.friendship import Friendship
     
     await db.execute(delete(Chapter).where(Chapter.book_id == book_id))
     await db.execute(delete(Character).where(Character.book_id == book_id))
     await db.execute(delete(AnalysisJob).where(AnalysisJob.book_id == book_id))
     await db.execute(delete(ChatMessage).where(ChatMessage.book_id == book_id))
+
+    # Limpiar enlaces en las BDs de los amigos a los que se les compartió
+    try:
+        f_stmt = select(Friendship).where(
+            and_(
+                Friendship.status == "accepted",
+                or_(Friendship.user_id == current_user.id, Friendship.friend_id == current_user.id)
+            )
+        )
+        f_res = await global_db.execute(f_stmt)
+        friendships = f_res.scalars().all()
+        for f in friendships:
+            friend_id = f.friend_id if f.user_id == current_user.id else f.user_id
+            try:
+                async for f_db in get_user_db(friend_id):
+                    await f_db.execute(
+                        delete(Book).where(
+                            and_(Book.original_book_id == book_id, Book.shared_by_user_id == current_user.id)
+                        )
+                    )
+                    await f_db.commit()
+            except Exception as fe:
+                print(f"[ERROR] Al propagar borrado de libro compartido en BD de amigo {friend_id}: {fe}")
+    except Exception as ge:
+        print(f"[ERROR] Al buscar amigos para propagar borrado de libro: {ge}")
 
     await db.delete(book)
     await db.commit()

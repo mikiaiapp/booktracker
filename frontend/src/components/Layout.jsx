@@ -1,15 +1,45 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
-import { BookOpen, Upload, LogOut, Library, Users, UserCircle } from 'lucide-react'
+import { BookOpen, Upload, LogOut, Library, Users, UserCircle, UserCheck, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
+import { socialAPI } from '../utils/api'
 import './Layout.css'
 
 export default function Layout() {
   const user = useAuthStore(s => s.user)
   const logout = useAuthStore(s => s.logout)
   const navigate = useNavigate()
+  
+  const [pendingCount, setPendingCount] = useState(0)
+  const [showFloatingNotification, setShowFloatingNotification] = useState(false)
 
   const handleLogout = () => { logout(); navigate('/login') }
+
+  // Cargar solicitudes pendientes
+  const fetchRequests = async () => {
+    try {
+      const { data } = await socialAPI.getRequests()
+      const count = data?.received?.length || 0
+      setPendingCount(count)
+      
+      // Mostrar globo flotante si hay pendientes y no se ha cerrado en esta sesión
+      const dismissed = sessionStorage.getItem('friend_noti_dismissed')
+      if (count > 0 && !dismissed) {
+        setShowFloatingNotification(true)
+      }
+    } catch (e) {
+      console.error("Error fetching friend requests count:", e)
+    }
+  }
+
+  useEffect(() => {
+    if (user) {
+      fetchRequests()
+      // Polling cada 30 segundos
+      const interval = setInterval(fetchRequests, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [user])
 
   // --- Pull to Refresh Logic (Móvil) ---
   React.useEffect(() => {
@@ -33,6 +63,33 @@ export default function Layout() {
 
   return (
     <div className="layout">
+      {/* Globo flotante rojo animado de notificación */}
+      {showFloatingNotification && pendingCount > 0 && (
+        <div className="floating-notification-toast">
+          <div className="toast-glow-red" />
+          <div className="toast-content">
+            <span className="toast-dot animate-ping" />
+            <div className="toast-text">
+              <h4>Solicitud de amistad</h4>
+              <p>Tienes {pendingCount} {pendingCount === 1 ? 'solicitud pendiente' : 'solicitudes pendientes'}</p>
+            </div>
+            <button className="toast-action-btn" onClick={() => { 
+              setShowFloatingNotification(false); 
+              sessionStorage.setItem('friend_noti_dismissed', 'true');
+              navigate('/friends'); 
+            }}>
+              Ver
+            </button>
+            <button className="toast-close-btn" onClick={() => { 
+              setShowFloatingNotification(false);
+              sessionStorage.setItem('friend_noti_dismissed', 'true');
+            }}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       <aside className="sidebar">
         <div className="sidebar-brand-premium">
           <img src="/logo-dark.png" alt="Logo" className="sidebar-logo-nav" />
@@ -47,6 +104,15 @@ export default function Layout() {
           <NavLink to="/authors" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
             <Users size={18} strokeWidth={1.5} />
             <span>Autores</span>
+          </NavLink>
+          <NavLink to="/friends" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
+            <div className="nav-item-icon-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <UserCheck size={18} strokeWidth={1.5} />
+              {pendingCount > 0 && (
+                <span className="nav-badge-red">{pendingCount}</span>
+              )}
+            </div>
+            <span>Amigos</span>
           </NavLink>
           <NavLink to="/upload" className={({isActive}) => isActive ? 'nav-item active' : 'nav-item'}>
             <Upload size={18} strokeWidth={1.5} />

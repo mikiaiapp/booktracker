@@ -7,7 +7,7 @@ import {
   Play, Pause, Square, ChevronDown, ChevronUp, Loader, CheckCircle,
   ArrowLeft, Edit3, Trash2, AlertCircle, Volume2, VolumeX, PlayCircle, FileText, RefreshCw, X, MessageSquare, Download, Share2, GitBranch, Layout
 } from 'lucide-react'
-import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI } from '../utils/api'
+import { booksAPI, analysisAPI, chapterAPI, characterAPI, uploadToShell, reanalyzeCharacters, queueAPI, socialAPI } from '../utils/api'
 import { useAuthStore } from '../store/authStore'
 import MindMap from '../components/MindMap'
 import LiteraryDialogue from '../components/LiteraryDialogue'
@@ -97,6 +97,7 @@ export default function BookPage() {
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [progressMsg, setProgressMsg] = useState('')
+  const [showShareModal, setShowShareModal] = useState(false)
 
   const user = useAuthStore(s => s.user)
   const ttsSpeed = parseFloat(user?.tts_speed || '1.0') || 1.0
@@ -1016,7 +1017,15 @@ export default function BookPage() {
     }
   }
 
-  const handleDelete = async () => { if (await confirm(`¿Eliminar "${data?.book?.title}"?`)) { await booksAPI.delete(id); navigate('/') } }
+  const handleDelete = async () => {
+    const msg = book.is_shared
+      ? `¿Quitar "${book.title}" de tu biblioteca? El análisis original de ${book.owner_username} no se modificará.`
+      : `¿Eliminar "${book.title}"? Esta acción borrará el libro, su análisis, y se quitará de la biblioteca de los amigos con quienes lo compartiste.`
+    if (await confirm(msg)) {
+      await booksAPI.delete(id)
+      navigate('/')
+    }
+  }
 
 
   if (loading) return <div className="book-loading"><Loader size={28} className="spin" /><p>Cargando...</p></div>
@@ -1047,9 +1056,16 @@ export default function BookPage() {
                 </div>
               )}
             </div>
-            <Link to={`/author/${encodeURIComponent(book.author || '')}`} className="hero-author-link">
-              {book.author}
-            </Link>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <Link to={`/author/${encodeURIComponent(book.author || '')}`} className="hero-author-link">
+                {book.author}
+              </Link>
+              {book.is_shared && (
+                <span className="shared-owner-badge-label" style={{ background: 'rgba(201, 169, 110, 0.15)', color: 'var(--gold)', fontSize: '0.8rem', padding: '0.2rem 0.6rem', borderRadius: '4px', border: '1px solid rgba(201, 169, 110, 0.25)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  👥 Compartido por <b>{book.owner_username}</b>
+                </span>
+              )}
+            </div>
             <div className="hero-meta">
               {book.year && <span>{book.year}</span>}
               {book.pages && <span>{book.pages} pp.</span>}
@@ -1064,6 +1080,13 @@ export default function BookPage() {
                 <button className="hero-action-btn pdf-btn" onClick={exportToPDF} title="Generar PDF del análisis completo">
                   <FileText size={16} />
                   <span>Genera PDF</span>
+                </button>
+              )}
+
+              {!book.is_shared && statusInfo?.has_global_summary && (
+                <button className="hero-action-btn share-btn" onClick={() => setShowShareModal(true)} title="Compartir este análisis con amigos" style={{ background: 'var(--ink)', color: 'var(--gold)', border: '1px solid rgba(201, 169, 110, 0.3)' }}>
+                  <Share2 size={16} />
+                  <span>Compartir</span>
                 </button>
               )}
 
@@ -1094,26 +1117,28 @@ export default function BookPage() {
                 </button>
               )}
 
-              <label className="hero-action-btn replace-btn" style={{ cursor: 'pointer' }} title="Reemplazar archivo PDF/EPUB del libro">
-                <input type="file" accept=".pdf,.epub" style={{ display: 'none' }}
-                  onChange={async (e) => {
-                    const file = e.target.files[0]; if (!file) return
-                    if (!confirm('¿Reemplazar los archivos? El análisis se conservará.')) return
-                    try {
-                      toast('Subiendo archivo…', { icon: '⏳' })
-                      await uploadToShell(id, file)
-                      toast.success('Archivo subido. Identificando…')
-                      load(false)
-                    } catch { toast.error('Error al subir el archivo') }
-                  }} />
-                <RefreshCw size={14} /> 
-                <span>Reemplazar archivos</span>
-              </label>
+              {!book.is_shared && (
+                <label className="hero-action-btn replace-btn" style={{ cursor: 'pointer' }} title="Reemplazar archivo PDF/EPUB del libro">
+                  <input type="file" accept=".pdf,.epub" style={{ display: 'none' }}
+                    onChange={async (e) => {
+                      const file = e.target.files[0]; if (!file) return
+                      if (!confirm('¿Reemplazar los archivos? El análisis se conservará.')) return
+                      try {
+                        toast('Subiendo archivo…', { icon: '⏳' })
+                        await uploadToShell(id, file)
+                        toast.success('Archivo subido. Identificando…')
+                        load(false)
+                      } catch { toast.error('Error al subir el archivo') }
+                    }} />
+                  <RefreshCw size={14} /> 
+                  <span>Reemplazar archivos</span>
+                </label>
+              )}
               
 
             </div>
           </div>
-          <button className="delete-btn" onClick={handleDelete}><Trash2 size={20} /></button>
+          <button className="delete-btn" onClick={handleDelete} title={book.is_shared ? "Quitar de mi biblioteca" : "Eliminar libro"}><Trash2 size={20} /></button>
         </div>
       </div>
 
@@ -1308,6 +1333,12 @@ export default function BookPage() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showShareModal && (
+          <ShareModal bookId={id} onClose={() => setShowShareModal(false)} />
+        )}
+      </AnimatePresence>
+
       {confirmModal}
       {coverPickerOpen && <CoverPicker book={book} onClose={() => setCoverPickerOpen(false)} onSelect={async (url) => { await booksAPI.update(id, { cover_url: url }); setCoverKey(k => k+1); setCoverPickerOpen(false); load() }} />}
       
@@ -1315,6 +1346,100 @@ export default function BookPage() {
       <audio ref={audioRef} style={{ display: 'none' }} preload="metadata" />
       <audio ref={ttsAudioRef} style={{ display: 'none' }} preload="metadata" />
     </div>
+  )
+}
+
+function ShareModal({ bookId, onClose }) {
+  const [friends, setFriends] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const loadShares = async () => {
+    try {
+      setLoading(true)
+      const { data } = await socialAPI.getBookShares(bookId)
+      setFriends(data || [])
+    } catch {
+      toast.error('Error al cargar la lista de compartidos')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadShares()
+  }, [bookId])
+
+  const toggleShare = async (friend) => {
+    try {
+      if (friend.is_shared) {
+        await socialAPI.unshareBook(bookId, friend.id)
+        toast.success(`Ya no compartes este libro con ${friend.username}`)
+      } else {
+        await socialAPI.shareBook(bookId, friend.id)
+        toast.success(`Libro compartido con ${friend.username}`)
+      }
+      loadShares()
+    } catch (e) {
+      toast.error('Error al cambiar estado de compartición')
+    }
+  }
+
+  return (
+    <motion.div 
+      className="share-modal-overlay" 
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div 
+        className="share-modal-content" 
+        onClick={e => e.stopPropagation()}
+        initial={{ y: 20, scale: 0.95 }}
+        animate={{ y: 0, scale: 1 }}
+        exit={{ y: 20, scale: 0.95 }}
+      >
+        <div className="share-modal-header">
+          <h3>👥 Compartir análisis</h3>
+          <button className="share-modal-close" onClick={onClose}><X size={18} /></button>
+        </div>
+        <p className="share-modal-desc">Selecciona con qué amigos deseas compartir este análisis literario completo.</p>
+        
+        {loading ? (
+          <div className="share-modal-loading">
+            <Loader size={20} className="spin" />
+            <span>Cargando amigos...</span>
+          </div>
+        ) : friends.length === 0 ? (
+          <div className="share-modal-empty">
+            <p>No tienes amigos aceptados para poder compartirles análisis.</p>
+            <Link to="/friends" className="btn-go-friends" onClick={onClose}>Gestionar Amigos</Link>
+          </div>
+        ) : (
+          <div className="share-friends-list">
+            {friends.map(f => (
+              <div key={f.id} className="share-friend-item">
+                <div className="user-avatar" style={{ background: f.avatar_color || '#6366f1', width: '32px', height: '32px', fontSize: '0.8rem' }}>
+                  {f.username[0].toUpperCase()}
+                </div>
+                <div className="share-friend-info">
+                  <span className="share-friend-name">{f.username}</span>
+                  <span className="share-friend-email">{f.email}</span>
+                </div>
+                <label className="switch-premium">
+                  <input
+                    type="checkbox"
+                    checked={f.is_shared}
+                    onChange={() => toggleShare(f)}
+                  />
+                  <span className="slider-round"></span>
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
   )
 }
 
