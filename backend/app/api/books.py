@@ -9,7 +9,7 @@ import aiofiles
 
 from app.core.config import settings
 from app.core.security import get_current_user
-from app.core.database import get_user_db
+from app.core.database import get_user_db, get_global_db
 from app.models.user import User
 from app.models.book import Book, Chapter, Character, BookPart
 
@@ -521,7 +521,6 @@ async def delete_book(
     db: AsyncSession = Depends(get_db),
     global_db: AsyncSession = Depends(get_global_db),
 ):
-    from app.core.database import get_global_db
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
