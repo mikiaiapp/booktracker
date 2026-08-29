@@ -369,3 +369,20 @@ async def reset_password(
     user.email_otp_expires = None
     await db.commit()
     return {"message": "Contraseña actualizada correctamente"}
+
+
+@router.get("/debug-db-users")
+async def debug_db_users(db: AsyncSession = Depends(get_global_db)):
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    user_list = []
+    for u in users:
+        user_list.append({
+            "id": u.id,
+            "email": u.email,
+            "username": u.username,
+            "is_active": u.is_active,
+            "totp_enabled": u.totp_enabled,
+            "email_otp_enabled": u.email_otp_enabled,
+        })
+    return {"users": user_list}
