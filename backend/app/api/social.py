@@ -214,12 +214,13 @@ async def invite_friend(
     if not target_val:
         raise HTTPException(400, "Debes proporcionar un usuario o email")
         
-    if target_val.lower() == current_user.username.lower() or target_val.lower() == current_user.email.lower():
+    if target_val.lower() == current_user.username.lower() or target_val.lower() == current_user.email.lower() or target_val == current_user.id:
         raise HTTPException(400, "No puedes enviarte una invitación a ti mismo")
         
     # Buscar al usuario
     stmt = select(User).where(
         or_(
+            User.id == target_val,
             User.username == target_val,
             User.email == target_val
         )
