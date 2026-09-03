@@ -597,9 +597,32 @@ export default function BookPage() {
     try {
       if (isFirst) setLoading(true)
       const bookRes = await booksAPI.get(id)
-      const statusRes = await analysisAPI.status(id)
       setData(bookRes.data)
-      setStatus(statusRes.data)
+
+      try {
+        const statusRes = await analysisAPI.status(id)
+        setStatus(statusRes.data)
+      } catch (stErr) {
+        console.warn("Could not fetch book status, using fallback:", stErr)
+        const b = bookRes.data?.book || {}
+        setStatus({
+          status: b.status || 'complete',
+          phase1_done: b.phase1_done ?? true,
+          phase2_done: b.phase2_done ?? true,
+          phase3_done: b.phase3_done ?? true,
+          phase4_done: b.phase4_done ?? true,
+          phase5_done: b.phase5_done ?? true,
+          phase6_done: b.phase6_done ?? true,
+          chapters_summarized: true,
+          has_global_summary: Boolean(b.global_summary),
+          has_mindmap: Boolean(b.mindmap_data),
+          podcast_done: Boolean(b.podcast_audio_path || b.podcast_script),
+          podcast_audio_path: b.podcast_audio_path,
+          podcast_script: b.podcast_script,
+          podcast_duration: b.podcast_duration || 0,
+          jobs: []
+        })
+      }
 
       // Restore playback state from DB if present
       if (bookRes.data.book?.playback_state) {
@@ -636,7 +659,7 @@ export default function BookPage() {
         setProgressMsg(info?.msg || '')
       } catch {}
     } catch (err) {
-      toast.error(`Error al cargar: ${err.message}`)
+      toast.error(`Error al cargar: ${err.response?.data?.detail || err.message}`)
     } finally {
       if (isFirst) setLoading(false)
     }

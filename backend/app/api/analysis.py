@@ -334,27 +334,45 @@ async def get_status(
     if not book:
         raise HTTPException(404, f"Book status not found: {book_id}")
 
-    is_shared = getattr(book, 'shared_by_user_id', None) is not None
+    is_shared = bool(getattr(book, 'shared_by_user_id', None) and getattr(book, 'original_book_id', None))
     shared_by_user_id = getattr(book, 'shared_by_user_id', None)
     original_book_id = getattr(book, 'original_book_id', None)
 
     target_book = book
     target_book_id = book_id
     target_user_id = current_user.id
-    target_db = db
 
-    if is_shared and shared_by_user_id and original_book_id:
+    jobs = []
+    chapters = []
+    has_characters = False
+
+    if is_shared:
         target_user_id = shared_by_user_id
         target_book_id = original_book_id
-        async for owner_db in get_user_db(shared_by_user_id):
-            orig_result = await owner_db.execute(select(Book).where(Book.id == original_book_id))
-            loaded_orig = orig_result.scalar_one_or_none()
-            if loaded_orig:
-                target_book = loaded_orig
-                target_db = owner_db
-            break
+        try:
+            async for owner_db in get_user_db(shared_by_user_id):
+                orig_result = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                loaded_orig = orig_result.scalar_one_or_none()
+                if loaded_orig:
+                    target_book = loaded_orig
 
-    if not is_shared:
+                jobs_result = await owner_db.execute(
+                    select(AnalysisJob).where(AnalysisJob.book_id == original_book_id).order_by(AnalysisJob.created_at.desc())
+                )
+                jobs = jobs_result.scalars().all()
+
+                ch_result = await owner_db.execute(select(Chapter).where(Chapter.book_id == original_book_id))
+                chapters = ch_result.scalars().all()
+
+                char_count_res = await owner_db.execute(select(Character).where(Character.book_id == original_book_id))
+                has_characters = len(char_count_res.scalars().all()) > 0
+                break
+        except Exception as e:
+            print(f"[API ERROR] get_status shared book error: {e}")
+            target_book = book
+            target_user_id = current_user.id
+            target_book_id = book_id
+    else:
         # Auto-recuperación: Si el status en DB es de procesamiento pero no hay nada activo en Redis
         from app.workers.queue_manager import get_state, on_done
         from app.workers.tasks import _finalize_book_status
@@ -373,28 +391,22 @@ async def get_status(
         if book.status == "complete" and is_in_redis:
             on_done(current_user.id, book_id)
 
-    jobs_result = await target_db.execute(
-        select(AnalysisJob).where(AnalysisJob.book_id == target_book_id).order_by(AnalysisJob.created_at.desc())
-    )
-    jobs = jobs_result.scalars().all()
+        jobs_result = await db.execute(
+            select(AnalysisJob).where(AnalysisJob.book_id == book_id).order_by(AnalysisJob.created_at.desc())
+        )
+        jobs = jobs_result.scalars().all()
 
-    ch_result = await target_db.execute(select(Chapter).where(Chapter.book_id == target_book_id))
-    chapters  = ch_result.scalars().all()
+        ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+        chapters  = ch_result.scalars().all()
+
+        char_count_res = await db.execute(select(Character).where(Character.book_id == book_id))
+        has_characters = len(char_count_res.scalars().all()) > 0
+
     total_ch  = len(chapters)
-    # Solo contamos como hecho si tiene un resumen válido de más de 50 caracteres
     done_ch   = sum(1 for c in chapters if c.summary_status == "done" and c.summary and len(c.summary) > 50)
-
-    # Inteligencia de detección de fases completadas (auto-recuperación de estados inconsistentes)
     chapters_summarized = total_ch > 0 and done_ch == total_ch
-    
-    # Fase 2 se considera hecha si hay capítulos resumidos o el flag está a True
-    phase2_really_done = target_book.phase2_done or chapters_summarized
-    
-    # Fase 3 (Personajes) se considera hecha si el flag está a True 
-    # O si ya hay personajes en la base de datos
-    char_count_res = await target_db.execute(select(Character).where(Character.book_id == target_book_id))
-    has_characters = len(char_count_res.scalars().all()) > 0
-    phase3_really_done = target_book.phase3_done or has_characters
+    phase2_really_done = bool(target_book.phase2_done or chapters_summarized)
+    phase3_really_done = bool(target_book.phase3_done or has_characters)
 
     # Detección robusta de audio para libros antiguos/legado
     possible_audio_paths = [
@@ -686,16 +698,18 @@ async def get_tts_audio(
         if not book:
             raise HTTPException(404, "Book not found")
 
-        is_shared = getattr(book, 'shared_by_user_id', None) is not None
+        is_shared = bool(getattr(book, 'shared_by_user_id', None) and getattr(book, 'original_book_id', None))
         shared_by_user_id = getattr(book, 'shared_by_user_id', None)
         original_book_id = getattr(book, 'original_book_id', None)
 
         source_book = book
-        source_db = db
         source_book_id = book_id
         owner_user = None
 
-        if is_shared and shared_by_user_id and original_book_id:
+        text_to_speak = ""
+        voice = getattr(current_user, 'tts_voice', 'alloy') or 'alloy'
+
+        if is_shared:
             source_book_id = original_book_id
             async with _global_session_factory() as global_db:
                 o_res = await global_db.execute(select(User).where(User.id == shared_by_user_id))
@@ -706,54 +720,89 @@ async def get_tts_audio(
                 loaded_orig = orig_res.scalar_one_or_none()
                 if loaded_orig:
                     source_book = loaded_orig
-                    source_db = owner_db
-                break
 
-        # 3. Determinar el texto a sintetizar
-        text_to_speak = ""
-        voice = getattr(current_user, 'tts_voice', 'alloy') or 'alloy'
-        cache_filename = f"tts_{source_book_id}_{type}_{voice}"
-        
+                if type == "synopsis":
+                    text_to_speak = source_book.synopsis or ""
+                elif type == "global_summary":
+                    text_to_speak = source_book.global_summary or ""
+                elif type == "chapter":
+                    if not chapter_id:
+                        raise HTTPException(400, "chapter_id is required for type=chapter")
+                    ch_res = await owner_db.execute(
+                        select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == source_book_id)
+                    )
+                    chapter = ch_res.scalar_one_or_none()
+                    if not chapter:
+                        raise HTTPException(404, "Chapter not found")
+                    text_to_speak = f"{chapter.title}. {chapter.summary or ''}"
+                    if chapter.key_events:
+                        try:
+                            import json
+                            events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
+                            if events:
+                                text_to_speak += ". Eventos clave: " + ". ".join(events)
+                        except Exception:
+                            pass
+                elif type == "character":
+                    if not character_id:
+                        raise HTTPException(400, "character_id is required for type=character")
+                    char_res = await owner_db.execute(
+                        select(Character).where(Character.id == character_id, Character.book_id == source_book_id)
+                    )
+                    character = char_res.scalar_one_or_none()
+                    if not character:
+                        raise HTTPException(404, "Character not found")
+                    text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
+                    if character.personality:
+                        text_to_speak += f" Personalidad: {character.personality}."
+                    if character.arc:
+                        text_to_speak += f" Evolución: {character.arc}."
+                break
+        else:
+            if type == "synopsis":
+                text_to_speak = source_book.synopsis or ""
+            elif type == "global_summary":
+                text_to_speak = source_book.global_summary or ""
+            elif type == "chapter":
+                if not chapter_id:
+                    raise HTTPException(400, "chapter_id is required for type=chapter")
+                ch_res = await db.execute(
+                    select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == source_book_id)
+                )
+                chapter = ch_res.scalar_one_or_none()
+                if not chapter:
+                    raise HTTPException(404, "Chapter not found")
+                text_to_speak = f"{chapter.title}. {chapter.summary or ''}"
+                if chapter.key_events:
+                    try:
+                        import json
+                        events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
+                        if events:
+                            text_to_speak += ". Eventos clave: " + ". ".join(events)
+                    except Exception:
+                        pass
+            elif type == "character":
+                if not character_id:
+                    raise HTTPException(400, "character_id is required for type=character")
+                char_res = await db.execute(
+                    select(Character).where(Character.id == character_id, Character.book_id == source_book_id)
+                )
+                character = char_res.scalar_one_or_none()
+                if not character:
+                    raise HTTPException(404, "Character not found")
+                text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
+                if character.personality:
+                    text_to_speak += f" Personalidad: {character.personality}."
+                if character.arc:
+                    text_to_speak += f" Evolución: {character.arc}."
+
         if type == "synopsis":
-            text_to_speak = source_book.synopsis or ""
+            cache_filename = f"tts_{source_book_id}_synopsis_{voice}"
         elif type == "global_summary":
-            text_to_speak = source_book.global_summary or ""
+            cache_filename = f"tts_{source_book_id}_global_summary_{voice}"
         elif type == "chapter":
-            if not chapter_id:
-                raise HTTPException(400, "chapter_id is required for type=chapter")
-            ch_res = await source_db.execute(
-                select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == source_book_id)
-            )
-            chapter = ch_res.scalar_one_or_none()
-            if not chapter:
-                raise HTTPException(404, "Chapter not found")
-            
-            text_to_speak = f"{chapter.title}. {chapter.summary or ''}"
-            if chapter.key_events:
-                try:
-                    import json
-                    events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
-                    if events:
-                        text_to_speak += ". Eventos clave: " + ". ".join(events)
-                except Exception:
-                    pass
             cache_filename = f"tts_{source_book_id}_chapter_{chapter_id}_{voice}"
-            
         elif type == "character":
-            if not character_id:
-                raise HTTPException(400, "character_id is required for type=character")
-            char_res = await source_db.execute(
-                select(Character).where(Character.id == character_id, Character.book_id == source_book_id)
-            )
-            character = char_res.scalar_one_or_none()
-            if not character:
-                raise HTTPException(404, "Character not found")
-            
-            text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
-            if character.personality:
-                text_to_speak += f" Personalidad: {character.personality}."
-            if character.arc:
-                text_to_speak += f" Evolución: {character.arc}."
             cache_filename = f"tts_{source_book_id}_character_{character_id}_{voice}"
         else:
             raise HTTPException(400, "Invalid type")

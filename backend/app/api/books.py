@@ -288,7 +288,7 @@ async def get_book(
             raise HTTPException(404, f"Book {book_id} not found")
         
         # Variables de compartición
-        is_shared = getattr(book, 'shared_by_user_id', None) is not None
+        is_shared = bool(getattr(book, 'shared_by_user_id', None) and getattr(book, 'original_book_id', None))
         shared_by_user_id = getattr(book, 'shared_by_user_id', None)
         original_book_id = getattr(book, 'original_book_id', None)
         owner_username = getattr(book, 'owner_username', None)
@@ -302,43 +302,47 @@ async def get_book(
 
         if is_shared:
             # Cargar los datos desde la BD del propietario
-            async for owner_db in get_user_db(shared_by_user_id):
-                orig_result = await owner_db.execute(select(Book).where(Book.id == original_book_id))
-                loaded_orig = orig_result.scalar_one_or_none()
-                if not loaded_orig:
-                    raise HTTPException(404, "El libro original ya no está disponible en la biblioteca del propietario")
-                
-                orig_book = loaded_orig
+            try:
+                async for owner_db in get_user_db(shared_by_user_id):
+                    orig_result = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                    loaded_orig = orig_result.scalar_one_or_none()
+                    if loaded_orig:
+                        orig_book = loaded_orig
 
-                # 2. Capítulos del propietario
-                ch_result = await owner_db.execute(select(Chapter).where(Chapter.book_id == original_book_id).order_by(Chapter.order))
-                chapters = ch_result.scalars().all()
+                    # 2. Capítulos del propietario
+                    ch_result = await owner_db.execute(select(Chapter).where(Chapter.book_id == original_book_id).order_by(Chapter.order))
+                    chapters = ch_result.scalars().all()
 
-                # 3. Personajes del propietario
-                char_result = await owner_db.execute(select(Character).where(Character.book_id == original_book_id))
-                characters = char_result.scalars().all()
+                    # 3. Personajes del propietario
+                    char_result = await owner_db.execute(select(Character).where(Character.book_id == original_book_id))
+                    characters = char_result.scalars().all()
 
-                # 4. Otros libros del autor del propietario
-                if orig_book.author:
-                    from sqlalchemy import desc
-                    others_result = await owner_db.execute(
-                        select(Book)
-                        .where(Book.author == orig_book.author, Book.id != original_book_id)
-                        .order_by(desc(Book.year).nulls_last(), Book.title)
-                    )
-                    for b in others_result.scalars().all():
-                        try:
-                            # Omitir libros que son compartidos en su biblioteca
-                            if getattr(b, 'shared_by_user_id', None) is not None:
-                                continue
-                            other_books.append({
-                                "id": b.id, "title": b.title, "isbn": b.isbn,
-                                "cover_local": b.cover_local, "year": b.year,
-                                "status": b.status, 
-                                "phase3_done": getattr(b, 'phase3_done', False),
-                                "synopsis": b.synopsis,
-                            })
-                        except Exception: continue
+                    # 4. Otros libros del autor del propietario
+                    if orig_book.author:
+                        from sqlalchemy import desc
+                        others_result = await owner_db.execute(
+                            select(Book)
+                            .where(Book.author == orig_book.author, Book.id != original_book_id)
+                            .order_by(desc(Book.year).nulls_last(), Book.title)
+                        )
+                        for b in others_result.scalars().all():
+                            try:
+                                # Omitir libros que son compartidos en su biblioteca
+                                if getattr(b, 'shared_by_user_id', None) is not None:
+                                    continue
+                                other_books.append({
+                                    "id": b.id, "title": b.title, "isbn": b.isbn,
+                                    "cover_local": b.cover_local, "year": b.year,
+                                    "status": b.status, 
+                                    "phase3_done": getattr(b, 'phase3_done', False),
+                                    "synopsis": b.synopsis,
+                                })
+                            except Exception: continue
+                    break
+            except Exception as e:
+                print(f"[API ERROR] get_book: could not fetch from owner_db: {e}")
+                # Fallback al libro local si la BD del propietario no está accesible
+                orig_book = book
         else:
             # 2. Capítulos propios
             ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
@@ -433,6 +437,8 @@ async def get_book(
             ],
             "others": other_books
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[API ERROR] get_book({book_id}): {str(e)}")
         import traceback
