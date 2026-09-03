@@ -15,7 +15,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       args:
-        - CACHE_BUST=v2.10.5
+        - CACHE_BUST=v2.10.6
     container_name: booktracker-api
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
@@ -25,6 +25,7 @@ services:
       - /volume1/docker/booktracker/data/uploads:/data/uploads
       - /volume1/docker/booktracker/data/audio:/data/audio
       - /volume1/docker/booktracker/data/covers:/data/covers
+      - /volume1/docker/booktracker/data/app:/app/app
     environment:
       - PYTHONPATH=/app
       - DATABASE_DIR=/data/databases
@@ -49,7 +50,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       args:
-        - CACHE_BUST=v2.10.5
+        - CACHE_BUST=v2.10.6
     container_name: booktracker-worker
     restart: unless-stopped
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=1
@@ -59,6 +60,7 @@ services:
       - /volume1/docker/booktracker/data/uploads:/data/uploads
       - /volume1/docker/booktracker/data/audio:/data/audio
       - /volume1/docker/booktracker/data/covers:/data/covers
+      - /volume1/docker/booktracker/data/app:/app/app
     environment:
       - PYTHONPATH=/app
       - DATABASE_DIR=/data/databases
@@ -91,7 +93,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - CACHE_BUST=v2.10.5
+        - CACHE_BUST=v2.10.6
     container_name: booktracker-ui
     restart: unless-stopped
     depends_on:

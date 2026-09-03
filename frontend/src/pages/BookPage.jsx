@@ -316,36 +316,18 @@ export default function BookPage() {
           fallbackText = book?.global_summary || ''
         }
 
-        if (fallbackText.trim()) {
-          toast('Reproduciendo mediante voz del navegador...', { icon: '🔊' })
-          speakBrowserFallback(fallbackText, () => {
-            if (t === 'chapter') {
-              setTtsPlaying(false)
-              setTtsChapter(null)
-              setTtsChapterPaused(false)
-            } else if (t === 'character') {
-              setTtsCharPlaying(false)
-              setTtsCharacter(null)
-              setTtsCharPaused(false)
-            } else {
-              setTtsInfoPlaying(false)
-              setTtsInfoPaused(false)
-            }
-          })
+        toast.error("No se pudo cargar el audio del servidor. Comprueba la configuración de OpenAI.", { id: 'tts-error' })
+        if (t === 'chapter') {
+          setTtsPlaying(false)
+          setTtsChapter(null)
+          setTtsChapterPaused(false)
+        } else if (t === 'character') {
+          setTtsCharPlaying(false)
+          setTtsCharacter(null)
+          setTtsCharPaused(false)
         } else {
-          toast.error("No se pudo cargar el audio ni obtener el texto para reproducir")
-          if (t === 'chapter') {
-            setTtsPlaying(false)
-            setTtsChapter(null)
-            setTtsChapterPaused(false)
-          } else if (t === 'character') {
-            setTtsCharPlaying(false)
-            setTtsCharacter(null)
-            setTtsCharPaused(false)
-          } else {
-            setTtsInfoPlaying(false)
-            setTtsInfoPaused(false)
-          }
+          setTtsInfoPlaying(false)
+          setTtsInfoPaused(false)
         }
       })
     }
