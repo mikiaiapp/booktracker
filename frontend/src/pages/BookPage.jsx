@@ -1226,6 +1226,7 @@ export default function BookPage() {
                     isPaused={ttsChapterPaused}
                     onResume={resumeCurrentTTS}
                     onPause={pauseTTS}
+                    isShared={book.is_shared}
                   />
                 )}
                 {tab === 'characters' && (
@@ -1244,6 +1245,7 @@ export default function BookPage() {
                     onPause={pauseCharTTS}
                     onRefresh={() => load(false)}
                     onOpenNetwork={() => setShowNetworkModal(true)}
+                    isShared={book.is_shared}
                   />
                 )}
                 {tab === 'summary' && (
@@ -1262,7 +1264,7 @@ export default function BookPage() {
                 )}
                 {tab === 'mindmap' && (
                   <div className="prose-content">
-                    <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} />
+                    <TabPhaseBar phase={5} label="Mapa Mental" doneProp="has_mindmap" canProp="has_global_summary" status={statusInfo} isProcessing={isProcessing} onTrigger={triggerPhase} progressMsg={progressMsg} isShared={book.is_shared} />
                     {statusInfo.has_mindmap ? <MindMap data={book.mindmap_data} /> : <p className="empty-tab">Generando el mapa mental...</p>}
                   </div>
                 )}
@@ -1445,7 +1447,7 @@ function ShareModal({ bookId, onClose }) {
 
 function HeroCover({ book }) { const src = coverSrc(book); return src ? <img src={src} alt={book.title} /> : <div className="cover-ph-lg"><BookOpen size={48} /></div> }
 
-function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger, progressMsg }) {
+function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, onTrigger, progressMsg, isShared = false }) {
   const isDone = status[doneProp]
   const showProcessing = isProcessing && (!isDone || (progressMsg?.toLowerCase().includes(label.toLowerCase())))
   
@@ -1462,7 +1464,7 @@ function TabPhaseBar({ phase, label, doneProp, canProp, status, isProcessing, on
           )}
         </div>
       </div>
-      {status[canProp || 'phase1_done'] && !isProcessing && (
+      {!isShared && status[canProp || 'phase1_done'] && !isProcessing && (
         <button className="reanalyze-btn" onClick={() => onTrigger(phase, isDone)}>
           <RefreshCw size={14} /> {isDone ? 'Rehacer' : 'Iniciar'}
         </button>
@@ -1502,7 +1504,7 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
 
   return (
     <div className="prose-content">
-      <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
+      <TabPhaseBar phase={6} label="Podcast" doneProp="podcast_done" canProp="has_mindmap" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} isShared={book.is_shared} />
       
       {status.podcast_done ? (
         <div className="podcast-container">
@@ -1557,10 +1559,12 @@ const PodcastTab = React.memo(({ book, status, isProcessing, onTrigger, progress
                     <Download size={18} />
                     <span className="btn-text">MP3</span>
                   </button>
-                  <button className="podcast-reanalyze-btn" title="Rehacer análisis del podcast" onClick={() => onTrigger(6, true)}>
-                    <RefreshCw size={18} />
-                    <span className="btn-text">Rehacer</span>
-                  </button>
+                  {!book.is_shared && (
+                    <button className="podcast-reanalyze-btn" title="Rehacer análisis del podcast" onClick={() => onTrigger(6, true)}>
+                      <RefreshCw size={18} />
+                      <span className="btn-text">Rehacer</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1606,7 +1610,7 @@ const ReferencesTab = React.memo(({ book, status, isProcessing, onTrigger, progr
 
   return (
     <div className="prose-content">
-      <TabPhaseBar phase={7} label="Referencias" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} />
+      <TabPhaseBar phase={7} label="Referencias" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} progressMsg={progressMsg} isShared={book.is_shared} />
       
       <div className="refs-section">
         <h3>Investigación y Referencias</h3>
@@ -1647,7 +1651,7 @@ const ReferencesTab = React.memo(({ book, status, isProcessing, onTrigger, progr
 const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onStop, isPlaying, isPaused, onResume, onPause }) => {
   return (
     <div className="info-tab">
-      <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
+      <TabPhaseBar phase={1} label="Ficha y Autor" doneProp="phase1_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} isShared={book.is_shared} />
       <div className="tab-section-header">
         <h3>Sinopsis</h3>
         <div className="tab-header-actions">
@@ -1667,7 +1671,7 @@ const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onS
 const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onStop, isPlaying, isPaused, onResume, onPause }) => {
   return (
     <div className="prose-content">
-      <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
+      <TabPhaseBar phase={4} label="Resumen Global" doneProp="has_global_summary" status={status} isProcessing={isProcessing} onTrigger={onTrigger} isShared={book.is_shared} />
       <div className="tab-section-header">
         <h2>Resumen</h2>
         <div className="tab-header-actions">
@@ -1684,7 +1688,7 @@ const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, 
   )
 })
 
-const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause }) => {
+const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, onChapterSummarized, view, setView, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, isShared = false }) => {
   // Logic to check if all chapters are done
   const safeChapters = Array.isArray(chapters) ? chapters : []
   const allDone = safeChapters.length > 0 && safeChapters.every(c => c?.summary_status === 'done')
@@ -1698,6 +1702,7 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
         status={{...status, phase2_done: status?.phase2_done || allDone}} 
         isProcessing={isProcessing} 
         onTrigger={onTrigger} 
+        isShared={isShared}
       />
       
       <div className="chapters-controls">
@@ -1739,16 +1744,18 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
                         <Volume2 size={12} className="animate-pulse" />
                       </div>
                     )}
-                    <button className="ch-action-btn reanalyze" title="Rehacer resumen de este capítulo"
-                      onClick={async () => {
-                        try {
-                          await chapterAPI.summarize(bookId, ch.id)
-                          toast.success('Resumiendo capítulo...')
-                          onChapterSummarized()
-                        } catch { toast.error('Error') }
-                      }}>
-                      <RefreshCw size={12} />
-                    </button>
+                    {!isShared && (
+                      <button className="ch-action-btn reanalyze" title="Rehacer resumen de este capítulo"
+                        onClick={async () => {
+                          try {
+                            await chapterAPI.summarize(bookId, ch.id)
+                            toast.success('Resumiendo capítulo...')
+                            onChapterSummarized()
+                          } catch { toast.error('Error') }
+                        }}>
+                        <RefreshCw size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 
@@ -1768,7 +1775,7 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
                             <ul>{ch.key_events.map((e, ei) => <li key={ei}>{e}</li>)}</ul>
                           </div>
                         )}
-                        {!hasSummary && (
+                        {!hasSummary && !isShared && (
                            <button className="summarize-now-btn" onClick={() => chapterAPI.summarize(bookId, ch.id).then(() => onChapterSummarized())}>
                              Generar resumen ahora
                            </button>
@@ -1786,11 +1793,11 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
   )
 })
 
-const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh, onOpenNetwork }) => {
+const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessing, onTrigger, onPlay, onStop, currentTtsId, isPlaying, isPaused, onResume, onPause, onRefresh, onOpenNetwork, isShared = false }) => {
   const safeChars = Array.isArray(characters) ? characters : []
   return (
     <div className="characters-tab">
-      <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} />
+      <TabPhaseBar phase={3} label="Personajes" doneProp="phase3_done" status={status} isProcessing={isProcessing} onTrigger={onTrigger} isShared={isShared} />
       
       <div className="chapters-controls" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--ink)' }}>Estudio Detallado</h3>
@@ -1824,16 +1831,18 @@ const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessin
                         <Volume2 size={12} className="animate-pulse" />
                       </div>
                     )}
-                    <button className="char-action-btn reanalyze" title="Rehacer este personaje"
-                      onClick={async () => {
-                        try {
-                          await characterAPI.reanalyze(bookId, char.id)
-                          toast.success('Analizando personaje...')
-                          onRefresh()
-                        } catch { toast.error('Error') }
-                      }}>
-                      <RefreshCw size={12} />
-                    </button>
+                    {!isShared && (
+                      <button className="char-action-btn reanalyze" title="Rehacer este personaje"
+                        onClick={async () => {
+                          try {
+                            await characterAPI.reanalyze(bookId, char.id)
+                            toast.success('Analizando personaje...')
+                            onRefresh()
+                          } catch { toast.error('Error') }
+                        }}>
+                        <RefreshCw size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 <span className="char-role">{char.role || 'Personaje'}</span>

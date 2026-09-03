@@ -462,14 +462,45 @@ async def share_book(req: ShareRequest, current_user: User = Depends(get_current
                 cover_url=book.cover_url,
                 cover_local=book.cover_local,
                 synopsis=book.synopsis,
+                global_summary=book.global_summary,
                 genre=book.genre,
                 year=book.year,
+                pages=book.pages,
                 status="complete",  # Al compartir, ya está analizado en el origen
+                phase1_done=book.phase1_done,
+                phase2_done=book.phase2_done,
+                phase3_done=book.phase3_done,
+                phase4_done=book.phase4_done,
+                phase5_done=book.phase5_done,
+                phase6_done=book.phase6_done,
+                mindmap_data=book.mindmap_data,
+                podcast_script=book.podcast_script,
+                podcast_audio_path=book.podcast_audio_path,
+                podcast_duration=book.podcast_duration,
                 shared_by_user_id=current_user.id,
                 original_book_id=book.id,
                 owner_username=current_user.username
             )
             f_db.add(new_shared)
+            await f_db.commit()
+        else:
+            shared_book.title = book.title
+            shared_book.author = book.author
+            shared_book.cover_local = book.cover_local
+            shared_book.cover_url = book.cover_url
+            shared_book.synopsis = book.synopsis
+            shared_book.global_summary = book.global_summary
+            shared_book.podcast_script = book.podcast_script
+            shared_book.podcast_audio_path = book.podcast_audio_path
+            shared_book.podcast_duration = book.podcast_duration
+            shared_book.phase1_done = book.phase1_done
+            shared_book.phase2_done = book.phase2_done
+            shared_book.phase3_done = book.phase3_done
+            shared_book.phase4_done = book.phase4_done
+            shared_book.phase5_done = book.phase5_done
+            shared_book.phase6_done = book.phase6_done
+            shared_book.mindmap_data = book.mindmap_data
+            shared_book.owner_username = current_user.username
             await f_db.commit()
             
     return {"status": "success", "message": f"Libro compartido con éxito"}

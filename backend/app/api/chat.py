@@ -42,15 +42,33 @@ async def send_chat_message(book_id: str, req: ChatRequest, user: User = Depends
         await db.commit()
 
         # 3. Preparar contexto (Resúmenes + Personajes)
-        res_ch = await db.execute(select(Chapter).where(Chapter.book_id == book_id).order_by(Chapter.order))
+        source_book = book
+        source_db = db
+        source_book_id = book_id
+
+        is_shared = getattr(book, 'shared_by_user_id', None) is not None
+        shared_by_user_id = getattr(book, 'shared_by_user_id', None)
+        original_book_id = getattr(book, 'original_book_id', None)
+
+        if is_shared and shared_by_user_id and original_book_id:
+            source_book_id = original_book_id
+            async for owner_db in get_user_db(shared_by_user_id):
+                orig_res = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                loaded_orig = orig_res.scalar_one_or_none()
+                if loaded_orig:
+                    source_book = loaded_orig
+                    source_db = owner_db
+                break
+
+        res_ch = await source_db.execute(select(Chapter).where(Chapter.book_id == source_book_id).order_by(Chapter.order))
         chaps = res_ch.scalars().all()
         summaries = "\n".join([f"Capítulo {c.title}: {c.summary}" for c in chaps if c.summary])
         
-        res_char = await db.execute(select(Character).where(Character.book_id == book_id))
+        res_char = await source_db.execute(select(Character).where(Character.book_id == source_book_id))
         chars = res_char.scalars().all()
         chars_str = "\n".join([f"Personaje {c.name}: {c.description}" for c in chars if c.description])
         
-        context = f"SINOPSIS: {book.synopsis}\n--- RESUMEN ---\n{summaries}\n--- PERSONAJES ---\n{chars_str}\n--- ENSAYO GLOBAL ---\n{book.global_summary}"
+        context = f"SINOPSIS: {source_book.synopsis or ''}\n--- RESUMEN ---\n{summaries}\n--- PERSONAJES ---\n{chars_str}\n--- ENSAYO GLOBAL ---\n{source_book.global_summary or ''}"
 
         # 4. Obtener historial reciente
         res_h = await db.execute(select(ChatMessage).where(ChatMessage.book_id == book_id).order_by(ChatMessage.created_at.desc()).limit(6))

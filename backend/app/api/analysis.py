@@ -33,6 +33,8 @@ async def trigger_phase1(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
 
     from app.workers.queue_manager import enqueue as q_enqueue
     phases = ["1", "2", "3", "4", "podcast"] if force else ["1"]
@@ -56,6 +58,8 @@ async def trigger_phase2(
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book: raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
     
     from app.workers.queue_manager import enqueue as q_enqueue
     q_enqueue(current_user.id, book_id, book.title, phases=["2"], force=force)
@@ -78,6 +82,8 @@ async def trigger_phase3(
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book: raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
     
     from app.workers.queue_manager import enqueue as q_enqueue
     # Frontend P3 -> Backend P4 (Characters)
@@ -101,6 +107,8 @@ async def trigger_phase4(
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book: raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
     
     from app.workers.queue_manager import enqueue as q_enqueue
     # Frontend P4 -> Backend P5 (Global Summary)
@@ -137,6 +145,8 @@ async def summarize_single_chapter(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
 
     ch_result = await db.execute(
         select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id)
@@ -201,6 +211,8 @@ async def trigger_podcast(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
 
     from app.workers.queue_manager import enqueue as q_enqueue
     q_enqueue(current_user.id, book_id, book.title, phases=["podcast"], force=force)
@@ -322,30 +334,51 @@ async def get_status(
     if not book:
         raise HTTPException(404, f"Book status not found: {book_id}")
 
-    # Auto-recuperación: Si el status en DB es de procesamiento pero no hay nada activo en Redis
-    from app.workers.queue_manager import get_state, on_done
-    from app.workers.tasks import _finalize_book_status
-    
-    q_state = get_state(current_user.id)
-    is_in_redis = (q_state.get("active") == book_id) or (book_id in q_state.get("infos", {}))
-    
-    # Si el libro dice estar procesando pero no está en Redis, forzar re-evaluación
-    if book.status in ("queued", "identifying", "analyzing", "structuring", "summarizing") and not is_in_redis:
-        print(f"[RECOVERY] Book {book_id} stuck in status '{book.status}' without Redis task. Finalizing...")
-        await _finalize_book_status(db, book)
-        # Si después de finalizar sigue igual o cambia a complete, aseguramos limpieza de Redis
-        on_done(current_user.id, book_id)
-    
-    # Si el libro está completo, nos aseguramos de que no queden restos en Redis
-    if book.status == "complete" and is_in_redis:
-        on_done(current_user.id, book_id)
+    is_shared = getattr(book, 'shared_by_user_id', None) is not None
+    shared_by_user_id = getattr(book, 'shared_by_user_id', None)
+    original_book_id = getattr(book, 'original_book_id', None)
 
-    jobs_result = await db.execute(
-        select(AnalysisJob).where(AnalysisJob.book_id == book_id).order_by(AnalysisJob.created_at.desc())
+    target_book = book
+    target_book_id = book_id
+    target_user_id = current_user.id
+    target_db = db
+
+    if is_shared and shared_by_user_id and original_book_id:
+        target_user_id = shared_by_user_id
+        target_book_id = original_book_id
+        async for owner_db in get_user_db(shared_by_user_id):
+            orig_result = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+            loaded_orig = orig_result.scalar_one_or_none()
+            if loaded_orig:
+                target_book = loaded_orig
+                target_db = owner_db
+            break
+
+    if not is_shared:
+        # Auto-recuperación: Si el status en DB es de procesamiento pero no hay nada activo en Redis
+        from app.workers.queue_manager import get_state, on_done
+        from app.workers.tasks import _finalize_book_status
+        
+        q_state = get_state(current_user.id)
+        is_in_redis = (q_state.get("active") == book_id) or (book_id in q_state.get("infos", {}))
+        
+        # Si el libro dice estar procesando pero no está en Redis, forzar re-evaluación
+        if book.status in ("queued", "identifying", "analyzing", "structuring", "summarizing") and not is_in_redis:
+            print(f"[RECOVERY] Book {book_id} stuck in status '{book.status}' without Redis task. Finalizing...")
+            await _finalize_book_status(db, book)
+            # Si después de finalizar sigue igual o cambia a complete, aseguramos limpieza de Redis
+            on_done(current_user.id, book_id)
+        
+        # Si el libro está completo, nos aseguramos de que no queden restos en Redis
+        if book.status == "complete" and is_in_redis:
+            on_done(current_user.id, book_id)
+
+    jobs_result = await target_db.execute(
+        select(AnalysisJob).where(AnalysisJob.book_id == target_book_id).order_by(AnalysisJob.created_at.desc())
     )
     jobs = jobs_result.scalars().all()
 
-    ch_result = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+    ch_result = await target_db.execute(select(Chapter).where(Chapter.book_id == target_book_id))
     chapters  = ch_result.scalars().all()
     total_ch  = len(chapters)
     # Solo contamos como hecho si tiene un resumen válido de más de 50 caracteres
@@ -355,54 +388,57 @@ async def get_status(
     chapters_summarized = total_ch > 0 and done_ch == total_ch
     
     # Fase 2 se considera hecha si hay capítulos resumidos o el flag está a True
-    phase2_really_done = book.phase2_done or chapters_summarized
+    phase2_really_done = target_book.phase2_done or chapters_summarized
     
     # Fase 3 (Personajes) se considera hecha si el flag está a True 
     # O si ya hay personajes en la base de datos
-    char_count_res = await db.execute(select(Character).where(Character.book_id == book_id))
+    char_count_res = await target_db.execute(select(Character).where(Character.book_id == target_book_id))
     has_characters = len(char_count_res.scalars().all()) > 0
-    phase3_really_done = book.phase3_done or has_characters
+    phase3_really_done = target_book.phase3_done or has_characters
 
     # Detección robusta de audio para libros antiguos/legado
     possible_audio_paths = [
-        book.podcast_audio_path,
-        os.path.join(settings.AUDIO_DIR, current_user.id, f"{book_id}.mp3"),
-        os.path.join(settings.AUDIO_DIR, f"{book_id}.mp3")
+        target_book.podcast_audio_path,
+        os.path.join(settings.AUDIO_DIR, target_user_id, f"{target_book_id}.mp3"),
+        os.path.join(settings.AUDIO_DIR, f"{target_book_id}.mp3")
     ]
+    if is_shared:
+        possible_audio_paths.append(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book_id}.mp3"))
+
     real_audio_found = None
     for p in possible_audio_paths:
         if p and os.path.exists(p):
             real_audio_found = p
             break
 
-    podcast_exists = bool(book.podcast_script) and real_audio_found is not None
+    podcast_exists = bool(target_book.podcast_script) and real_audio_found is not None
     
-    real_duration = book.podcast_duration
+    real_duration = target_book.podcast_duration
     if podcast_exists and not real_duration:
         try:
             from mutagen.mp3 import MP3
             audio = MP3(real_audio_found)
             real_duration = int(audio.info.length)
         except Exception:
-            if book.podcast_script:
-                real_duration = int(len(book.podcast_script.split()) / 2.5)
+            if target_book.podcast_script:
+                real_duration = int(len(target_book.podcast_script.split()) / 2.5)
             else:
                 real_duration = 0
 
     return {
-        "status":               book.status,
-        "phase1_done":          book.phase1_done,
+        "status":               target_book.status,
+        "phase1_done":          target_book.phase1_done,
         "phase2_done":          phase2_really_done,
         "phase3_done":          phase3_really_done,
         "chapters_summarized":  chapters_summarized,
-        "has_global_summary":   bool(book.global_summary and len(book.global_summary) > 50),
-        "has_mindmap":          bool(book.mindmap_data and (isinstance(book.mindmap_data, dict) and len(str(book.mindmap_data)) > 20)),
+        "has_global_summary":   bool(target_book.global_summary and len(target_book.global_summary) > 50),
+        "has_mindmap":          bool(target_book.mindmap_data and (isinstance(target_book.mindmap_data, dict) and len(str(target_book.mindmap_data)) > 20)),
         "podcast_done":         podcast_exists,
-        "error_msg":            book.error_msg,
+        "error_msg":            target_book.error_msg,
         "chapters_total":       total_ch,
         "chapters_done":        done_ch,
-        "podcast_audio_path":   book.podcast_audio_path,
-        "podcast_script":       book.podcast_script or "",
+        "podcast_audio_path":   target_book.podcast_audio_path,
+        "podcast_script":       target_book.podcast_script or "",
         "podcast_duration":     real_duration,
         "jobs": [
             {
@@ -468,15 +504,32 @@ async def get_podcast_audio(
         if not book:
             raise HTTPException(404, "Podcast not available")
 
-        # 1. Intentar ruta guardada en DB (si existe)
+        is_shared = getattr(book, 'shared_by_user_id', None) is not None
+        shared_by_user_id = getattr(book, 'shared_by_user_id', None)
+        original_book_id = getattr(book, 'original_book_id', None)
+
         paths_to_try = []
+
+        if is_shared and shared_by_user_id and original_book_id:
+            # 1. Si es compartido, consultar ruta guardada en DB del propietario
+            async for owner_db in get_user_db(shared_by_user_id):
+                orig_res = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                orig_b = orig_res.scalar_one_or_none()
+                if orig_b and orig_b.podcast_audio_path:
+                    paths_to_try.append(orig_b.podcast_audio_path)
+                break
+            # 2. Intentar carpeta del propietario con original_book_id
+            paths_to_try.append(os.path.join(settings.AUDIO_DIR, shared_by_user_id, f"{original_book_id}.mp3"))
+            paths_to_try.append(os.path.join(settings.AUDIO_DIR, f"{original_book_id}.mp3"))
+
+        # 3. Intentar ruta guardada en DB del libro actual (si existe)
         if book.podcast_audio_path:
             paths_to_try.append(book.podcast_audio_path)
         
-        # 2. Intentar ruta estándar actual
+        # 4. Intentar ruta estándar actual
         paths_to_try.append(os.path.join(settings.AUDIO_DIR, current_user.id, f"{book.id}.mp3"))
         
-        # 3. Intentar ruta legado (sin subcarpeta de usuario)
+        # 5. Intentar ruta legado (sin subcarpeta de usuario)
         paths_to_try.append(os.path.join(settings.AUDIO_DIR, f"{book.id}.mp3"))
 
         final_path = None
@@ -486,16 +539,21 @@ async def get_podcast_audio(
                 break
         
         if not final_path:
-            # Último recurso: buscar cualquier mp3 que empiece por el ID en la carpeta del usuario
             import glob
-            user_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
-            if os.path.exists(user_dir):
-                matches = glob.glob(os.path.join(user_dir, f"{book.id}*.mp3"))
-                if matches:
-                    final_path = matches[0]
+            search_dirs = []
+            if is_shared and shared_by_user_id:
+                search_dirs.append((os.path.join(settings.AUDIO_DIR, shared_by_user_id), original_book_id))
+            search_dirs.append((os.path.join(settings.AUDIO_DIR, current_user.id), book.id))
+
+            for s_dir, s_id in search_dirs:
+                if os.path.exists(s_dir):
+                    matches = glob.glob(os.path.join(s_dir, f"{s_id}*.mp3"))
+                    if matches:
+                        final_path = matches[0]
+                        break
 
         if not final_path:
-            print(f"[API] Podcast no encontrado para {book.id}. Intentamos: {paths_to_try}")
+            print(f"[API] Podcast no encontrado para {book.id} (Compartido: {is_shared}). Intentamos: {paths_to_try}")
             raise HTTPException(404, "El archivo de audio del podcast no se encuentra en el servidor.")
 
         return FileResponse(final_path, media_type="audio/mpeg")
@@ -628,20 +686,43 @@ async def get_tts_audio(
         if not book:
             raise HTTPException(404, "Book not found")
 
+        is_shared = getattr(book, 'shared_by_user_id', None) is not None
+        shared_by_user_id = getattr(book, 'shared_by_user_id', None)
+        original_book_id = getattr(book, 'original_book_id', None)
+
+        source_book = book
+        source_db = db
+        source_book_id = book_id
+        owner_user = None
+
+        if is_shared and shared_by_user_id and original_book_id:
+            source_book_id = original_book_id
+            async with _global_session_factory() as global_db:
+                o_res = await global_db.execute(select(User).where(User.id == shared_by_user_id))
+                owner_user = o_res.scalar_one_or_none()
+
+            async for owner_db in get_user_db(shared_by_user_id):
+                orig_res = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                loaded_orig = orig_res.scalar_one_or_none()
+                if loaded_orig:
+                    source_book = loaded_orig
+                    source_db = owner_db
+                break
+
         # 3. Determinar el texto a sintetizar
         text_to_speak = ""
         voice = getattr(current_user, 'tts_voice', 'alloy') or 'alloy'
-        cache_filename = f"tts_{book_id}_{type}_{voice}"
+        cache_filename = f"tts_{source_book_id}_{type}_{voice}"
         
         if type == "synopsis":
-            text_to_speak = book.synopsis or ""
+            text_to_speak = source_book.synopsis or ""
         elif type == "global_summary":
-            text_to_speak = book.global_summary or ""
+            text_to_speak = source_book.global_summary or ""
         elif type == "chapter":
             if not chapter_id:
                 raise HTTPException(400, "chapter_id is required for type=chapter")
-            ch_res = await db.execute(
-                select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == book_id)
+            ch_res = await source_db.execute(
+                select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == source_book_id)
             )
             chapter = ch_res.scalar_one_or_none()
             if not chapter:
@@ -656,13 +737,13 @@ async def get_tts_audio(
                         text_to_speak += ". Eventos clave: " + ". ".join(events)
                 except Exception:
                     pass
-            cache_filename = f"tts_{book_id}_chapter_{chapter_id}_{voice}"
+            cache_filename = f"tts_{source_book_id}_chapter_{chapter_id}_{voice}"
             
         elif type == "character":
             if not character_id:
                 raise HTTPException(400, "character_id is required for type=character")
-            char_res = await db.execute(
-                select(Character).where(Character.id == character_id, Character.book_id == book_id)
+            char_res = await source_db.execute(
+                select(Character).where(Character.id == character_id, Character.book_id == source_book_id)
             )
             character = char_res.scalar_one_or_none()
             if not character:
@@ -673,7 +754,7 @@ async def get_tts_audio(
                 text_to_speak += f" Personalidad: {character.personality}."
             if character.arc:
                 text_to_speak += f" Evolución: {character.arc}."
-            cache_filename = f"tts_{book_id}_character_{character_id}_{voice}"
+            cache_filename = f"tts_{source_book_id}_character_{character_id}_{voice}"
         else:
             raise HTTPException(400, "Invalid type")
 
@@ -681,25 +762,48 @@ async def get_tts_audio(
             raise HTTPException(400, "No content to read")
 
         # 4. Comprobar cache
+        possible_cached_files = []
+        if is_shared and shared_by_user_id:
+            possible_cached_files.append(
+                os.path.join(settings.AUDIO_DIR, shared_by_user_id, f"{cache_filename}.mp3")
+            )
+            if type == "chapter":
+                possible_cached_files.append(
+                    os.path.join(settings.AUDIO_DIR, shared_by_user_id, f"tts_{source_book_id}_chapter_{chapter_id}.mp3")
+                )
+
         user_audio_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
         os.makedirs(user_audio_dir, exist_ok=True)
-        final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
-
-        if not os.path.exists(final_path):
-            keys = {
-                "openai": current_user.openai_api_key,
-                "gemini": current_user.gemini_api_key
-            }
-            temp_path = final_path + ".tmp"
-            from fastapi.responses import StreamingResponse
-            from app.services.tts_service import stream_synthesize_text
-
-            return StreamingResponse(
-                stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys, voice=voice),
-                media_type="audio/mpeg"
+        possible_cached_files.append(os.path.join(user_audio_dir, f"{cache_filename}.mp3"))
+        if type == "chapter":
+            possible_cached_files.append(
+                os.path.join(user_audio_dir, f"tts_{source_book_id}_chapter_{chapter_id}.mp3")
             )
 
-        return FileResponse(final_path, media_type="audio/mpeg")
+        cached_file_found = None
+        for cf in possible_cached_files:
+            if cf and os.path.exists(cf):
+                cached_file_found = cf
+                break
+
+        if cached_file_found:
+            return FileResponse(cached_file_found, media_type="audio/mpeg")
+
+        openai_key = current_user.openai_api_key or (owner_user.openai_api_key if owner_user else None)
+        gemini_key = current_user.gemini_api_key or (owner_user.gemini_api_key if owner_user else None)
+        keys = {
+            "openai": openai_key,
+            "gemini": gemini_key
+        }
+        final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
+        temp_path = final_path + ".tmp"
+        from fastapi.responses import StreamingResponse
+        from app.services.tts_service import stream_synthesize_text
+
+        return StreamingResponse(
+            stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys, voice=voice),
+            media_type="audio/mpeg"
+        )
 
 
 
@@ -1117,6 +1221,8 @@ async def reanalyze_characters(
     book = result.scalar_one_or_none()
     if not book:
         raise HTTPException(404, "Book not found")
+    if getattr(book, 'shared_by_user_id', None) is not None:
+        raise HTTPException(400, "Operación no permitida en libros compartidos")
     if not book.phase3_done:
         raise HTTPException(400, "Book must complete Phase 3 first")
 
