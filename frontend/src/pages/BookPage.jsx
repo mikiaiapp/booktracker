@@ -476,6 +476,23 @@ export default function BookPage() {
     }
   }
 
+  const stopAnyTTSWithoutConfirm = () => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+    }
+    setTtsPlaying(false)
+    setTtsChapterPaused(false)
+    setTtsChapter(null)
+    setTtsCharPlaying(false)
+    setTtsCharPaused(false)
+    setTtsCharacter(null)
+    setTtsInfoPlaying(false)
+    setTtsInfoPaused(false)
+  }
+
   const stopTTS = async (skipConfirm = false) => {
     if (!skipConfirm && (ttsPlaying || ttsChapter || ttsChapterPaused)) {
       if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el grado de avance guardado para este libro.')) return
@@ -903,15 +920,6 @@ export default function BookPage() {
   const handleReadStatus = async (s) => { await booksAPI.update(id, { read_status: s }); load() }
 
   const [audioUrl, setAudioUrl] = useState(null)
-
-  const stopAnyTTSWithoutConfirm = () => {
-    stopTTS(true)
-    stopCharTTS(true)
-    stopInfoTTS(true)
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel()
-    }
-  }
 
   const startSilentAudioForTts = () => {
     const el = audioRef.current
