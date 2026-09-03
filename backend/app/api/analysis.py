@@ -762,6 +762,12 @@ async def get_tts_audio(
                             ch_loc = await db.execute(select(Chapter).where(Chapter.id == clean_ch_id))
                             chapter = ch_loc.scalar_one_or_none()
                         if not chapter:
+                            all_ch = await owner_db.execute(select(Chapter).where(Chapter.book_id == original_book_id))
+                            for c in all_ch.scalars().all():
+                                if str(c.id).strip().lower() == clean_ch_id.lower() or c.title.strip().lower() == clean_ch_id.lower():
+                                    chapter = c
+                                    break
+                        if not chapter:
                             raise HTTPException(404, "Chapter not found")
                         text_to_speak = f"{chapter.title}. {chapter.summary or getattr(chapter, 'raw_text', '') or ''}"
                         if chapter.key_events:
@@ -788,6 +794,12 @@ async def get_tts_audio(
                         if not character:
                             char_loc = await db.execute(select(Character).where(Character.id == clean_char_id))
                             character = char_loc.scalar_one_or_none()
+                        if not character:
+                            all_chars = await owner_db.execute(select(Character).where(Character.book_id == original_book_id))
+                            for c in all_chars.scalars().all():
+                                if str(c.id).strip().lower() == clean_char_id.lower() or c.name.strip().lower() == clean_char_id.lower():
+                                    character = c
+                                    break
                         if not character:
                             raise HTTPException(404, "Character not found")
                         text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
@@ -819,6 +831,12 @@ async def get_tts_audio(
                 )
                 chapter = ch_res.scalar_one_or_none()
                 if not chapter:
+                    all_ch = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+                    for c in all_ch.scalars().all():
+                        if str(c.id).strip().lower() == clean_ch_id.lower() or c.title.strip().lower() == clean_ch_id.lower():
+                            chapter = c
+                            break
+                if not chapter:
                     raise HTTPException(404, "Chapter not found")
                 text_to_speak = f"{chapter.title}. {chapter.summary or getattr(chapter, 'raw_text', '') or ''}"
                 if chapter.key_events:
@@ -843,6 +861,12 @@ async def get_tts_audio(
                 )
                 character = char_res.scalar_one_or_none()
                 if not character:
+                    all_chars = await db.execute(select(Character).where(Character.book_id == book_id))
+                    for c in all_chars.scalars().all():
+                        if str(c.id).strip().lower() == clean_char_id.lower() or c.name.strip().lower() == clean_char_id.lower():
+                            character = c
+                            break
+                if not character:
                     raise HTTPException(404, "Character not found")
                 text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
                 if character.personality:
@@ -850,14 +874,17 @@ async def get_tts_audio(
                 if character.arc:
                     text_to_speak += f" Evolución: {character.arc}."
 
+        clean_ch_id = str(chapter_id).strip() if chapter_id else ""
+        clean_char_id = str(character_id).strip() if character_id else ""
+
         if type == "synopsis":
             cache_filename = f"tts_{source_book_id}_synopsis_{voice}"
         elif type == "global_summary":
             cache_filename = f"tts_{source_book_id}_global_summary_{voice}"
         elif type == "chapter":
-            cache_filename = f"tts_{source_book_id}_chapter_{chapter_id}_{voice}"
+            cache_filename = f"tts_{source_book_id}_chapter_{clean_ch_id}_{voice}"
         elif type == "character":
-            cache_filename = f"tts_{source_book_id}_character_{character_id}_{voice}"
+            cache_filename = f"tts_{source_book_id}_character_{clean_char_id}_{voice}"
         else:
             raise HTTPException(400, "Invalid type")
 
@@ -893,10 +920,10 @@ async def get_tts_audio(
         # B. Coincidencia con cualquier voz previa generada para este elemento
         if not cached_file_found:
             pattern = f"tts_{source_book_id}_{type}"
-            if type == "chapter" and chapter_id:
-                pattern = f"tts_{source_book_id}_chapter_{chapter_id}"
-            elif type == "character" and character_id:
-                pattern = f"tts_{source_book_id}_character_{character_id}"
+            if type == "chapter" and clean_ch_id:
+                pattern = f"tts_{source_book_id}_chapter_{clean_ch_id}"
+            elif type == "character" and clean_char_id:
+                pattern = f"tts_{source_book_id}_character_{clean_char_id}"
 
             for s_dir in search_dirs:
                 if not os.path.exists(s_dir):
@@ -912,10 +939,10 @@ async def get_tts_audio(
         # C. Búsqueda recursiva en AUDIO_DIR si es compartido
         if not cached_file_found and is_shared:
             pattern = f"tts_{source_book_id}_{type}"
-            if type == "chapter" and chapter_id:
-                pattern = f"tts_{source_book_id}_chapter_{chapter_id}"
-            elif type == "character" and character_id:
-                pattern = f"tts_{source_book_id}_character_{character_id}"
+            if type == "chapter" and clean_ch_id:
+                pattern = f"tts_{source_book_id}_chapter_{clean_ch_id}"
+            elif type == "character" and clean_char_id:
+                pattern = f"tts_{source_book_id}_character_{clean_char_id}"
             matches = glob.glob(os.path.join(settings.AUDIO_DIR, "**", f"{pattern}*.mp3"), recursive=True)
             for m in matches:
                 if os.path.getsize(m) > 1000:
@@ -932,6 +959,19 @@ async def get_tts_audio(
 
         # 5. Si no existe audio en caché, se debe sintetizar a disco y servir vía FileResponse (soporte completo de Range y Content-Length)
         openai_key = current_user.openai_api_key or (owner_user.openai_api_key if owner_user else None) or os.environ.get("OPENAI_API_KEY")
+        if not openai_key:
+            # En libros compartidos o instancias auto-alojadas, buscar si algún usuario registrado tiene la clave configurada
+            try:
+                async with _global_session_factory() as global_db:
+                    all_users_res = await global_db.execute(select(User).where(User.openai_api_key != None, User.openai_api_key != ""))
+                    for u in all_users_res.scalars().all():
+                        if u.openai_api_key and len(u.openai_api_key.strip()) > 5:
+                            openai_key = u.openai_api_key.strip()
+                            print(f"[API] get_tts_audio: Usando OpenAI API key del usuario {u.username} para generar audio")
+                            break
+            except Exception as e:
+                print(f"[API] Error buscando clave fallback en global_db: {e}")
+
         if not openai_key:
             print(f"[API] get_tts_audio: No hay OpenAI API key para {cache_filename}")
             raise HTTPException(

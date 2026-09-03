@@ -431,6 +431,12 @@ export default function BookPage() {
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = 'es-ES'
     utterance.rate = parseFloat(ttsSpeed) || 1.0
+
+    const voices = window.speechSynthesis.getVoices()
+    if (voices && voices.length > 0) {
+      const esVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('es'))
+      if (esVoice) utterance.voice = esVoice
+    }
     utterance.onend = () => {
       onEnd?.()
     }
