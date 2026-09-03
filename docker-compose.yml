@@ -11,6 +11,7 @@ services:
 
   # 🚀 BACKEND (FastAPI)
   backend:
+    image: booktracker-backend:v2.10.4
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -45,6 +46,7 @@ services:
 
   # ⚙️ WORKER (Procesamiento de fondo)
   worker:
+    image: booktracker-worker:v2.10.4
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -87,6 +89,7 @@ services:
 
   # 🌐 FRONTEND (Vite / React)
   frontend:
+    image: booktracker-frontend:v2.10.4
     build:
       context: ./frontend
       dockerfile: Dockerfile
