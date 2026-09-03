@@ -725,7 +725,8 @@ async def get_tts_audio(
                             select(User).where(
                                 or_(
                                     User.id == shared_by_user_id,
-                                    func.lower(User.id) == func.lower(str(shared_by_user_id).strip())
+                                    func.lower(User.id) == func.lower(str(shared_by_user_id).strip()),
+                                    User.username == getattr(book, 'owner_username', None)
                                 )
                             )
                         )
@@ -929,7 +930,7 @@ async def get_tts_audio(
                 headers={"Cache-Control": "private, max-age=86400"}
             )
 
-        # 5. Si no existe audio en caché, se debe sintetizar en tiempo real
+        # 5. Si no existe audio en caché, se debe sintetizar a disco y servir vía FileResponse (soporte completo de Range y Content-Length)
         openai_key = current_user.openai_api_key or (owner_user.openai_api_key if owner_user else None) or os.environ.get("OPENAI_API_KEY")
         if not openai_key:
             print(f"[API] get_tts_audio: No hay OpenAI API key para {cache_filename}")
@@ -940,12 +941,38 @@ async def get_tts_audio(
 
         final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
         temp_path = final_path + ".tmp"
-        from fastapi.responses import StreamingResponse
-        from app.services.tts_service import stream_synthesize_text
+        from app.services.tts_service import synthesize_text
 
-        return StreamingResponse(
-            stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys={"openai": openai_key}, voice=voice),
-            media_type="audio/mpeg"
+        try:
+            print(f"[API] get_tts_audio: Sintetizando {cache_filename} con OpenAI ({voice})...")
+            await synthesize_text(text_to_speak, temp_path, api_keys={"openai": openai_key}, voice=voice)
+            if os.path.exists(temp_path):
+                if os.path.exists(final_path):
+                    try:
+                        os.remove(final_path)
+                    except Exception:
+                        pass
+                os.rename(temp_path, final_path)
+                print(f"[API] get_tts_audio: Generado exitosamente {final_path} ({os.path.getsize(final_path)} bytes)")
+        except Exception as e:
+            print(f"[API TTS ERROR] Fallo al sintetizar {cache_filename}: {e}")
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            raise HTTPException(500, f"Error al generar síntesis de voz: {str(e)}")
+
+        if not os.path.exists(final_path):
+            raise HTTPException(500, "Error: No se pudo generar el archivo de audio")
+
+        return FileResponse(
+            final_path,
+            media_type="audio/mpeg",
+            headers={
+                "Cache-Control": "private, max-age=86400",
+                "Accept-Ranges": "bytes"
+            }
         )
 
 

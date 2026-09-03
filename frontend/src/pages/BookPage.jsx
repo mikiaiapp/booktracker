@@ -143,8 +143,10 @@ export default function BookPage() {
     if (chapterId) url += `&chapter_id=${chapterId}`
     if (characterId) url += `&character_id=${characterId}`
 
-    if (el.src !== url) {
-      el.src = url
+    const absUrl = new URL(url, window.location.origin).href
+    if (el.src !== absUrl) {
+      el.pause()
+      el.src = absUrl
       el.load()
     }
 
@@ -152,6 +154,7 @@ export default function BookPage() {
       el._hasListeners = true
       
       el.addEventListener('play', () => {
+        toast.dismiss('tts-load')
         el.playbackRate = ttsSpeed
         const params = new URLSearchParams(el.src.split('?')[1])
         const t = params.get('type')
@@ -292,6 +295,8 @@ export default function BookPage() {
       })
 
       el.addEventListener('error', () => {
+        toast.dismiss('tts-load')
+        if (!el.src || el.src === '' || el.src === window.location.href) return
         console.warn("TTS audio element error:", el.error)
         const params = new URLSearchParams(el.src.split('?')[1] || '')
         const t = params.get('type')
@@ -474,7 +479,9 @@ export default function BookPage() {
     }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
-      ttsAudioRef.current.src = ''
+      if (!skipConfirm) {
+        ttsAudioRef.current.src = ''
+      }
     }
     setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
     localStorage.removeItem(storageKey)
@@ -492,9 +499,11 @@ export default function BookPage() {
   const playFromChapter = (chapter, chapters) => {
     stopAnyTTSWithoutConfirm()
     setTtsChapter(chapter.id)
+    toast.loading('Cargando lectura...', { id: 'tts-load' })
     const el = initTtsAudio('chapter', chapter.id)
     if (el) {
       el.play().catch(e => {
+        toast.dismiss('tts-load')
         console.warn("Audio play failed, using browser speech fallback:", e)
         const textToRead = `${chapter.title}. ${chapter.summary || ''}`
         if (textToRead.trim()) {
@@ -553,7 +562,9 @@ export default function BookPage() {
     }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
-      ttsAudioRef.current.src = ''
+      if (!skipConfirm) {
+        ttsAudioRef.current.src = ''
+      }
     }
     setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
     localStorage.removeItem(charStorageKey)
@@ -563,9 +574,11 @@ export default function BookPage() {
   const playCharacter = (char) => {
     stopAnyTTSWithoutConfirm()
     setTtsCharacter(char.name)
+    toast.loading('Cargando lectura...', { id: 'tts-load' })
     const el = initTtsAudio('character', null, char.id)
     if (el) {
       el.play().catch(e => {
+        toast.dismiss('tts-load')
         console.warn("Audio play failed, using browser speech fallback:", e)
         const textToRead = `Personaje: ${char.name}. ${char.role || ''}. ${char.description || ''}. ${char.personality ? 'Personalidad: ' + char.personality : ''}`
         if (textToRead.trim()) {
@@ -586,10 +599,12 @@ export default function BookPage() {
 
   const playInfo = (book) => {
     stopAnyTTSWithoutConfirm()
+    toast.loading('Cargando lectura...', { id: 'tts-load' })
     localStorage.setItem(infoStorageKey + '_type', 'synopsis')
     const el = initTtsAudio('synopsis')
     if (el) {
       el.play().catch(e => {
+        toast.dismiss('tts-load')
         console.warn("Audio play failed, using browser speech fallback:", e)
         if (book?.synopsis) {
           setTtsInfoPlaying(true)
@@ -603,10 +618,12 @@ export default function BookPage() {
 
   const playSummary = (book) => {
     stopAnyTTSWithoutConfirm()
+    toast.loading('Cargando lectura...', { id: 'tts-load' })
     localStorage.setItem(infoStorageKey + '_type', 'global_summary')
     const el = initTtsAudio('global_summary')
     if (el) {
       el.play().catch(e => {
+        toast.dismiss('tts-load')
         console.warn("Audio play failed, using browser speech fallback:", e)
         if (book?.global_summary) {
           setTtsInfoPlaying(true)
@@ -645,7 +662,9 @@ export default function BookPage() {
     }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
-      ttsAudioRef.current.src = ''
+      if (!skipConfirm) {
+        ttsAudioRef.current.src = ''
+      }
     }
     setTtsInfoPlaying(false); setTtsInfoPaused(false)
     localStorage.removeItem(infoStorageKey)
@@ -1836,6 +1855,18 @@ const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onS
               <span>Escuchar Sinopsis</span>
             </button>
           )}
+          {book.synopsis && isPlaying && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="tts-btn active" onClick={isPaused ? onResume : onPause}>
+                {isPaused ? <Play size={14} /> : <Pause size={14} />}
+                <span>{isPaused ? 'Reanudar' : 'Pausar'}</span>
+              </button>
+              <button className="tts-btn" onClick={onStop} title="Detener lectura">
+                <Square size={14} />
+                <span>Parar</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
       <p>{book.synopsis || 'Analizando...'}</p>
@@ -1855,6 +1886,18 @@ const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, 
               <Volume2 size={14} />
               <span>Escuchar Resumen</span>
             </button>
+          )}
+          {book.global_summary && isPlaying && (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="tts-btn active" onClick={isPaused ? onResume : onPause}>
+                {isPaused ? <Play size={14} /> : <Pause size={14} />}
+                <span>{isPaused ? 'Reanudar' : 'Pausar'}</span>
+              </button>
+              <button className="tts-btn" onClick={onStop} title="Detener lectura">
+                <Square size={14} />
+                <span>Parar</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1915,9 +1958,10 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
                       </button>
                     )}
                     {isChPlaying && (
-                      <div className="ch-action-btn active" title="Reproduciendo...">
-                        <Volume2 size={12} className="animate-pulse" />
-                      </div>
+                      <button className="ch-action-btn active" title={isPaused ? "Reanudar lectura" : "Pausar lectura"}
+                        onClick={() => isPaused ? onResume() : onPause()}>
+                        {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                      </button>
                     )}
                     {!isShared && (
                       <button className="ch-action-btn reanalyze" title="Rehacer resumen de este capítulo"
@@ -2002,9 +2046,10 @@ const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessin
                       </button>
                     )}
                     {isCharPlaying && (
-                      <div className="char-action-btn active" title="Reproduciendo...">
-                        <Volume2 size={12} className="animate-pulse" />
-                      </div>
+                      <button className="char-action-btn active" title={isPaused ? "Reanudar lectura" : "Pausar lectura"}
+                        onClick={() => isPaused ? onResume() : onPause()}>
+                        {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                      </button>
                     )}
                     {!isShared && (
                       <button className="char-action-btn reanalyze" title="Rehacer este personaje"
