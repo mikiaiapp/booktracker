@@ -696,6 +696,13 @@ async def get_tts_audio(
         book = result.scalar_one_or_none()
         
         if not book:
+            all_b_res = await db.execute(select(Book))
+            for b in all_b_res.scalars().all():
+                if str(b.id).strip().lower() == str(book_id).strip().lower():
+                    book = b
+                    break
+
+        if not book:
             raise HTTPException(404, "Book not found")
 
         is_shared = bool(getattr(book, 'shared_by_user_id', None) and getattr(book, 'original_book_id', None))
@@ -711,53 +718,87 @@ async def get_tts_audio(
 
         if is_shared:
             source_book_id = original_book_id
-            async with _global_session_factory() as global_db:
-                o_res = await global_db.execute(select(User).where(User.id == shared_by_user_id))
-                owner_user = o_res.scalar_one_or_none()
+            if shared_by_user_id:
+                try:
+                    async with _global_session_factory() as global_db:
+                        o_res = await global_db.execute(
+                            select(User).where(
+                                or_(
+                                    User.id == shared_by_user_id,
+                                    func.lower(User.id) == func.lower(str(shared_by_user_id).strip())
+                                )
+                            )
+                        )
+                        owner_user = o_res.scalar_one_or_none()
+                except Exception as ge:
+                    print(f"[API] Error buscando owner_user en global_db: {ge}")
 
-            async for owner_db in get_user_db(shared_by_user_id):
-                orig_res = await owner_db.execute(select(Book).where(Book.id == original_book_id))
-                loaded_orig = orig_res.scalar_one_or_none()
-                if loaded_orig:
-                    source_book = loaded_orig
+            try:
+                async for owner_db in get_user_db(shared_by_user_id):
+                    orig_res = await owner_db.execute(select(Book).where(Book.id == original_book_id))
+                    loaded_orig = orig_res.scalar_one_or_none()
+                    if loaded_orig:
+                        source_book = loaded_orig
 
-                if type == "synopsis":
-                    text_to_speak = source_book.synopsis or ""
-                elif type == "global_summary":
-                    text_to_speak = source_book.global_summary or ""
-                elif type == "chapter":
-                    if not chapter_id:
-                        raise HTTPException(400, "chapter_id is required for type=chapter")
-                    ch_res = await owner_db.execute(
-                        select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == source_book_id)
-                    )
-                    chapter = ch_res.scalar_one_or_none()
-                    if not chapter:
-                        raise HTTPException(404, "Chapter not found")
-                    text_to_speak = f"{chapter.title}. {chapter.summary or ''}"
-                    if chapter.key_events:
-                        try:
-                            import json
-                            events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
-                            if events:
-                                text_to_speak += ". Eventos clave: " + ". ".join(events)
-                        except Exception:
-                            pass
-                elif type == "character":
-                    if not character_id:
-                        raise HTTPException(400, "character_id is required for type=character")
-                    char_res = await owner_db.execute(
-                        select(Character).where(Character.id == character_id, Character.book_id == source_book_id)
-                    )
-                    character = char_res.scalar_one_or_none()
-                    if not character:
-                        raise HTTPException(404, "Character not found")
-                    text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
-                    if character.personality:
-                        text_to_speak += f" Personalidad: {character.personality}."
-                    if character.arc:
-                        text_to_speak += f" Evolución: {character.arc}."
-                break
+                    if type == "synopsis":
+                        text_to_speak = source_book.synopsis or book.synopsis or ""
+                    elif type == "global_summary":
+                        text_to_speak = source_book.global_summary or book.global_summary or ""
+                    elif type == "chapter":
+                        if not chapter_id:
+                            raise HTTPException(400, "chapter_id is required for type=chapter")
+                        clean_ch_id = str(chapter_id).strip()
+                        ch_res = await owner_db.execute(
+                            select(Chapter).where(
+                                or_(
+                                    Chapter.id == clean_ch_id,
+                                    func.lower(Chapter.id) == func.lower(clean_ch_id)
+                                )
+                            )
+                        )
+                        chapter = ch_res.scalar_one_or_none()
+                        if not chapter:
+                            ch_loc = await db.execute(select(Chapter).where(Chapter.id == clean_ch_id))
+                            chapter = ch_loc.scalar_one_or_none()
+                        if not chapter:
+                            raise HTTPException(404, "Chapter not found")
+                        text_to_speak = f"{chapter.title}. {chapter.summary or getattr(chapter, 'raw_text', '') or ''}"
+                        if chapter.key_events:
+                            try:
+                                import json
+                                events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
+                                if events:
+                                    text_to_speak += ". Eventos clave: " + ". ".join(events)
+                            except Exception:
+                                pass
+                    elif type == "character":
+                        if not character_id:
+                            raise HTTPException(400, "character_id is required for type=character")
+                        clean_char_id = str(character_id).strip()
+                        char_res = await owner_db.execute(
+                            select(Character).where(
+                                or_(
+                                    Character.id == clean_char_id,
+                                    func.lower(Character.id) == func.lower(clean_char_id)
+                                )
+                            )
+                        )
+                        character = char_res.scalar_one_or_none()
+                        if not character:
+                            char_loc = await db.execute(select(Character).where(Character.id == clean_char_id))
+                            character = char_loc.scalar_one_or_none()
+                        if not character:
+                            raise HTTPException(404, "Character not found")
+                        text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
+                        if character.personality:
+                            text_to_speak += f" Personalidad: {character.personality}."
+                        if character.arc:
+                            text_to_speak += f" Evolución: {character.arc}."
+                    break
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"[API ERROR] get_tts_audio owner_db error: {e}")
         else:
             if type == "synopsis":
                 text_to_speak = source_book.synopsis or ""
@@ -766,13 +807,19 @@ async def get_tts_audio(
             elif type == "chapter":
                 if not chapter_id:
                     raise HTTPException(400, "chapter_id is required for type=chapter")
+                clean_ch_id = str(chapter_id).strip()
                 ch_res = await db.execute(
-                    select(Chapter).where(Chapter.id == chapter_id, Chapter.book_id == source_book_id)
+                    select(Chapter).where(
+                        or_(
+                            Chapter.id == clean_ch_id,
+                            func.lower(Chapter.id) == func.lower(clean_ch_id)
+                        )
+                    )
                 )
                 chapter = ch_res.scalar_one_or_none()
                 if not chapter:
                     raise HTTPException(404, "Chapter not found")
-                text_to_speak = f"{chapter.title}. {chapter.summary or ''}"
+                text_to_speak = f"{chapter.title}. {chapter.summary or getattr(chapter, 'raw_text', '') or ''}"
                 if chapter.key_events:
                     try:
                         import json
@@ -784,8 +831,14 @@ async def get_tts_audio(
             elif type == "character":
                 if not character_id:
                     raise HTTPException(400, "character_id is required for type=character")
+                clean_char_id = str(character_id).strip()
                 char_res = await db.execute(
-                    select(Character).where(Character.id == character_id, Character.book_id == source_book_id)
+                    select(Character).where(
+                        or_(
+                            Character.id == clean_char_id,
+                            func.lower(Character.id) == func.lower(clean_char_id)
+                        )
+                    )
                 )
                 character = char_res.scalar_one_or_none()
                 if not character:
@@ -810,47 +863,88 @@ async def get_tts_audio(
         if not text_to_speak.strip():
             raise HTTPException(400, "No content to read")
 
-        # 4. Comprobar cache
-        possible_cached_files = []
-        if is_shared and shared_by_user_id:
-            possible_cached_files.append(
-                os.path.join(settings.AUDIO_DIR, shared_by_user_id, f"{cache_filename}.mp3")
-            )
-            if type == "chapter":
-                possible_cached_files.append(
-                    os.path.join(settings.AUDIO_DIR, shared_by_user_id, f"tts_{source_book_id}_chapter_{chapter_id}.mp3")
-                )
-
+        # 4. Comprobar cache exhaustivamente
+        import glob
         user_audio_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
         os.makedirs(user_audio_dir, exist_ok=True)
-        possible_cached_files.append(os.path.join(user_audio_dir, f"{cache_filename}.mp3"))
-        if type == "chapter":
-            possible_cached_files.append(
-                os.path.join(user_audio_dir, f"tts_{source_book_id}_chapter_{chapter_id}.mp3")
-            )
+
+        search_dirs = [
+            user_audio_dir,
+            os.path.join(settings.AUDIO_DIR, current_user.id.lower()),
+            settings.AUDIO_DIR,
+        ]
+        if is_shared and shared_by_user_id:
+            search_dirs.extend([
+                os.path.join(settings.AUDIO_DIR, str(shared_by_user_id)),
+                os.path.join(settings.AUDIO_DIR, str(shared_by_user_id).lower()),
+            ])
 
         cached_file_found = None
-        for cf in possible_cached_files:
-            if cf and os.path.exists(cf):
-                cached_file_found = cf
+        # A. Coincidencia exacta con la voz seleccionada
+        for s_dir in search_dirs:
+            if not os.path.exists(s_dir):
+                continue
+            exact_p = os.path.join(s_dir, f"{cache_filename}.mp3")
+            if os.path.exists(exact_p) and os.path.getsize(exact_p) > 1000:
+                cached_file_found = exact_p
                 break
 
-        if cached_file_found:
-            return FileResponse(cached_file_found, media_type="audio/mpeg")
+        # B. Coincidencia con cualquier voz previa generada para este elemento
+        if not cached_file_found:
+            pattern = f"tts_{source_book_id}_{type}"
+            if type == "chapter" and chapter_id:
+                pattern = f"tts_{source_book_id}_chapter_{chapter_id}"
+            elif type == "character" and character_id:
+                pattern = f"tts_{source_book_id}_character_{character_id}"
 
-        openai_key = current_user.openai_api_key or (owner_user.openai_api_key if owner_user else None)
-        gemini_key = current_user.gemini_api_key or (owner_user.gemini_api_key if owner_user else None)
-        keys = {
-            "openai": openai_key,
-            "gemini": gemini_key
-        }
+            for s_dir in search_dirs:
+                if not os.path.exists(s_dir):
+                    continue
+                matches = glob.glob(os.path.join(s_dir, f"{pattern}*.mp3"))
+                for m in matches:
+                    if os.path.getsize(m) > 1000:
+                        cached_file_found = m
+                        break
+                if cached_file_found:
+                    break
+
+        # C. Búsqueda recursiva en AUDIO_DIR si es compartido
+        if not cached_file_found and is_shared:
+            pattern = f"tts_{source_book_id}_{type}"
+            if type == "chapter" and chapter_id:
+                pattern = f"tts_{source_book_id}_chapter_{chapter_id}"
+            elif type == "character" and character_id:
+                pattern = f"tts_{source_book_id}_character_{character_id}"
+            matches = glob.glob(os.path.join(settings.AUDIO_DIR, "**", f"{pattern}*.mp3"), recursive=True)
+            for m in matches:
+                if os.path.getsize(m) > 1000:
+                    cached_file_found = m
+                    break
+
+        if cached_file_found:
+            print(f"[API] get_tts_audio: Audio en caché encontrado: {cached_file_found}")
+            return FileResponse(
+                cached_file_found,
+                media_type="audio/mpeg",
+                headers={"Cache-Control": "private, max-age=86400"}
+            )
+
+        # 5. Si no existe audio en caché, se debe sintetizar en tiempo real
+        openai_key = current_user.openai_api_key or (owner_user.openai_api_key if owner_user else None) or os.environ.get("OPENAI_API_KEY")
+        if not openai_key:
+            print(f"[API] get_tts_audio: No hay OpenAI API key para {cache_filename}")
+            raise HTTPException(
+                400,
+                "No hay audio en caché generado previamente para este apartado y no hay una API Key de OpenAI configurada para generarlo en tiempo real."
+            )
+
         final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
         temp_path = final_path + ".tmp"
         from fastapi.responses import StreamingResponse
         from app.services.tts_service import stream_synthesize_text
 
         return StreamingResponse(
-            stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys=keys, voice=voice),
+            stream_synthesize_text(text_to_speak, temp_path, final_path, api_keys={"openai": openai_key}, voice=voice),
             media_type="audio/mpeg"
         )
 

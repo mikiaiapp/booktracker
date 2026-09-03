@@ -290,6 +290,59 @@ export default function BookPage() {
         }
         updateTtsMediaSession(t, chId, charId)
       })
+
+      el.addEventListener('error', () => {
+        console.warn("TTS audio element error:", el.error)
+        const params = new URLSearchParams(el.src.split('?')[1] || '')
+        const t = params.get('type')
+        const chId = params.get('chapter_id')
+        const charId = params.get('character_id')
+
+        let fallbackText = ''
+        if (t === 'chapter') {
+          const ch = chapters.find(c => c.id === chId)
+          if (ch) fallbackText = `${ch.title}. ${ch.summary || ''}`
+        } else if (t === 'character') {
+          const char = characters.find(c => c.id === charId)
+          if (char) fallbackText = `Personaje: ${char.name}. ${char.role || ''}. ${char.description || ''}.`
+        } else if (t === 'synopsis') {
+          fallbackText = book?.synopsis || ''
+        } else if (t === 'global_summary') {
+          fallbackText = book?.global_summary || ''
+        }
+
+        if (fallbackText.trim()) {
+          toast('Reproduciendo mediante voz del navegador...', { icon: '🔊' })
+          speakBrowserFallback(fallbackText, () => {
+            if (t === 'chapter') {
+              setTtsPlaying(false)
+              setTtsChapter(null)
+              setTtsChapterPaused(false)
+            } else if (t === 'character') {
+              setTtsCharPlaying(false)
+              setTtsCharacter(null)
+              setTtsCharPaused(false)
+            } else {
+              setTtsInfoPlaying(false)
+              setTtsInfoPaused(false)
+            }
+          })
+        } else {
+          toast.error("No se pudo cargar el audio ni obtener el texto para reproducir")
+          if (t === 'chapter') {
+            setTtsPlaying(false)
+            setTtsChapter(null)
+            setTtsChapterPaused(false)
+          } else if (t === 'character') {
+            setTtsCharPlaying(false)
+            setTtsCharacter(null)
+            setTtsCharPaused(false)
+          } else {
+            setTtsInfoPlaying(false)
+            setTtsInfoPaused(false)
+          }
+        }
+      })
     }
 
     return el
@@ -364,11 +417,40 @@ export default function BookPage() {
     }
   }
 
+  const speakBrowserFallback = (text, onEnd) => {
+    if (!window.speechSynthesis) {
+      toast.error('Tu navegador no soporta lectura en voz alta nativa.')
+      return false
+    }
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'es-ES'
+    utterance.rate = parseFloat(ttsSpeed) || 1.0
+    utterance.onend = () => {
+      onEnd?.()
+    }
+    utterance.onerror = (e) => {
+      console.warn("SpeechSynthesis error:", e)
+      onEnd?.()
+    }
+    window.speechSynthesis.speak(utterance)
+    return true
+  }
+
   const pauseTTS = () => {
     if (ttsAudioRef.current) ttsAudioRef.current.pause()
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause()
+    }
   }
 
   const resumeCurrentTTS = () => {
+    if (window.speechSynthesis && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume()
+      setTtsPlaying(true)
+      setTtsChapterPaused(false)
+      return
+    }
     const el = ttsAudioRef.current
     if (el) {
       if (!el.src || el.src === '') {
@@ -387,6 +469,9 @@ export default function BookPage() {
     if (!skipConfirm && (ttsPlaying || ttsChapter || ttsChapterPaused)) {
       if (!await confirm('¿Seguro que quieres parar la reproducción? Se perderá el grado de avance guardado para este libro.')) return
     }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
       ttsAudioRef.current.src = ''
@@ -400,9 +485,7 @@ export default function BookPage() {
     stopAnyTTSWithoutConfirm()
     if (chapters.length > 0) {
       const firstChapter = chapters[0]
-      setTtsChapter(firstChapter.id)
-      const el = initTtsAudio('chapter', firstChapter.id)
-      if (el) el.play().catch(e => console.warn(e))
+      playFromChapter(firstChapter, chapters)
     }
   }
 
@@ -410,14 +493,40 @@ export default function BookPage() {
     stopAnyTTSWithoutConfirm()
     setTtsChapter(chapter.id)
     const el = initTtsAudio('chapter', chapter.id)
-    if (el) el.play().catch(e => console.warn(e))
+    if (el) {
+      el.play().catch(e => {
+        console.warn("Audio play failed, using browser speech fallback:", e)
+        const textToRead = `${chapter.title}. ${chapter.summary || ''}`
+        if (textToRead.trim()) {
+          setTtsPlaying(true)
+          setTtsChapterPaused(false)
+          speakBrowserFallback(textToRead, () => {
+            setTtsPlaying(false)
+            setTtsChapter(null)
+          })
+        } else {
+          setTtsPlaying(false)
+          setTtsChapter(null)
+          toast.error("No se pudo reproducir el audio del capítulo")
+        }
+      })
+    }
   }
 
   const pauseCharTTS = () => {
     if (ttsAudioRef.current) ttsAudioRef.current.pause()
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause()
+    }
   }
 
   const resumeCharTTS = () => {
+    if (window.speechSynthesis && window.speechSynthesis.paused) {
+      window.speechSynthesis.resume()
+      setTtsCharPlaying(true)
+      setTtsCharPaused(false)
+      return
+    }
     const el = ttsAudioRef.current
     if (el) {
       if (!el.src || el.src === '') {
@@ -439,6 +548,9 @@ export default function BookPage() {
     if (!skipConfirm && (ttsCharPlaying || ttsCharPaused || ttsCharacter)) {
       if (!await confirm('¿Parar lectura de personajes? Se perderá el grado de avance guardado.')) return
     }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
       ttsAudioRef.current.src = ''
@@ -452,25 +564,65 @@ export default function BookPage() {
     stopAnyTTSWithoutConfirm()
     setTtsCharacter(char.name)
     const el = initTtsAudio('character', null, char.id)
-    if (el) el.play().catch(e => console.warn(e))
+    if (el) {
+      el.play().catch(e => {
+        console.warn("Audio play failed, using browser speech fallback:", e)
+        const textToRead = `Personaje: ${char.name}. ${char.role || ''}. ${char.description || ''}. ${char.personality ? 'Personalidad: ' + char.personality : ''}`
+        if (textToRead.trim()) {
+          setTtsCharPlaying(true)
+          setTtsCharPaused(false)
+          speakBrowserFallback(textToRead, () => {
+            setTtsCharPlaying(false)
+            setTtsCharacter(null)
+          })
+        } else {
+          setTtsCharPlaying(false)
+          setTtsCharacter(null)
+          toast.error("No se pudo reproducir el audio del personaje")
+        }
+      })
+    }
   }
 
   const playInfo = (book) => {
     stopAnyTTSWithoutConfirm()
     localStorage.setItem(infoStorageKey + '_type', 'synopsis')
     const el = initTtsAudio('synopsis')
-    if (el) el.play().catch(e => console.warn(e))
+    if (el) {
+      el.play().catch(e => {
+        console.warn("Audio play failed, using browser speech fallback:", e)
+        if (book?.synopsis) {
+          setTtsInfoPlaying(true)
+          speakBrowserFallback(book.synopsis, () => {
+            setTtsInfoPlaying(false)
+          })
+        }
+      })
+    }
   }
 
   const playSummary = (book) => {
     stopAnyTTSWithoutConfirm()
     localStorage.setItem(infoStorageKey + '_type', 'global_summary')
     const el = initTtsAudio('global_summary')
-    if (el) el.play().catch(e => console.warn(e))
+    if (el) {
+      el.play().catch(e => {
+        console.warn("Audio play failed, using browser speech fallback:", e)
+        if (book?.global_summary) {
+          setTtsInfoPlaying(true)
+          speakBrowserFallback(book.global_summary, () => {
+            setTtsInfoPlaying(false)
+          })
+        }
+      })
+    }
   }
 
   const pauseInfoTTS = () => {
     if (ttsAudioRef.current) ttsAudioRef.current.pause()
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.pause()
+    }
   }
 
   const resumeInfoTTS = () => {
