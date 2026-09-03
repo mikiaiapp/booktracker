@@ -156,6 +156,13 @@ async def synthesize_text(text: str, output_path: str, api_keys: dict = None, vo
             print(f"TTS text chunk error: {e}")
             continue
 
+    if not audio_chunks:
+        raise RuntimeError("No se pudo sintetizar ningún fragmento de audio con OpenAI TTS (verifique API Key y créditos).")
+
+    total_bytes = sum(len(c) for c in audio_chunks)
+    if total_bytes < 500:
+        raise RuntimeError(f"Audio generado inválido o vacío ({total_bytes} bytes).")
+
     with open(output_path, "wb") as f:
         for audio_chunk in audio_chunks:
             f.write(audio_chunk)

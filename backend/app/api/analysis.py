@@ -958,14 +958,23 @@ async def get_tts_audio(
             )
 
         # 5. Si no existe audio en caché, se debe sintetizar a disco y servir vía FileResponse (soporte completo de Range y Content-Length)
-        openai_key = current_user.openai_api_key or (owner_user.openai_api_key if owner_user else None) or os.environ.get("OPENAI_API_KEY")
+        def _is_sk(k):
+            return bool(k and isinstance(k, str) and k.strip().startswith("sk-") and len(k.strip()) > 15)
+
+        candidates = [
+            current_user.openai_api_key if _is_sk(current_user.openai_api_key) else None,
+            (owner_user.openai_api_key if owner_user and _is_sk(owner_user.openai_api_key) else None),
+            os.environ.get("OPENAI_API_KEY") if _is_sk(os.environ.get("OPENAI_API_KEY")) else None,
+        ]
+        openai_key = next((c for c in candidates if c), None)
+
         if not openai_key:
             # En libros compartidos o instancias auto-alojadas, buscar si algún usuario registrado tiene la clave configurada
             try:
                 async with _global_session_factory() as global_db:
                     all_users_res = await global_db.execute(select(User).where(User.openai_api_key != None, User.openai_api_key != ""))
                     for u in all_users_res.scalars().all():
-                        if u.openai_api_key and len(u.openai_api_key.strip()) > 5:
+                        if _is_sk(u.openai_api_key):
                             openai_key = u.openai_api_key.strip()
                             print(f"[API] get_tts_audio: Usando OpenAI API key del usuario {u.username} para generar audio")
                             break
@@ -986,14 +995,23 @@ async def get_tts_audio(
         try:
             print(f"[API] get_tts_audio: Sintetizando {cache_filename} con OpenAI ({voice})...")
             await synthesize_text(text_to_speak, temp_path, api_keys={"openai": openai_key}, voice=voice)
-            if os.path.exists(temp_path):
+            if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
                 if os.path.exists(final_path):
                     try:
                         os.remove(final_path)
                     except Exception:
                         pass
-                os.rename(temp_path, final_path)
+                os.replace(temp_path, final_path)
                 print(f"[API] get_tts_audio: Generado exitosamente {final_path} ({os.path.getsize(final_path)} bytes)")
+            else:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except Exception:
+                        pass
+                raise RuntimeError(f"El archivo generado para {cache_filename} está vacío o es inválido")
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"[API TTS ERROR] Fallo al sintetizar {cache_filename}: {e}")
             if os.path.exists(temp_path):
@@ -1003,8 +1021,8 @@ async def get_tts_audio(
                     pass
             raise HTTPException(500, f"Error al generar síntesis de voz: {str(e)}")
 
-        if not os.path.exists(final_path):
-            raise HTTPException(500, "Error: No se pudo generar el archivo de audio")
+        if not os.path.exists(final_path) or os.path.getsize(final_path) < 1000:
+            raise HTTPException(500, "Error: No se pudo generar el archivo de audio con contenido válido")
 
         return FileResponse(
             final_path,
