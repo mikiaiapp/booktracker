@@ -127,7 +127,7 @@ export default function BookPage() {
   const audioRef = React.useRef(null)
   const ttsAudioRef = React.useRef(null)
 
-  const initTtsAudio = (type, chapterId = null, characterId = null) => {
+  const initTtsAudio = (type, chapterId = null, characterId = null, seekTime = null) => {
     const el = ttsAudioRef.current
     if (!el) return null
 
@@ -144,10 +144,47 @@ export default function BookPage() {
     if (characterId) url += `&character_id=${characterId}`
 
     const absUrl = new URL(url, window.location.origin).href
+
+    // Determinar punto de lectura objetivo si no se especificó directamente
+    let targetTime = seekTime
+    if (targetTime === null || targetTime === undefined) {
+      if (type === 'chapter') {
+        const saved = localStorage.getItem(storageKey)
+        if (saved) {
+          try {
+            const p = JSON.parse(saved)
+            if (p.chapterId === chapterId) targetTime = p.currentTime || 0
+          } catch {}
+        }
+      } else if (type === 'character') {
+        const saved = localStorage.getItem(charStorageKey)
+        if (saved) {
+          try {
+            const p = JSON.parse(saved)
+            if (p.characterId === characterId) targetTime = p.currentTime || 0
+          } catch {}
+        }
+      } else if (type === 'synopsis' || type === 'global_summary') {
+        const saved = localStorage.getItem(infoStorageKey)
+        if (saved) {
+          try {
+            const p = JSON.parse(saved)
+            if (p.type === type) targetTime = p.currentTime || 0
+          } catch {}
+        }
+      }
+    }
+
     if (el.src !== absUrl) {
       el.pause()
+      el._pendingSeekTime = targetTime || 0
+      el._isRestoring = Boolean(targetTime && targetTime > 0)
       el.src = absUrl
       el.load()
+    } else {
+      if (targetTime !== null && targetTime !== undefined && Math.abs(el.currentTime - targetTime) > 0.5) {
+        el.currentTime = targetTime
+      }
     }
 
     if (!el._hasListeners) {
@@ -193,6 +230,7 @@ export default function BookPage() {
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState = 'paused'
         }
+        syncPlaybackToDB(true)
       })
 
       el.addEventListener('ended', () => {
@@ -238,10 +276,13 @@ export default function BookPage() {
           localStorage.removeItem(infoStorageKey)
           localStorage.removeItem(infoStorageKey + '_type')
         }
-        syncPlaybackToDB()
+        syncPlaybackToDB(true)
       })
 
       el.addEventListener('timeupdate', () => {
+        if (el._isRestoring) return
+        if (el.currentTime <= 0.1 && el._pendingSeekTime > 0) return
+
         const params = new URLSearchParams(el.src.split('?')[1])
         const t = params.get('type')
         const chId = params.get('chapter_id')
@@ -257,7 +298,7 @@ export default function BookPage() {
           const progress = { type: t, currentTime: el.currentTime }
           localStorage.setItem(infoStorageKey, JSON.stringify(progress))
         }
-        syncPlaybackToDB()
+        syncPlaybackToDB(false)
       })
 
       el.addEventListener('loadedmetadata', () => {
@@ -267,30 +308,34 @@ export default function BookPage() {
         const chId = params.get('chapter_id')
         const charId = params.get('character_id')
 
-        let savedTime = 0
-        if (t === 'chapter') {
-          const saved = localStorage.getItem(storageKey)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            if (parsed.chapterId === chId) savedTime = parsed.currentTime || 0
-          }
-        } else if (t === 'character') {
-          const saved = localStorage.getItem(charStorageKey)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            if (parsed.characterId === charId) savedTime = parsed.currentTime || 0
-          }
-        } else if (t === 'synopsis' || t === 'global_summary') {
-          const saved = localStorage.getItem(infoStorageKey)
-          if (saved) {
-            const parsed = JSON.parse(saved)
-            if (parsed.type === t) savedTime = parsed.currentTime || 0
+        let savedTime = el._pendingSeekTime
+        if (savedTime === undefined || savedTime === null) {
+          if (t === 'chapter') {
+            const saved = localStorage.getItem(storageKey)
+            if (saved) {
+              const parsed = JSON.parse(saved)
+              if (parsed.chapterId === chId) savedTime = parsed.currentTime || 0
+            }
+          } else if (t === 'character') {
+            const saved = localStorage.getItem(charStorageKey)
+            if (saved) {
+              const parsed = JSON.parse(saved)
+              if (parsed.characterId === charId) savedTime = parsed.currentTime || 0
+            }
+          } else if (t === 'synopsis' || t === 'global_summary') {
+            const saved = localStorage.getItem(infoStorageKey)
+            if (saved) {
+              const parsed = JSON.parse(saved)
+              if (parsed.type === t) savedTime = parsed.currentTime || 0
+            }
           }
         }
 
-        if (savedTime > 0 && savedTime < el.duration) {
+        if (savedTime > 0 && isFinite(el.duration) && savedTime < el.duration) {
           el.currentTime = savedTime
         }
+        el._pendingSeekTime = null
+        el._isRestoring = false
         updateTtsMediaSession(t, chId, charId)
       })
 
@@ -446,13 +491,24 @@ export default function BookPage() {
     }
     const el = ttsAudioRef.current
     if (el) {
-      if (!el.src || el.src === '') {
-        const saved = localStorage.getItem(storageKey)
-        if (saved) {
-          const { chapterId } = JSON.parse(saved)
-          setTtsChapter(chapterId)
-          initTtsAudio('chapter', chapterId)
-        }
+      const saved = localStorage.getItem(storageKey)
+      let savedTime = 0
+      let targetChapterId = ttsChapter
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed?.chapterId) {
+            targetChapterId = parsed.chapterId
+            savedTime = parsed.currentTime || 0
+          }
+        } catch {}
+      }
+      if (!targetChapterId && chapters.length > 0) {
+        targetChapterId = chapters[0].id
+      }
+      if (targetChapterId) {
+        setTtsChapter(targetChapterId)
+        initTtsAudio('chapter', targetChapterId, null, savedTime)
       }
       el.play().catch(() => {})
     }
@@ -484,13 +540,14 @@ export default function BookPage() {
     }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
+      ttsAudioRef.current.currentTime = 0
       if (!skipConfirm) {
         ttsAudioRef.current.src = ''
       }
     }
     setTtsPlaying(false); setTtsChapter(null); setTtsChapterPaused(false)
     localStorage.removeItem(storageKey)
-    syncPlaybackToDB()
+    syncPlaybackToDB(true)
   }
 
   const playFromBeginning = (book, chapters) => {
@@ -502,6 +559,10 @@ export default function BookPage() {
   }
 
   const playFromChapter = (chapter, chapters) => {
+    if (ttsChapter === chapter.id && ttsChapterPaused) {
+      resumeCurrentTTS()
+      return
+    }
     stopAnyTTSWithoutConfirm()
     setTtsChapter(chapter.id)
     toast.loading('Cargando lectura...', { id: 'tts-load' })
@@ -543,16 +604,22 @@ export default function BookPage() {
     }
     const el = ttsAudioRef.current
     if (el) {
-      if (!el.src || el.src === '') {
-        const saved = localStorage.getItem(charStorageKey)
-        if (saved) {
-          const { characterId } = JSON.parse(saved)
-          const char = characters.find(c => c.id === characterId)
-          if (char) {
-            setTtsCharacter(char.name)
-            initTtsAudio('character', null, characterId)
+      const saved = localStorage.getItem(charStorageKey)
+      let savedTime = 0
+      let targetCharId = null
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (parsed?.characterId) {
+            targetCharId = parsed.characterId
+            savedTime = parsed.currentTime || 0
           }
-        }
+        } catch {}
+      }
+      const char = characters.find(c => c.id === targetCharId || c.name === ttsCharacter)
+      if (char) {
+        setTtsCharacter(char.name)
+        initTtsAudio('character', null, char.id, savedTime)
       }
       el.play().catch(() => {})
     }
@@ -567,16 +634,21 @@ export default function BookPage() {
     }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
+      ttsAudioRef.current.currentTime = 0
       if (!skipConfirm) {
         ttsAudioRef.current.src = ''
       }
     }
     setTtsCharPlaying(false); setTtsCharPaused(false); setTtsCharacter(null)
     localStorage.removeItem(charStorageKey)
-    syncPlaybackToDB()
+    syncPlaybackToDB(true)
   }
 
   const playCharacter = (char) => {
+    if ((ttsCharacter === char.name || ttsCharacter === char.id) && ttsCharPaused) {
+      resumeCharTTS()
+      return
+    }
     stopAnyTTSWithoutConfirm()
     setTtsCharacter(char.name)
     toast.loading('Cargando lectura...', { id: 'tts-load' })
@@ -603,6 +675,10 @@ export default function BookPage() {
   }
 
   const playInfo = (book) => {
+    if (ttsInfoPaused && localStorage.getItem(infoStorageKey + '_type') === 'synopsis') {
+      resumeInfoTTS()
+      return
+    }
     stopAnyTTSWithoutConfirm()
     toast.loading('Cargando lectura...', { id: 'tts-load' })
     localStorage.setItem(infoStorageKey + '_type', 'synopsis')
@@ -622,6 +698,10 @@ export default function BookPage() {
   }
 
   const playSummary = (book) => {
+    if (ttsInfoPaused && localStorage.getItem(infoStorageKey + '_type') === 'global_summary') {
+      resumeInfoTTS()
+      return
+    }
     stopAnyTTSWithoutConfirm()
     toast.loading('Cargando lectura...', { id: 'tts-load' })
     localStorage.setItem(infoStorageKey + '_type', 'global_summary')
@@ -650,13 +730,16 @@ export default function BookPage() {
   const resumeInfoTTS = () => {
     const el = ttsAudioRef.current
     if (el) {
-      if (!el.src || el.src === '') {
-        const saved = localStorage.getItem(infoStorageKey)
-        const type = localStorage.getItem(infoStorageKey + '_type')
-        if (type) {
-          initTtsAudio(type)
-        }
+      const type = localStorage.getItem(infoStorageKey + '_type') || 'synopsis'
+      const saved = localStorage.getItem(infoStorageKey)
+      let savedTime = 0
+      if (saved) {
+        try {
+          const p = JSON.parse(saved)
+          savedTime = p.currentTime || 0
+        } catch {}
       }
+      initTtsAudio(type, null, null, savedTime)
       el.play().catch(() => {})
     }
   }
@@ -667,6 +750,7 @@ export default function BookPage() {
     }
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
+      ttsAudioRef.current.currentTime = 0
       if (!skipConfirm) {
         ttsAudioRef.current.src = ''
       }
@@ -674,13 +758,13 @@ export default function BookPage() {
     setTtsInfoPlaying(false); setTtsInfoPaused(false)
     localStorage.removeItem(infoStorageKey)
     localStorage.removeItem(infoStorageKey + '_type')
-    syncPlaybackToDB()
+    syncPlaybackToDB(true)
   }
 
   const syncTimerRef = React.useRef(null)
-  const syncPlaybackToDB = () => {
+  const syncPlaybackToDB = (immediate = false) => {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-    syncTimerRef.current = setTimeout(async () => {
+    const doSync = async () => {
       try {
         const state = {
           chapters: JSON.parse(localStorage.getItem(storageKey) || 'null'),
@@ -692,20 +776,48 @@ export default function BookPage() {
           podcast: JSON.parse(localStorage.getItem(podcastStorageKey) || 'null')
         }
         await booksAPI.update(id, { playback_state: state })
-      } catch {}
-    }, 2000)
+      } catch (err) {
+        console.warn('syncPlaybackToDB error:', err)
+      }
+    }
+    if (immediate) {
+      doSync()
+    } else {
+      syncTimerRef.current = setTimeout(doSync, 2000)
+    }
   }
 
   // Restore states from localStorage on mount
   useEffect(() => {
     const savedChapter = localStorage.getItem(storageKey)
-    if (savedChapter) setTtsChapterPaused(true)
+    if (savedChapter) {
+      try {
+        const parsed = JSON.parse(savedChapter)
+        if (parsed?.chapterId) {
+          setTtsChapter(parsed.chapterId)
+          setTtsChapterPaused(true)
+          setTtsPlaying(false)
+        }
+      } catch {}
+    }
 
     const savedChar = localStorage.getItem(charStorageKey)
-    if (savedChar) setTtsCharPaused(true)
+    if (savedChar) {
+      try {
+        const parsed = JSON.parse(savedChar)
+        if (parsed?.characterId) {
+          setTtsCharacter(parsed.characterId)
+          setTtsCharPaused(true)
+          setTtsCharPlaying(false)
+        }
+      } catch {}
+    }
 
     const savedInfo = localStorage.getItem(infoStorageKey)
-    if (savedInfo) setTtsInfoPaused(true)
+    if (savedInfo) {
+      setTtsInfoPaused(true)
+      setTtsInfoPlaying(false)
+    }
 
     const savedPodcast = localStorage.getItem(podcastStorageKey)
     if (savedPodcast) {
@@ -714,6 +826,7 @@ export default function BookPage() {
         setAudioCurrentTime(currentTime || 0)
         setAudioDuration(duration || 0)
         setAudioPaused(true)
+        setAudioPlaying(false)
       } catch {}
     } else {
       setAudioCurrentTime(0)
@@ -803,15 +916,33 @@ export default function BookPage() {
       // Restore playback state from DB if present
       if (bookRes.data.book?.playback_state) {
         const ps = bookRes.data.book.playback_state
-        if (ps.chapters) localStorage.setItem(storageKey, JSON.stringify(ps.chapters))
-        else localStorage.removeItem(storageKey)
+        if (ps.chapters) {
+          localStorage.setItem(storageKey, JSON.stringify(ps.chapters))
+          if (ps.chapters.chapterId) {
+            setTtsChapter(ps.chapters.chapterId)
+            setTtsChapterPaused(true)
+            setTtsPlaying(false)
+          }
+        } else {
+          localStorage.removeItem(storageKey)
+        }
 
-        if (ps.characters) localStorage.setItem(charStorageKey, JSON.stringify(ps.characters))
-        else localStorage.removeItem(charStorageKey)
+        if (ps.characters) {
+          localStorage.setItem(charStorageKey, JSON.stringify(ps.characters))
+          if (ps.characters.characterId) {
+            setTtsCharacter(ps.characters.characterId)
+            setTtsCharPaused(true)
+            setTtsCharPlaying(false)
+          }
+        } else {
+          localStorage.removeItem(charStorageKey)
+        }
 
         if (ps.info?.pos) {
           localStorage.setItem(infoStorageKey, JSON.stringify(ps.info.pos))
           localStorage.setItem(infoStorageKey + '_type', ps.info.type)
+          setTtsInfoPaused(true)
+          setTtsInfoPlaying(false)
         } else {
           localStorage.removeItem(infoStorageKey)
           localStorage.removeItem(infoStorageKey + '_type')
@@ -821,6 +952,8 @@ export default function BookPage() {
           localStorage.setItem(podcastStorageKey, JSON.stringify(ps.podcast))
           setAudioCurrentTime(ps.podcast.currentTime || 0)
           setAudioDuration(ps.podcast.duration || 0)
+          setAudioPaused(true)
+          setAudioPlaying(false)
         } else {
           localStorage.removeItem(podcastStorageKey)
           setAudioCurrentTime(0)
@@ -1845,24 +1978,23 @@ const InfoTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, onS
       <div className="tab-section-header">
         <h3>Sinopsis</h3>
         <div className="tab-header-actions">
-          {book.synopsis && !isPlaying && (
-            <button className="tts-btn" onClick={() => onPlay(book)}>
-              <Volume2 size={14} />
-              <span>Escuchar Sinopsis</span>
-            </button>
-          )}
-          {book.synopsis && isPlaying && (
+          {book.synopsis && (isPlaying || isPaused) ? (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="tts-btn active" onClick={isPaused ? onResume : onPause}>
+              <button className={`tts-btn ${isPlaying ? 'active' : 'paused'}`} onClick={isPaused ? onResume : onPause} title={isPaused ? "Reanudar lectura" : "Pausar lectura"}>
                 {isPaused ? <Play size={14} /> : <Pause size={14} />}
                 <span>{isPaused ? 'Reanudar' : 'Pausar'}</span>
               </button>
-              <button className="tts-btn" onClick={onStop} title="Detener lectura">
+              <button className="tts-btn stop" onClick={() => onStop()} title="Detener lectura">
                 <Square size={14} />
                 <span>Parar</span>
               </button>
             </div>
-          )}
+          ) : book.synopsis ? (
+            <button className="tts-btn" onClick={() => onPlay(book)}>
+              <Volume2 size={14} />
+              <span>Escuchar Sinopsis</span>
+            </button>
+          ) : null}
         </div>
       </div>
       <p>{book.synopsis || 'Analizando...'}</p>
@@ -1877,24 +2009,23 @@ const SummaryTab = React.memo(({ book, status, isProcessing, onTrigger, onPlay, 
       <div className="tab-section-header">
         <h2>Resumen</h2>
         <div className="tab-header-actions">
-          {book.global_summary && !isPlaying && (
-            <button className="tts-btn" onClick={() => onPlay(book)}>
-              <Volume2 size={14} />
-              <span>Escuchar Resumen</span>
-            </button>
-          )}
-          {book.global_summary && isPlaying && (
+          {book.global_summary && (isPlaying || isPaused) ? (
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="tts-btn active" onClick={isPaused ? onResume : onPause}>
+              <button className={`tts-btn ${isPlaying ? 'active' : 'paused'}`} onClick={isPaused ? onResume : onPause} title={isPaused ? "Reanudar lectura" : "Pausar lectura"}>
                 {isPaused ? <Play size={14} /> : <Pause size={14} />}
                 <span>{isPaused ? 'Reanudar' : 'Pausar'}</span>
               </button>
-              <button className="tts-btn" onClick={onStop} title="Detener lectura">
+              <button className="tts-btn stop" onClick={() => onStop()} title="Detener lectura">
                 <Square size={14} />
                 <span>Parar</span>
               </button>
             </div>
-          )}
+          ) : book.global_summary ? (
+            <button className="tts-btn" onClick={() => onPlay(book)}>
+              <Volume2 size={14} />
+              <span>Escuchar Resumen</span>
+            </button>
+          ) : null}
         </div>
       </div>
       <p>{book.global_summary || 'No disponible'}</p>
@@ -1954,10 +2085,16 @@ const ChaptersTab = React.memo(({ chapters = [], expanded, setExpanded, bookId, 
                       </button>
                     )}
                     {isChPlaying && (
-                      <button className="ch-action-btn active" title={isPaused ? "Reanudar lectura" : "Pausar lectura"}
-                        onClick={() => isPaused ? onResume() : onPause()}>
-                        {isPaused ? <Play size={12} /> : <Pause size={12} />}
-                      </button>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <button className={`ch-action-btn ${isPlaying ? 'active' : 'paused'}`} title={isPaused ? "Reanudar lectura" : "Pausar lectura"}
+                          onClick={() => isPaused ? onResume() : onPause()}>
+                          {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                        </button>
+                        <button className="ch-action-btn stop" title="Parar lectura de este capítulo"
+                          onClick={() => onStop()}>
+                          <Square size={12} />
+                        </button>
+                      </div>
                     )}
                     {!isShared && (
                       <button className="ch-action-btn reanalyze" title="Rehacer resumen de este capítulo"
@@ -2026,7 +2163,7 @@ const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessin
 
       <div className="characters-grid">
         {safeChars.map(char => {
-          const isCharPlaying = currentTtsId === char.name
+          const isCharPlaying = currentTtsId === char.name || currentTtsId === char.id
           return (
             <div key={char.id} className="char-card">
               <div className="char-avatar">{char.name.charAt(0)}</div>
@@ -2042,10 +2179,16 @@ const CharactersTab = React.memo(({ characters = [], bookId, status, isProcessin
                       </button>
                     )}
                     {isCharPlaying && (
-                      <button className="char-action-btn active" title={isPaused ? "Reanudar lectura" : "Pausar lectura"}
-                        onClick={() => isPaused ? onResume() : onPause()}>
-                        {isPaused ? <Play size={12} /> : <Pause size={12} />}
-                      </button>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <button className={`char-action-btn ${isPlaying ? 'active' : 'paused'}`} title={isPaused ? "Reanudar lectura" : "Pausar lectura"}
+                          onClick={() => isPaused ? onResume() : onPause()}>
+                          {isPaused ? <Play size={12} /> : <Pause size={12} />}
+                        </button>
+                        <button className="char-action-btn stop" title="Parar lectura del personaje"
+                          onClick={() => onStop()}>
+                          <Square size={12} />
+                        </button>
+                      </div>
                     )}
                     {!isShared && (
                       <button className="char-action-btn reanalyze" title="Rehacer este personaje"

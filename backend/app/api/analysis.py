@@ -698,7 +698,7 @@ async def get_tts_audio(
         if not book:
             all_b_res = await db.execute(select(Book))
             for b in all_b_res.scalars().all():
-                if str(b.id).strip().lower() == str(book_id).strip().lower():
+                if str(b.id).strip().lower() == str(book_id).strip().lower() or (getattr(b, 'original_book_id', None) and str(b.original_book_id).strip().lower() == str(book_id).strip().lower()):
                     book = b
                     break
 

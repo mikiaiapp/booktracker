@@ -1615,10 +1615,17 @@
   background: var(--cream);
 }
 
-.tts-btn.playing {
-  background: var(--ink);
+.tts-btn.playing,
+.tts-btn.active {
+  background: var(--gold);
   color: white;
-  border-color: var(--ink);
+  border-color: var(--gold);
+}
+
+.tts-btn.paused {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
 }
 
 .tts-btn.stop {
@@ -1681,6 +1688,23 @@
   background: var(--gold);
   color: white;
   border-color: var(--gold);
+}
+
+.ch-action-btn.paused, .char-action-btn.paused {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.ch-action-btn.stop, .char-action-btn.stop {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.ch-action-btn.stop:hover, .char-action-btn.stop:hover {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
 }
 
 .char-card-header {

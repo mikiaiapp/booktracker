@@ -464,6 +464,13 @@ async def update_book(
     result = await db.execute(select(Book).where(Book.id == book_id))
     book = result.scalar_one_or_none()
     if not book:
+        # Fallback para libros compartidos donde book_id pudiera ser original_book_id o variar en mayúsculas/minúsculas
+        all_b_res = await db.execute(select(Book))
+        for b in all_b_res.scalars().all():
+            if str(b.id).strip().lower() == str(book_id).strip().lower() or (getattr(b, 'original_book_id', None) and str(b.original_book_id).strip().lower() == str(book_id).strip().lower()):
+                book = b
+                break
+    if not book:
         raise HTTPException(404, "Book not found")
 
     if req.read_status is not None:
