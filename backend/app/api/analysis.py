@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 from pydantic import BaseModel
 from typing import Optional
 import os
+import re
 
 from app.core.config import settings
 from app.core.security import get_current_user
@@ -713,6 +714,8 @@ async def get_tts_audio(
         source_book_id = book_id
         owner_user = None
 
+        chapter = None
+        character = None
         text_to_speak = ""
         voice = getattr(current_user, 'tts_voice', 'alloy') or 'alloy'
 
@@ -749,18 +752,23 @@ async def get_tts_audio(
                         if not chapter_id:
                             raise HTTPException(400, "chapter_id is required for type=chapter")
                         clean_ch_id = str(chapter_id).strip()
+                        chapter = None
+                        # Búsqueda en BD del propietario
                         ch_res = await owner_db.execute(
                             select(Chapter).where(
                                 or_(
                                     Chapter.id == clean_ch_id,
-                                    func.lower(Chapter.id) == func.lower(clean_ch_id)
+                                    func.lower(Chapter.id) == func.lower(clean_ch_id),
+                                    func.lower(Chapter.title) == func.lower(clean_ch_id)
                                 )
                             )
                         )
                         chapter = ch_res.scalar_one_or_none()
-                        if not chapter:
-                            ch_loc = await db.execute(select(Chapter).where(Chapter.id == clean_ch_id))
-                            chapter = ch_loc.scalar_one_or_none()
+                        if not chapter and clean_ch_id.isdigit():
+                            ch_order = await owner_db.execute(
+                                select(Chapter).where(Chapter.book_id == original_book_id, Chapter.order == int(clean_ch_id))
+                            )
+                            chapter = ch_order.scalar_one_or_none()
                         if not chapter:
                             all_ch = await owner_db.execute(select(Chapter).where(Chapter.book_id == original_book_id))
                             for c in all_ch.scalars().all():
@@ -768,32 +776,52 @@ async def get_tts_audio(
                                     chapter = c
                                     break
                         if not chapter:
+                            # Fallback a BD local
+                            ch_loc = await db.execute(
+                                select(Chapter).where(
+                                    or_(
+                                        Chapter.id == clean_ch_id,
+                                        func.lower(Chapter.id) == func.lower(clean_ch_id),
+                                        func.lower(Chapter.title) == func.lower(clean_ch_id)
+                                    )
+                                )
+                            )
+                            chapter = ch_loc.scalar_one_or_none()
+
+                        if not chapter:
                             raise HTTPException(404, "Chapter not found")
-                        text_to_speak = f"{chapter.title}. {chapter.summary or getattr(chapter, 'raw_text', '') or ''}"
+
+                        summary_text = chapter.summary
+                        if not summary_text:
+                            raw = getattr(chapter, 'raw_text', '') or ''
+                            summary_text = raw[:1500] if raw else "Sin resumen disponible."
+                        text_to_speak = f"{chapter.title}. {summary_text}"
                         if chapter.key_events:
                             try:
                                 import json
                                 events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
-                                if events:
-                                    text_to_speak += ". Eventos clave: " + ". ".join(events)
+                                if events and isinstance(events, list):
+                                    str_events = [str(e) for e in events if e]
+                                    if str_events:
+                                        text_to_speak += ". Eventos clave: " + ". ".join(str_events)
                             except Exception:
                                 pass
+
                     elif type == "character":
                         if not character_id:
                             raise HTTPException(400, "character_id is required for type=character")
                         clean_char_id = str(character_id).strip()
+                        character = None
                         char_res = await owner_db.execute(
                             select(Character).where(
                                 or_(
                                     Character.id == clean_char_id,
-                                    func.lower(Character.id) == func.lower(clean_char_id)
+                                    func.lower(Character.id) == func.lower(clean_char_id),
+                                    func.lower(Character.name) == func.lower(clean_char_id)
                                 )
                             )
                         )
                         character = char_res.scalar_one_or_none()
-                        if not character:
-                            char_loc = await db.execute(select(Character).where(Character.id == clean_char_id))
-                            character = char_loc.scalar_one_or_none()
                         if not character:
                             all_chars = await owner_db.execute(select(Character).where(Character.book_id == original_book_id))
                             for c in all_chars.scalars().all():
@@ -801,8 +829,26 @@ async def get_tts_audio(
                                     character = c
                                     break
                         if not character:
+                            char_loc = await db.execute(
+                                select(Character).where(
+                                    or_(
+                                        Character.id == clean_char_id,
+                                        func.lower(Character.id) == func.lower(clean_char_id),
+                                        func.lower(Character.name) == func.lower(clean_char_id)
+                                    )
+                                )
+                            )
+                            character = char_loc.scalar_one_or_none()
+
+                        if not character:
                             raise HTTPException(404, "Character not found")
-                        text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
+
+                        desc = character.description or ''
+                        text_to_speak = f"Personaje: {character.name}."
+                        if character.role:
+                            text_to_speak += f" {character.role}."
+                        if desc:
+                            text_to_speak += f" {desc}."
                         if character.personality:
                             text_to_speak += f" Personalidad: {character.personality}."
                         if character.arc:
@@ -825,26 +871,44 @@ async def get_tts_audio(
                     select(Chapter).where(
                         or_(
                             Chapter.id == clean_ch_id,
-                            func.lower(Chapter.id) == func.lower(clean_ch_id)
+                            func.lower(Chapter.id) == func.lower(clean_ch_id),
+                            func.lower(Chapter.title) == func.lower(clean_ch_id)
                         )
                     )
                 )
                 chapter = ch_res.scalar_one_or_none()
+                if not chapter and clean_ch_id.isdigit():
+                    ch_order = await db.execute(
+                        select(Chapter).where(
+                            or_(Chapter.book_id == book.id, Chapter.book_id == source_book_id),
+                            Chapter.order == int(clean_ch_id)
+                        )
+                    )
+                    chapter = ch_order.scalar_one_or_none()
                 if not chapter:
-                    all_ch = await db.execute(select(Chapter).where(Chapter.book_id == book_id))
+                    all_ch = await db.execute(
+                        select(Chapter).where(or_(Chapter.book_id == book.id, Chapter.book_id == source_book_id))
+                    )
                     for c in all_ch.scalars().all():
                         if str(c.id).strip().lower() == clean_ch_id.lower() or c.title.strip().lower() == clean_ch_id.lower():
                             chapter = c
                             break
                 if not chapter:
                     raise HTTPException(404, "Chapter not found")
-                text_to_speak = f"{chapter.title}. {chapter.summary or getattr(chapter, 'raw_text', '') or ''}"
+
+                summary_text = chapter.summary
+                if not summary_text:
+                    raw = getattr(chapter, 'raw_text', '') or ''
+                    summary_text = raw[:1500] if raw else "Sin resumen disponible."
+                text_to_speak = f"{chapter.title}. {summary_text}"
                 if chapter.key_events:
                     try:
                         import json
                         events = json.loads(chapter.key_events) if isinstance(chapter.key_events, str) else chapter.key_events
-                        if events:
-                            text_to_speak += ". Eventos clave: " + ". ".join(events)
+                        if events and isinstance(events, list):
+                            str_events = [str(e) for e in events if e]
+                            if str_events:
+                                text_to_speak += ". Eventos clave: " + ". ".join(str_events)
                     except Exception:
                         pass
             elif type == "character":
@@ -855,20 +919,29 @@ async def get_tts_audio(
                     select(Character).where(
                         or_(
                             Character.id == clean_char_id,
-                            func.lower(Character.id) == func.lower(clean_char_id)
+                            func.lower(Character.id) == func.lower(clean_char_id),
+                            func.lower(Character.name) == func.lower(clean_char_id)
                         )
                     )
                 )
                 character = char_res.scalar_one_or_none()
                 if not character:
-                    all_chars = await db.execute(select(Character).where(Character.book_id == book_id))
+                    all_chars = await db.execute(
+                        select(Character).where(or_(Character.book_id == book.id, Character.book_id == source_book_id))
+                    )
                     for c in all_chars.scalars().all():
                         if str(c.id).strip().lower() == clean_char_id.lower() or c.name.strip().lower() == clean_char_id.lower():
                             character = c
                             break
                 if not character:
                     raise HTTPException(404, "Character not found")
-                text_to_speak = f"Personaje: {character.name}. {character.role or ''}. {character.description or ''}."
+
+                desc = character.description or ''
+                text_to_speak = f"Personaje: {character.name}."
+                if character.role:
+                    text_to_speak += f" {character.role}."
+                if desc:
+                    text_to_speak += f" {desc}."
                 if character.personality:
                     text_to_speak += f" Personalidad: {character.personality}."
                 if character.arc:
@@ -876,15 +949,17 @@ async def get_tts_audio(
 
         clean_ch_id = str(chapter_id).strip() if chapter_id else ""
         clean_char_id = str(character_id).strip() if character_id else ""
+        safe_ch_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(chapter.id).strip()) if (type == 'chapter' and chapter) else clean_ch_id
+        safe_char_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(character.id).strip()) if (type == 'character' and character) else clean_char_id
 
         if type == "synopsis":
             cache_filename = f"tts_{source_book_id}_synopsis_{voice}"
         elif type == "global_summary":
             cache_filename = f"tts_{source_book_id}_global_summary_{voice}"
         elif type == "chapter":
-            cache_filename = f"tts_{source_book_id}_chapter_{clean_ch_id}_{voice}"
+            cache_filename = f"tts_{source_book_id}_chapter_{safe_ch_id}_{voice}"
         elif type == "character":
-            cache_filename = f"tts_{source_book_id}_character_{clean_char_id}_{voice}"
+            cache_filename = f"tts_{source_book_id}_character_{safe_char_id}_{voice}"
         else:
             raise HTTPException(400, "Invalid type")
 
@@ -919,16 +994,47 @@ async def get_tts_audio(
 
         # B. Coincidencia con cualquier voz previa generada para este elemento
         if not cached_file_found:
-            pattern = f"tts_{source_book_id}_{type}"
-            if type == "chapter" and clean_ch_id:
-                pattern = f"tts_{source_book_id}_chapter_{clean_ch_id}"
-            elif type == "character" and clean_char_id:
-                pattern = f"tts_{source_book_id}_character_{clean_char_id}"
+            patterns = [f"tts_{source_book_id}_{type}"]
+            if type == "chapter":
+                patterns = [
+                    f"tts_{source_book_id}_chapter_{safe_ch_id}",
+                    f"tts_{source_book_id}_chapter_{clean_ch_id}"
+                ]
+            elif type == "character":
+                patterns = [
+                    f"tts_{source_book_id}_character_{safe_char_id}",
+                    f"tts_{source_book_id}_character_{clean_char_id}"
+                ]
 
             for s_dir in search_dirs:
                 if not os.path.exists(s_dir):
                     continue
-                matches = glob.glob(os.path.join(s_dir, f"{pattern}*.mp3"))
+                for pat in patterns:
+                    matches = glob.glob(os.path.join(s_dir, f"{pat}*.mp3"))
+                    for m in matches:
+                        if os.path.getsize(m) > 1000:
+                            cached_file_found = m
+                            break
+                    if cached_file_found:
+                        break
+                if cached_file_found:
+                    break
+
+        # C. Búsqueda recursiva en AUDIO_DIR si es compartido
+        if not cached_file_found and is_shared:
+            patterns = [f"tts_{source_book_id}_{type}"]
+            if type == "chapter":
+                patterns = [
+                    f"tts_{source_book_id}_chapter_{safe_ch_id}",
+                    f"tts_{source_book_id}_chapter_{clean_ch_id}"
+                ]
+            elif type == "character":
+                patterns = [
+                    f"tts_{source_book_id}_character_{safe_char_id}",
+                    f"tts_{source_book_id}_character_{clean_char_id}"
+                ]
+            for pat in patterns:
+                matches = glob.glob(os.path.join(settings.AUDIO_DIR, "**", f"{pat}*.mp3"), recursive=True)
                 for m in matches:
                     if os.path.getsize(m) > 1000:
                         cached_file_found = m
@@ -936,25 +1042,15 @@ async def get_tts_audio(
                 if cached_file_found:
                     break
 
-        # C. Búsqueda recursiva en AUDIO_DIR si es compartido
-        if not cached_file_found and is_shared:
-            pattern = f"tts_{source_book_id}_{type}"
-            if type == "chapter" and clean_ch_id:
-                pattern = f"tts_{source_book_id}_chapter_{clean_ch_id}"
-            elif type == "character" and clean_char_id:
-                pattern = f"tts_{source_book_id}_character_{clean_char_id}"
-            matches = glob.glob(os.path.join(settings.AUDIO_DIR, "**", f"{pattern}*.mp3"), recursive=True)
-            for m in matches:
-                if os.path.getsize(m) > 1000:
-                    cached_file_found = m
-                    break
-
         if cached_file_found:
             print(f"[API] get_tts_audio: Audio en caché encontrado: {cached_file_found}")
             return FileResponse(
                 cached_file_found,
                 media_type="audio/mpeg",
-                headers={"Cache-Control": "private, max-age=86400"}
+                headers={
+                    "Cache-Control": "private, max-age=86400",
+                    "Accept-Ranges": "bytes"
+                }
             )
 
         # 5. Si no existe audio en caché, se debe sintetizar a disco y servir vía FileResponse (soporte completo de Range y Content-Length)
