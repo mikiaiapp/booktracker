@@ -6,6 +6,11 @@ from pydantic import BaseModel
 from typing import Optional
 import os
 import re
+import asyncio
+import uuid
+import glob
+import time
+import threading
 
 from app.core.config import settings
 from app.core.security import get_current_user
@@ -646,6 +651,16 @@ async def get_tts_sample(
 
 # ── Audio TTS para Sinopsis, Capítulos y Personajes ───────────
 
+_tts_locks = {}
+_tts_locks_guard = asyncio.Lock()
+
+async def _get_tts_lock(cache_key: str) -> asyncio.Lock:
+    async with _tts_locks_guard:
+        if cache_key not in _tts_locks:
+            _tts_locks[cache_key] = asyncio.Lock()
+        return _tts_locks[cache_key]
+
+
 @router.get("/{book_id}/tts/audio")
 async def get_tts_audio(
     book_id: str,
@@ -949,17 +964,20 @@ async def get_tts_audio(
 
         clean_ch_id = str(chapter_id).strip() if chapter_id else ""
         clean_char_id = str(character_id).strip() if character_id else ""
-        safe_ch_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(chapter.id).strip()) if (type == 'chapter' and chapter) else clean_ch_id
-        safe_char_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(character.id).strip()) if (type == 'character' and character) else clean_char_id
+        raw_ch_id = str(chapter.id if chapter else clean_ch_id).strip()
+        raw_char_id = str(character.id if character else clean_char_id).strip()
+        safe_ch_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_ch_id)
+        safe_char_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', raw_char_id)
+        safe_source_id = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(source_book_id).strip())
 
         if type == "synopsis":
-            cache_filename = f"tts_{source_book_id}_synopsis_{voice}"
+            cache_filename = f"tts_{safe_source_id}_synopsis_{voice}"
         elif type == "global_summary":
-            cache_filename = f"tts_{source_book_id}_global_summary_{voice}"
+            cache_filename = f"tts_{safe_source_id}_global_summary_{voice}"
         elif type == "chapter":
-            cache_filename = f"tts_{source_book_id}_chapter_{safe_ch_id}_{voice}"
+            cache_filename = f"tts_{safe_source_id}_chapter_{safe_ch_id}_{voice}"
         elif type == "character":
-            cache_filename = f"tts_{source_book_id}_character_{safe_char_id}_{voice}"
+            cache_filename = f"tts_{safe_source_id}_character_{safe_char_id}_{voice}"
         else:
             raise HTTPException(400, "Invalid type")
 
@@ -967,7 +985,6 @@ async def get_tts_audio(
             raise HTTPException(400, "No content to read")
 
         # 4. Comprobar cache exhaustivamente
-        import glob
         user_audio_dir = os.path.join(settings.AUDIO_DIR, current_user.id)
         os.makedirs(user_audio_dir, exist_ok=True)
 
@@ -994,16 +1011,14 @@ async def get_tts_audio(
 
         # B. Coincidencia con cualquier voz previa generada para este elemento
         if not cached_file_found:
-            patterns = [f"tts_{source_book_id}_{type}"]
+            patterns = [f"tts_{safe_source_id}_{type}"]
             if type == "chapter":
                 patterns = [
-                    f"tts_{source_book_id}_chapter_{safe_ch_id}",
-                    f"tts_{source_book_id}_chapter_{clean_ch_id}"
+                    f"tts_{safe_source_id}_chapter_{safe_ch_id}",
                 ]
             elif type == "character":
                 patterns = [
-                    f"tts_{source_book_id}_character_{safe_char_id}",
-                    f"tts_{source_book_id}_character_{clean_char_id}"
+                    f"tts_{safe_source_id}_character_{safe_char_id}",
                 ]
 
             for s_dir in search_dirs:
@@ -1022,16 +1037,14 @@ async def get_tts_audio(
 
         # C. Búsqueda recursiva en AUDIO_DIR si es compartido
         if not cached_file_found and is_shared:
-            patterns = [f"tts_{source_book_id}_{type}"]
+            patterns = [f"tts_{safe_source_id}_{type}"]
             if type == "chapter":
                 patterns = [
-                    f"tts_{source_book_id}_chapter_{safe_ch_id}",
-                    f"tts_{source_book_id}_chapter_{clean_ch_id}"
+                    f"tts_{safe_source_id}_chapter_{safe_ch_id}",
                 ]
             elif type == "character":
                 patterns = [
-                    f"tts_{source_book_id}_character_{safe_char_id}",
-                    f"tts_{source_book_id}_character_{clean_char_id}"
+                    f"tts_{safe_source_id}_character_{safe_char_id}",
                 ]
             for pat in patterns:
                 matches = glob.glob(os.path.join(settings.AUDIO_DIR, "**", f"{pat}*.mp3"), recursive=True)
@@ -1055,7 +1068,7 @@ async def get_tts_audio(
 
         # 5. Si no existe audio en caché, se debe sintetizar a disco y servir vía FileResponse (soporte completo de Range y Content-Length)
         def _is_sk(k):
-            return bool(k and isinstance(k, str) and k.strip().startswith("sk-") and len(k.strip()) > 15)
+            return bool(k and isinstance(k, str) and (k.strip().startswith("sk-") or len(k.strip()) > 20))
 
         candidates = [
             current_user.openai_api_key if _is_sk(current_user.openai_api_key) else None,
@@ -1085,37 +1098,51 @@ async def get_tts_audio(
             )
 
         final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
-        temp_path = final_path + ".tmp"
-        from app.services.tts_service import synthesize_text
 
-        try:
-            print(f"[API] get_tts_audio: Sintetizando {cache_filename} con OpenAI ({voice})...")
-            await synthesize_text(text_to_speak, temp_path, api_keys={"openai": openai_key}, voice=voice)
-            if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
-                if os.path.exists(final_path):
-                    try:
-                        os.remove(final_path)
-                    except Exception:
-                        pass
-                os.replace(temp_path, final_path)
-                print(f"[API] get_tts_audio: Generado exitosamente {final_path} ({os.path.getsize(final_path)} bytes)")
-            else:
+        # Concurrency Lock: evita sintetizar dos veces el mismo audio si el cliente manda requests paralelos (ej. Safari Range)
+        lock = await _get_tts_lock(cache_filename)
+        async with lock:
+            if os.path.exists(final_path) and os.path.getsize(final_path) > 1000:
+                return FileResponse(
+                    final_path,
+                    media_type="audio/mpeg",
+                    headers={
+                        "Cache-Control": "private, max-age=86400",
+                        "Accept-Ranges": "bytes"
+                    }
+                )
+
+            temp_path = f"{final_path}.{uuid.uuid4().hex[:8]}.tmp"
+            from app.services.tts_service import synthesize_text
+
+            try:
+                print(f"[API] get_tts_audio: Sintetizando {cache_filename} con OpenAI ({voice})...")
+                await synthesize_text(text_to_speak, temp_path, api_keys={"openai": openai_key}, voice=voice)
+                if os.path.exists(temp_path) and os.path.getsize(temp_path) > 1000:
+                    if os.path.exists(final_path):
+                        try:
+                            os.remove(final_path)
+                        except Exception:
+                            pass
+                    os.replace(temp_path, final_path)
+                    print(f"[API] get_tts_audio: Generado exitosamente {final_path} ({os.path.getsize(final_path)} bytes)")
+                else:
+                    if os.path.exists(temp_path):
+                        try:
+                            os.remove(temp_path)
+                        except Exception:
+                            pass
+                    raise RuntimeError(f"El archivo generado para {cache_filename} está vacío o es inválido")
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"[API TTS ERROR] Fallo al sintetizar {cache_filename}: {e}")
                 if os.path.exists(temp_path):
                     try:
                         os.remove(temp_path)
                     except Exception:
                         pass
-                raise RuntimeError(f"El archivo generado para {cache_filename} está vacío o es inválido")
-        except HTTPException:
-            raise
-        except Exception as e:
-            print(f"[API TTS ERROR] Fallo al sintetizar {cache_filename}: {e}")
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-            raise HTTPException(500, f"Error al generar síntesis de voz: {str(e)}")
+                raise HTTPException(500, f"Error al generar síntesis de voz: {str(e)}")
 
         if not os.path.exists(final_path) or os.path.getsize(final_path) < 1000:
             raise HTTPException(500, "Error: No se pudo generar el archivo de audio con contenido válido")

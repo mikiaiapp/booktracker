@@ -376,7 +376,7 @@ export default function BookPage() {
         const params = new URLSearchParams(el.src.split('?')[1] || '')
         const t = params.get('type')
 
-        toast.error("No se pudo cargar el audio del servidor. Comprueba la conexión o configuración de OpenAI.", { id: 'tts-error' })
+        toast.error("No se pudo cargar el audio del servidor.", { id: 'tts-error' })
         if (t === 'chapter') {
           setTtsPlaying(false)
           setTtsChapter(null)
@@ -578,7 +578,11 @@ export default function BookPage() {
         toast.dismiss('tts-load')
         console.warn("Audio play failed:", e)
         if (e.name === 'AbortError') return
-        toast.error("No se pudo reproducir el audio del capítulo. Verifica la configuración de OpenAI.")
+        if (e.name === 'NotAllowedError') {
+          toast.error("El navegador bloqueó la reproducción automática. Pulsa de nuevo para reproducir.")
+          return
+        }
+        toast.error("No se pudo reproducir el audio del capítulo.")
         setTtsPlaying(false)
         setTtsChapter(null)
         setTtsChapterPaused(false)
@@ -686,7 +690,11 @@ export default function BookPage() {
         toast.dismiss('tts-load')
         console.warn("Audio play failed:", e)
         if (e.name === 'AbortError') return
-        toast.error("No se pudo reproducir el audio del personaje. Verifica la configuración de OpenAI.")
+        if (e.name === 'NotAllowedError') {
+          toast.error("El navegador bloqueó la reproducción automática. Pulsa de nuevo para reproducir.")
+          return
+        }
+        toast.error("No se pudo reproducir el audio del personaje.")
         setTtsCharPlaying(false)
         setTtsCharacter(null)
         setTtsCharPaused(false)
