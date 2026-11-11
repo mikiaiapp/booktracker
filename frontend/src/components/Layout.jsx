@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Outlet, NavLink, useNavigate, Link } from 'react-router-dom'
-import { BookOpen, Upload, LogOut, Library, Users, UserCircle, UserCheck, X } from 'lucide-react'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { Upload, LogOut, Library, Users, UserCircle, UserCheck, X, ShieldCheck, KeyRound, ChevronUp } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { socialAPI } from '../utils/api'
 import './Layout.css'
@@ -9,7 +9,9 @@ export default function Layout() {
   const user = useAuthStore(s => s.user)
   const logout = useAuthStore(s => s.logout)
   const navigate = useNavigate()
-  
+  const location = useLocation()
+  const [menuOpen, setMenuOpen] = useState(false)
+
   const [pendingCount, setPendingCount] = useState(0)
   const [showFloatingNotification, setShowFloatingNotification] = useState(false)
 
@@ -41,25 +43,39 @@ export default function Layout() {
     }
   }, [user])
 
-  // --- Pull to Refresh Logic (Móvil) ---
-  React.useEffect(() => {
-    let startY = 0
-    const handleTouchStart = (e) => { startY = e.touches[0].pageY }
-    const handleTouchEnd = (e) => {
-      const endY = e.changedTouches[0].pageY
-      const distance = endY - startY
-      // Si arrastra más de 150px hacia abajo y está en el tope de la página
-      if (distance > 150 && window.scrollY <= 5) {
-        window.location.reload()
-      }
-    }
-    window.addEventListener('touchstart', handleTouchStart, { passive: true })
-    window.addEventListener('touchend', handleTouchEnd, { passive: true })
+  // Cerrar el menú de usuario al navegar o al tocar fuera
+  useEffect(() => { setMenuOpen(false) }, [location.pathname])
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e) => { if (!e.target.closest?.('.sidebar-footer, .mobile-user')) setMenuOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown, { passive: true })
     return () => {
-      window.removeEventListener('touchstart', handleTouchStart)
-      window.removeEventListener('touchend', handleTouchEnd)
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
     }
-  }, [])
+  }, [menuOpen])
+
+  const initial = user?.username?.[0]?.toUpperCase() || '?'
+  const avatarBg = user?.avatar_color || '#6366f1'
+
+  const userMenu = (
+    <div className="user-menu" role="menu">
+      <div className="user-menu-head">
+        <span className="user-name">{user?.username}</span>
+        <span className="user-email">{user?.email}</span>
+      </div>
+      <button role="menuitem" className="user-menu-item" onClick={() => navigate('/profile')}>
+        <ShieldCheck size={16} strokeWidth={1.5} /> Perfil y seguridad
+      </button>
+      <button role="menuitem" className="user-menu-item" onClick={() => navigate('/profile/api')}>
+        <KeyRound size={16} strokeWidth={1.5} /> Claves de IA
+      </button>
+      <button role="menuitem" className="user-menu-item danger" onClick={handleLogout}>
+        <LogOut size={16} strokeWidth={1.5} /> Cerrar sesión
+      </button>
+    </div>
+  )
 
   return (
     <div className="layout">
@@ -129,20 +145,26 @@ export default function Layout() {
         </div>
 
         <div className="sidebar-footer">
-          <Link to="/profile" className="user-badge" style={{textDecoration:'none'}}>
-            <div className="user-avatar" style={{ background: user?.avatar_color || '#6366f1' }}>
-              {user?.username?.[0]?.toUpperCase() || '?'}
-            </div>
+          {menuOpen && userMenu}
+          <button className="user-badge" onClick={() => setMenuOpen(o => !o)}
+                  aria-label="Menú de usuario" aria-expanded={menuOpen}>
+            <div className="user-avatar" style={{ background: avatarBg }}>{initial}</div>
             <div className="user-info">
               <span className="user-name">{user?.username}</span>
               <span className="user-email">{user?.email}</span>
             </div>
-          </Link>
-          <button className="logout-btn" onClick={handleLogout} title="Cerrar sesión">
-            <LogOut size={16} strokeWidth={1.5} />
+            <ChevronUp size={16} strokeWidth={1.5} className={menuOpen ? 'user-chevron open' : 'user-chevron'} />
           </button>
         </div>
       </aside>
+
+      <div className="mobile-user">
+        <button className="mobile-user-btn" style={{ background: avatarBg }}
+                onClick={() => setMenuOpen(o => !o)} aria-label="Menú de usuario" aria-expanded={menuOpen}>
+          {initial}
+        </button>
+        {menuOpen && <div className="mobile-user-menu">{userMenu}</div>}
+      </div>
 
       <main className="main-content">
         <Outlet />

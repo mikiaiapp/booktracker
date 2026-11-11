@@ -97,6 +97,7 @@
 
 
 .sidebar-footer {
+  position: relative;
   padding: 1rem 0.75rem 0;
   border-top: 1px solid rgba(255,255,255,0.08);
   margin-top: 1rem;
@@ -106,6 +107,13 @@
 }
 
 .user-badge {
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 0.35rem;
+  border-radius: var(--radius);
+  font: inherit;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -478,5 +486,83 @@
   .toast-content {
     max-width: 100%;
     width: 100%;
+  }
+}
+
+/* ── Menú de usuario ─────────────────────────────────────── */
+.user-badge:hover { background: rgba(255,255,255,0.06); }
+.user-chevron { color: var(--mist); flex-shrink: 0; transition: transform var(--transition); }
+.user-chevron.open { transform: rotate(180deg); }
+
+.user-menu {
+  position: absolute;
+  bottom: calc(100% - 0.5rem);
+  left: 0.75rem;
+  right: 0.75rem;
+  background: var(--ink);
+  border: 1px solid rgba(201,169,110,0.25);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+  padding: 0.35rem;
+  z-index: 300;
+}
+
+.user-menu-head {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  margin-bottom: 0.25rem;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--paper);
+  font-size: 0.85rem;
+  padding: 0.6rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+}
+
+.user-menu-item:hover { background: rgba(255,255,255,0.08); }
+.user-menu-item.danger { color: var(--rust); }
+
+/* Icono de usuario en móvil (la barra inferior no tiene pie) */
+.mobile-user { display: none; }
+
+@media (max-width: 768px) and (orientation: portrait) {
+  .mobile-user {
+    display: block;
+    position: fixed;
+    top: calc(0.6rem + env(safe-area-inset-top, 0px));
+    right: 0.75rem;
+    z-index: 250;
+  }
+
+  .mobile-user-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.85);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+    cursor: pointer;
+  }
+
+  .mobile-user-menu .user-menu {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    left: auto;
+    bottom: auto;
+    width: 230px;
   }
 }
