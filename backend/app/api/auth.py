@@ -209,26 +209,6 @@ async def verify_2fa(req: TFAVerifyRequest, db: AsyncSession = Depends(get_globa
 # ── Me ────────────────────────────────────────────────────────────────────────
 @router.get("/me")
 async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_global_db)):
-    # Autopoblar desde env si están vacíos (primera vez) con protección extra
-    changed = False
-    try:
-        if (not current_user.gemini_api_key or current_user.gemini_api_key == "") and settings.GEMINI_API_KEY:
-            current_user.gemini_api_key = settings.GEMINI_API_KEY
-            changed = True
-        if (not current_user.openai_api_key or current_user.openai_api_key == "") and settings.OPENAI_API_KEY:
-            current_user.openai_api_key = settings.OPENAI_API_KEY
-            changed = True
-        if (not current_user.anthropic_api_key or current_user.anthropic_api_key == "") and settings.ANTHROPIC_API_KEY:
-            current_user.anthropic_api_key = settings.ANTHROPIC_API_KEY
-            changed = True
-            
-        if changed:
-            await db.commit()
-            await db.refresh(current_user)
-    except Exception as e:
-        print(f"[AUTH] Error en auto-migración de claves: {e}")
-        await db.rollback()
-
     return {
         "id": current_user.id,
         "email": current_user.email,
@@ -238,12 +218,11 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         "avatar_color": current_user.avatar_color,
         "tts_voice": getattr(current_user, 'tts_voice', 'alloy') or 'alloy',
         "tts_speed": getattr(current_user, 'tts_speed', '1.0') or '1.0',
-        "api_settings": {
-            "gemini_api_key": current_user.gemini_api_key,
-            "openai_api_key": current_user.openai_api_key,
-            "anthropic_api_key": current_user.anthropic_api_key,
-            "preferred_model": current_user.preferred_model
-        }
+        # Las claves de IA nunca se devuelven: solo si existen (el detalle enmascarado está en /users/settings)
+        "has_gemini": bool(current_user.gemini_api_key),
+        "has_openai": bool(current_user.openai_api_key),
+        "has_anthropic": bool(current_user.anthropic_api_key),
+        "preferred_model": current_user.preferred_model
     }
 
 

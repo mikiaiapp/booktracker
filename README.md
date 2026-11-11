@@ -30,6 +30,7 @@ Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso:
 1.  Entra en la aplicación y **regístrate**.
 2.  Haz clic en tu nombre/avatar **abajo a la izquierda** → **Ajustes de IA**.
 3.  Introduce una clave de **Google Gemini** (recomendado por su gran ventana de contexto) o **Groq**.
+    Cada usuario usa **solo sus propias claves** (menú de usuario → *Claves de IA*): se guardan cifradas y nunca se devuelven completas ni se comparten entre usuarios ni con el servidor.
 4.  ¡Listo! Ya puedes subir tu primer libro.
 
 ---
@@ -61,7 +62,7 @@ Para que todo esto funcione, **la aplicación necesita poder enviar correo**. Si
 
 | Variable | ¿Obligatoria? | Descripción |
 |---|---|---|
-| `SECRET_KEY` | **Sí** | Clave con la que se firman las sesiones. Larga y aleatoria (64 caracteres o más, por ejemplo `openssl rand -hex 48`). **Sin ella la aplicación no arranca.** Si la cambias, todos tendrán que volver a iniciar sesión. |
+| `SECRET_KEY` | **Sí** | Clave con la que se firman las sesiones. Larga y aleatoria (64 caracteres o más, por ejemplo `openssl rand -hex 48`). **Sin ella la aplicación no arranca.** Si la cambias, todos tendrán que volver a iniciar sesión. También cifra las claves de IA de los usuarios en la base de datos (AES-256-GCM): si la cambias, las sesiones se cierran y cada usuario tendrá que volver a introducir sus claves. |
 | `APP_URL` | Recomendada | Dirección pública de la app con protocolo, por ejemplo `https://libros.tudominio.com`. Se usa en los enlaces de los correos. |
 
 **Opción A · No tengo un gestor de correo propio → usa un servidor SMTP.** Es la más sencilla: pon los datos de tu proveedor (Gmail, el correo de tu dominio, Brevo, etc.).

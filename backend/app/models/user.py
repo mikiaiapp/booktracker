@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Text
 from sqlalchemy.sql import func
 from app.models.base import Base
+from app.core.crypto import EncryptedText
 import uuid
 
 
@@ -31,10 +32,11 @@ class User(Base):
     avatar_color = Column(String, default="#6366f1")
 
     # API Keys & Settings
-    gemini_api_key = Column(Text, nullable=True)
-    openai_api_key = Column(Text, nullable=True)
-    anthropic_api_key = Column(Text, nullable=True)
-    groq_api_key = Column(Text, nullable=True)
+    # Cifradas en la base de datos (core/crypto.py)
+    gemini_api_key = Column(EncryptedText, nullable=True)
+    openai_api_key = Column(EncryptedText, nullable=True)
+    anthropic_api_key = Column(EncryptedText, nullable=True)
+    groq_api_key = Column(EncryptedText, nullable=True)
     preferred_model = Column(String, nullable=True)
     tts_voice = Column(String, default="alloy", nullable=True)
     tts_speed = Column(String, default="1.0", nullable=True)

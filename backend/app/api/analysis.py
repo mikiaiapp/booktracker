@@ -1070,31 +1070,14 @@ async def get_tts_audio(
         def _is_sk(k):
             return bool(k and isinstance(k, str) and (k.strip().startswith("sk-") or len(k.strip()) > 20))
 
-        candidates = [
-            current_user.openai_api_key if _is_sk(current_user.openai_api_key) else None,
-            (owner_user.openai_api_key if owner_user and _is_sk(owner_user.openai_api_key) else None),
-            os.environ.get("OPENAI_API_KEY") if _is_sk(os.environ.get("OPENAI_API_KEY")) else None,
-        ]
-        openai_key = next((c for c in candidates if c), None)
-
-        if not openai_key:
-            # En libros compartidos o instancias auto-alojadas, buscar si algún usuario registrado tiene la clave configurada
-            try:
-                async with _global_session_factory() as global_db:
-                    all_users_res = await global_db.execute(select(User).where(User.openai_api_key != None, User.openai_api_key != ""))
-                    for u in all_users_res.scalars().all():
-                        if _is_sk(u.openai_api_key):
-                            openai_key = u.openai_api_key.strip()
-                            print(f"[API] get_tts_audio: Usando OpenAI API key del usuario {u.username} para generar audio")
-                            break
-            except Exception as e:
-                print(f"[API] Error buscando clave fallback en global_db: {e}")
+        # Cada usuario usa solo su propia clave de OpenAI (nunca la de otro usuario ni la del servidor)
+        openai_key = current_user.openai_api_key.strip() if _is_sk(current_user.openai_api_key) else None
 
         if not openai_key:
             print(f"[API] get_tts_audio: No hay OpenAI API key para {cache_filename}")
             raise HTTPException(
                 400,
-                "No hay audio en caché generado previamente para este apartado y no hay una API Key de OpenAI configurada para generarlo en tiempo real."
+                "No hay audio en caché generado previamente para este apartado y no tienes configurada tu API Key de OpenAI (menú de usuario → Claves de IA) para generarlo en tiempo real."
             )
 
         final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")

@@ -78,6 +78,10 @@ async def init_global_db():
             except: 
                 pass
 
+        # Cifrar las claves de IA que aún estén en claro (una sola vez)
+        from app.core.crypto import migrate_plaintext_keys
+        await migrate_plaintext_keys(conn)
+
 
 async def get_global_db() -> AsyncGenerator[AsyncSession, None]:
     global _global_session_factory
