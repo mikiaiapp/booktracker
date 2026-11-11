@@ -431,3 +431,6 @@ input.otp-input:focus {
   .auth-bg, .auth-deco { display: none; }
   .auth-panel { width: 100%; }
 }
+
+.auth-notice { margin-top: 1rem; padding: .8rem 1rem; border-radius: 6px; background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .45); font-size: .9rem; line-height: 1.4; }
+.auth-notice p { margin: 0 0 .4rem; }

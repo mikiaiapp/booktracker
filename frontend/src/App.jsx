@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
 import LoginPage from './pages/LoginPage'
@@ -13,6 +13,16 @@ import APISettingsPage from './pages/APISettingsPage'
 import FriendsPage from './pages/FriendsPage'
 import Layout from './components/Layout'
 import { analysisAPI } from './utils/api'
+
+// Los enlaces de los correos (verificar cuenta, recuperar contraseña) llegan a «/?action=…&token=…»: se llevan a /login conservando los datos
+function ActionRedirect() {
+  const { pathname, search } = useLocation()
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (pathname === '/' && /[?&]action=(verify|reset)\b/.test(search)) navigate('/login' + search, { replace: true })
+  }, [pathname, search, navigate])
+  return null
+}
 
 function PrivateRoute({ children }) {
   const token = useAuthStore(s => s.token)
@@ -53,6 +63,7 @@ export default function App() {
           },
         }}
       />
+      <ActionRedirect />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

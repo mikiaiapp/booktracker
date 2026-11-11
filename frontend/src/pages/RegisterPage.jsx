@@ -2,14 +2,14 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { BookOpen, User, Mail, Lock, Shield, Smartphone, CheckCircle } from 'lucide-react'
+import { BookOpen, User, Mail, Lock, CheckCircle } from 'lucide-react'
 import { authAPI } from '../utils/api'
 import './AuthPages.css'
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ email: '', username: '', password: '', tfa_method: 'totp' })
+  const [form, setForm] = useState({ email: '', username: '', password: '' })
   const [loading, setLoading] = useState(false)
-  const [totpData, setTotpData] = useState(null) // {totp_qr, totp_secret}
+  const [sentTo, setSentTo] = useState(null) // correo al que se ha enviado el enlace de verificación
   const navigate = useNavigate()
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
@@ -18,13 +18,8 @@ export default function RegisterPage() {
     e.preventDefault()
     setLoading(true)
     try {
-      const { data } = await authAPI.register(form)
-      if (data.totp_qr) {
-        setTotpData(data)
-      } else {
-        toast.success('Cuenta creada. Ya puedes iniciar sesión.')
-        navigate('/login')
-      }
+      await authAPI.register(form)
+      setSentTo(form.email)
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Error al crear la cuenta')
     } finally {
@@ -32,12 +27,21 @@ export default function RegisterPage() {
     }
   }
 
-  if (totpData) {
+  const handleResend = async () => {
+    try {
+      await authAPI.resendVerification(sentTo)
+      toast.success('Correo reenviado')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'No se pudo reenviar el correo')
+    }
+  }
+
+  if (sentTo) {
     return (
       <div className="auth-page">
         <div className="auth-deco">
           <div className="auth-deco-text">
-            {['Seguro', 'Privado', 'Tuyo'].map((w, i) => (
+            {['Leer', 'Recordar', 'Descubrir'].map((w, i) => (
               <span key={w} style={{ animationDelay: `${i * 0.8}s` }}>{w}</span>
             ))}
           </div>
@@ -45,23 +49,19 @@ export default function RegisterPage() {
         <div className="auth-panel">
           <motion.div className="auth-form-wrap" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}>
             <div className="auth-logo">
-              <Shield size={28} strokeWidth={1.5} />
-              <h1>Configura tu 2FA</h1>
+              <Mail size={28} strokeWidth={1.5} />
+              <h1>Revisa tu correo</h1>
             </div>
-            <p className="auth-sub">Escanea el código QR con Google Authenticator, Authy o cualquier app TOTP</p>
-
-            <div className="qr-wrap">
-              <img src={totpData.totp_qr} alt="QR TOTP" className="qr-img" />
-            </div>
-
-            <details className="secret-details">
-              <summary>Ver clave manual</summary>
-              <code>{totpData.totp_secret}</code>
-            </details>
+            <p className="auth-sub">
+              Te hemos enviado un enlace a <strong>{sentTo}</strong>. Haz clic en él para activar tu cuenta y después podrás iniciar sesión.
+            </p>
 
             <button className="btn-primary" onClick={() => navigate('/login')}>
               <CheckCircle size={16} />
-              Listo, ir a iniciar sesión
+              Ir a iniciar sesión
+            </button>
+            <button type="button" className="btn-ghost" onClick={handleResend}>
+              ¿No te ha llegado? Reenviar el correo
             </button>
           </motion.div>
         </div>
@@ -88,7 +88,7 @@ export default function RegisterPage() {
 
           <form onSubmit={handleRegister}>
             <h2>Crear cuenta</h2>
-            <p className="auth-sub">Tu biblioteca personal y privada</p>
+            <p className="auth-sub">Tu biblioteca personal y privada. Te enviaremos un correo para activar la cuenta.</p>
 
             <div className="field">
               <label>Usuario</label>
@@ -111,26 +111,6 @@ export default function RegisterPage() {
               <div className="input-wrap">
                 <Lock size={16} />
                 <input type="password" value={form.password} onChange={set('password')} placeholder="••••••••" required minLength={8} />
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Doble factor de autenticación</label>
-              <div className="tfa-options">
-                {[
-                  { value: 'totp', label: 'App autenticadora', icon: <Smartphone size={16} />, desc: 'Google Authenticator, Authy...' },
-                  { value: 'email', label: 'Código por email', icon: <Mail size={16} />, desc: 'Código OTP en cada acceso' },
-                  { value: 'none', label: 'Sin 2FA', icon: <Shield size={16} />, desc: 'No recomendado' },
-                ].map(opt => (
-                  <label key={opt.value} className={`tfa-opt ${form.tfa_method === opt.value ? 'selected' : ''}`}>
-                    <input type="radio" name="tfa" value={opt.value} checked={form.tfa_method === opt.value} onChange={set('tfa_method')} />
-                    <span className="tfa-opt-icon">{opt.icon}</span>
-                    <div>
-                      <strong>{opt.label}</strong>
-                      <small>{opt.desc}</small>
-                    </div>
-                  </label>
-                ))}
               </div>
             </div>
 
