@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="/logo-premium.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- SEO & UX Premium -->
     <title>BookTracker | Tu Biblioteca Inteligente con IA</title>
     <meta name="description" content="Organiza tu biblioteca, genera resúmenes con IA y escucha podcasts personalizados de tus libros favoritos." />
@@ -105,5 +105,89 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-  </body>
+  <!-- Deslizar hacia abajo para actualizar (plantilla común de las apps) -->
+<script>
+/* Deslizar hacia abajo desde arriba para actualizar (pull-to-refresh) — plantilla común de las apps de mikiaiapp.
+   Sin dependencias. Solo en pantallas táctiles. Se pega tal cual en cada app (script al final de <body>).
+   - Solo actúa si se desliza con UN dedo desde lo más alto de la página (ninguna zona con scroll está desplazada).
+   - No actúa sobre campos de texto, mapas, lienzos, elementos arrastrables, ventanas modales ni zonas con data-no-ptr.
+   - Al soltar pasado el umbral lanza el evento «ptr:refresh»; si nadie lo cancela (preventDefault), recarga la página.
+   - Con dos dedos (zoom con la pinza) no hace nada. */
+(function () {
+  var tactil = ('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0);
+  if (window.__ptr || !tactil) return;
+  window.__ptr = true;
+  var UMBRAL = 80, y0 = null, dy = 0, activo = false, ind = null, ocupado = false;
+
+  // Evita el refresco nativo del navegador (que duplicaría este) y las gomas de rebote de la página
+  document.documentElement.style.overscrollBehaviorY = 'contain';
+  // iOS amplía la pantalla al enfocar un campo con letra menor de 16 px: se evita para que el zoom con los dedos no estorbe
+  var st = document.createElement('style');
+  st.textContent = '@supports (-webkit-touch-callout:none){input,select,textarea{font-size:max(16px,1em)!important}}';
+  document.head.appendChild(st);
+
+  function indicador() {
+    if (ind) return ind;
+    ind = document.createElement('div');
+    ind.setAttribute('aria-hidden', 'true');
+    ind.style.cssText = 'position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:50%;transform:translate(-50%,-70px);z-index:2147483647;' +
+      'background:#0f172a;color:#fff;font:600 13px/1 system-ui,-apple-system,sans-serif;padding:9px 16px;border-radius:999px;' +
+      'box-shadow:0 6px 18px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;white-space:nowrap';
+    document.body.appendChild(ind);
+    return ind;
+  }
+  function mostrar(texto, px) {
+    var i = indicador();
+    i.textContent = texto;
+    i.style.opacity = Math.min(1, px / 50);
+    i.style.transform = 'translate(-50%,' + (Math.min(px, 90) * 0.6 - 70) + 'px)';
+  }
+  function ocultar() { if (ind) { ind.style.opacity = '0'; ind.style.transform = 'translate(-50%,-70px)'; } }
+  function reiniciar() { y0 = null; dy = 0; activo = false; ocultar(); }
+
+  // true = no empezar aquí (zona con otro significado o la página no está arriba del todo)
+  function descartar(el) {
+    var raiz = document.scrollingElement || document.documentElement;
+    if ((window.scrollY || 0) > 0 || raiz.scrollTop > 0) return true;
+    for (var e = el; e && e.nodeType === 1 && e !== document.documentElement; e = e.parentElement) {
+      if (e.hasAttribute('data-no-ptr') || e.draggable) return true;
+      var t = e.tagName;
+      if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'CANVAS' || t === 'IFRAME' || t === 'VIDEO' || t === 'AUDIO') return true;
+      if (e.getAttribute('role') === 'dialog' || e.getAttribute('aria-modal') === 'true') return true;
+      var c = e.className && e.className.baseVal === undefined ? String(e.className) : '';
+      if (/leaflet-container|\bmodal\b|\bdialog\b|\boverlay\b|\binset-0\b/.test(c)) return true;
+      var cs = getComputedStyle(e);
+      if (/(auto|scroll)/.test(cs.overflowY) && e.scrollHeight > e.clientHeight + 1 && e.scrollTop > 0) return true;
+    }
+    return false;
+  }
+
+  document.addEventListener('touchstart', function (ev) {
+    if (ocupado) return;
+    if (ev.touches.length !== 1 || descartar(ev.target)) { reiniciar(); return; }
+    y0 = ev.touches[0].clientY; dy = 0; activo = false;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function (ev) {
+    if (y0 === null || ocupado) return;
+    if (ev.touches.length !== 1) { reiniciar(); return; }          // segundo dedo: es un zoom
+    dy = ev.touches[0].clientY - y0;
+    if (dy < -5) { reiniciar(); return; }                           // el usuario sube: es un scroll normal
+    if (dy > 10) { activo = true; mostrar(dy > UMBRAL ? '↻ Suelta para actualizar' : '↓ Sigue bajando para actualizar', dy); }
+  }, { passive: true });
+
+  function soltar() {
+    if (activo && dy > UMBRAL && !ocupado) {
+      ocupado = true;
+      mostrar('Actualizando…', 100);
+      var cancelado = !window.dispatchEvent(new CustomEvent('ptr:refresh', { cancelable: true }));
+      if (cancelado) { setTimeout(function () { ocupado = false; reiniciar(); }, 800); } else { location.reload(); }
+    } else { reiniciar(); }
+    y0 = null; dy = 0; activo = false;
+  }
+  document.addEventListener('touchend', soltar, { passive: true });
+  document.addEventListener('touchcancel', reiniciar, { passive: true });
+})();
+</script>
+</body>
 </html>
