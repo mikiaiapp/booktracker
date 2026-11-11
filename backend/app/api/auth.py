@@ -54,14 +54,16 @@ def _enlace(accion: str, token: str) -> str:
     return f"{settings.APP_URL.rstrip('/')}?action={accion}&token={token}"
 
 
-async def _enviar_verificacion(user: User):
+async def _enviar_verificacion(user: User, reenvio: bool = False):
+    """Mismos textos que ContaMiki (alta y reenvío), cambiando solo el nombre de la app."""
     enlace = _enlace("verify", user.verification_token)
-    await send_email(
-        user.email,
-        "Verifica tu cuenta en BookTracker",
-        f"Haz click en este enlace para activar tu cuenta: {enlace}",
-        f'<p>Bienvenido a BookTracker.</p><p>Para activar tu cuenta, haz clic aquí:</p><a href="{enlace}">{enlace}</a>',
-    )
+    if reenvio:
+        asunto = "Verifica tu cuenta en BookTracker (Reenvío)"
+        html = f'<p>Has solicitado reenviar el correo de validación.</p><p><a href="{enlace}">Activar cuenta ahora</a></p>'
+    else:
+        asunto = "Verifica tu cuenta en BookTracker"
+        html = f'<p>Bienvenido a BookTracker.</p><p>Para activar tu cuenta, haz clic aquí:</p><a href="{enlace}">{enlace}</a>'
+    await send_email(user.email, asunto, f"Haz click en este enlace para activar tu cuenta: {enlace}", html)
 
 
 @router.post("/register", status_code=201)
@@ -121,7 +123,7 @@ async def resend_verification(req: ResendVerificationRequest, db: AsyncSession =
         raise HTTPException(400, "El usuario ya está verificado")
     user.verification_token = secrets.token_hex(32)
     await db.commit()
-    await _enviar_verificacion(user)
+    await _enviar_verificacion(user, reenvio=True)
     return {"success": True}
 
 
@@ -362,10 +364,9 @@ async def forgot_password(
         enlace = _enlace("reset", user.reset_token)
         await send_email(
             user.email,
-            "Recuperar contraseña de BookTracker",
-            f"Haz click en este enlace para restablecer tu contraseña (válido 1 hora): {enlace}",
-            f'<p>Has solicitado restablecer tu contraseña de BookTracker.</p><p>Haz clic aquí (válido 1 hora):</p><a href="{enlace}">{enlace}</a>'
-            f'<p>Si no has sido tú, ignora este correo.</p>',
+            "Recuperación de Contraseña - BookTracker",
+            f"Usa este enlace para cambiar tu contraseña: {enlace}",
+            f'<p>Has solicitado recuperar tu contraseña.</p><p><a href="{enlace}">Haz clic aquí para resetearla</a></p><p>Este enlace expira en 1 hora.</p>',
         )
     return {"success": True}
 
