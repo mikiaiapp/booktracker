@@ -239,7 +239,7 @@ export default function APISettingsPage() {
   return (
     <div className="premium-page">
       <div className="premium-header">
-        <button className="back-link" onClick={() => navigate('/profile')}>
+        <button className="back-link" onClick={() => navigate('/')}>
           <ArrowLeft size={16} /> Volver
         </button>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '800px' }}>

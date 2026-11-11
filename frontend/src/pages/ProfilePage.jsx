@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
-import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle, LogOut, Brain, ChevronRight } from 'lucide-react'
+import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle, LogOut, ChevronRight } from 'lucide-react'
 import { api } from '../utils/api'
 import './ProfilePage.css'
 
@@ -129,17 +129,6 @@ export default function ProfilePage() {
             <button className="premium-btn secondary" style={{ marginTop: '1.5rem', width: '100%', justifyContent: 'center' }} onClick={handleLogout}>
               <LogOut size={16} /> Cerrar sesión
             </button>
-          </div>
-
-          <div className="premium-card ai-settings-card" onClick={() => navigate('/profile/api')} style={{ cursor: 'pointer' }}>
-            <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-              <Brain size={18} color="var(--gold)" />
-              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Configuración de IA</h3>
-            </div>
-            <p style={{ fontSize: '0.9rem', color: 'var(--mist)', lineHeight: '1.5' }}>Gestiona tus propias llaves de Gemini o OpenAI para potenciar tus análisis.</p>
-            <div style={{ marginTop: '1rem', color: 'var(--gold)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-              Gestionar API Keys →
-            </div>
           </div>
         </div>
 
