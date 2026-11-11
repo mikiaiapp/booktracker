@@ -1070,14 +1070,19 @@ async def get_tts_audio(
         def _is_sk(k):
             return bool(k and isinstance(k, str) and (k.strip().startswith("sk-") or len(k.strip()) > 20))
 
-        # Cada usuario usa solo su propia clave de OpenAI (nunca la de otro usuario ni la del servidor)
-        openai_key = current_user.openai_api_key.strip() if _is_sk(current_user.openai_api_key) else None
+        # Se usa la clave de OpenAI del propio usuario y, si el libro está compartido, la del propietario del libro.
+        # Nunca la del servidor ni la de otros usuarios.
+        candidates = [
+            current_user.openai_api_key if _is_sk(current_user.openai_api_key) else None,
+            (owner_user.openai_api_key if owner_user and _is_sk(owner_user.openai_api_key) else None),
+        ]
+        openai_key = next((c.strip() for c in candidates if c), None)
 
         if not openai_key:
             print(f"[API] get_tts_audio: No hay OpenAI API key para {cache_filename}")
             raise HTTPException(
                 400,
-                "No hay audio en caché generado previamente para este apartado y no tienes configurada tu API Key de OpenAI (menú de usuario → Claves de IA) para generarlo en tiempo real."
+                "No hay audio en caché generado previamente para este apartado y ni tú (menú de usuario → Claves de IA) ni el propietario del libro tenéis configurada una API Key de OpenAI para generarlo en tiempo real."
             )
 
         final_path = os.path.join(user_audio_dir, f"{cache_filename}.mp3")
