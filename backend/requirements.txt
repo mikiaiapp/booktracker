@@ -37,6 +37,8 @@ openai==1.50.2
 
 # Task queue
 celery==5.4.0
+# kombu fijado: celery solo lo limita a <6 y las versiones nuevas exigen redis>=6.1 (el worker se caía con VersionMismatch)
+kombu==5.4.2
 redis==5.1.1
 
 # Email
