@@ -7,8 +7,6 @@ from passlib.context import CryptContext
 from sqlalchemy import select
 import random
 import string
-import aiosmtplib
-from email.mime.text import MIMEText
 
 from app.core.config import settings
 
@@ -81,37 +79,12 @@ def generate_otp(length: int = 6) -> str:
 
 
 async def send_otp_email(email: str, otp: str):
-    if not settings.SMTP_HOST:
-        print(f"[DEV] OTP para {email}: {otp}")
-        return
-
-    msg = MIMEText(f"""
-    <h2>BookTracker - Código de verificación</h2>
-    <p>Tu código de acceso es:</p>
-    <h1 style="letter-spacing: 8px; color: #6366f1;">{otp}</h1>
-    <p>Válido por 10 minutos.</p>
-    """, "html")
-    msg["Subject"] = "BookTracker - Código 2FA"
-    msg["From"] = settings.SMTP_FROM
-    msg["To"] = email
-
-    try:
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.SMTP_HOST,
-            port=settings.SMTP_PORT,
-            username=settings.SMTP_USER,
-            password=settings.SMTP_PASS,
-            start_tls=True,
-        )
-    except Exception as e:
-        import datetime
-        err_msg = f"Fallo al enviar correo a {email}: {str(e)} (Host: {settings.SMTP_HOST}:{settings.SMTP_PORT}, User: {settings.SMTP_USER}, From: {settings.SMTP_FROM})"
-        print(f"[SMTP ERROR] {err_msg}")
-        try:
-            with open("/data/smtp_error.log", "a", encoding="utf-8") as f:
-                now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                f.write(f"[{now}] {err_msg}\n")
-        except:
-            pass
-        raise e
+    """Código 2FA por correo: solo para usuarios antiguos que lo tenían activado (ya no se puede activar)."""
+    from app.core.mailer import send_email
+    await send_email(
+        email,
+        "BookTracker - Código 2FA",
+        f"Tu código de acceso es {otp}. Válido por 10 minutos.",
+        f'<h2>BookTracker - Código de verificación</h2><p>Tu código de acceso es:</p>'
+        f'<h1 style="letter-spacing: 8px; color: #6366f1;">{otp}</h1><p>Válido por 10 minutos.</p>',
+    )

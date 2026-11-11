@@ -5,6 +5,7 @@ from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import Optional
+import secrets
 import pyotp
 import qrcode
 import io
@@ -13,6 +14,7 @@ import base64
 from app.core.database import get_global_db
 from app.core.config import settings
 from app.models.user import User
+from app.core.mailer import send_email
 from app.core.security import (
     verify_password, get_password_hash,
     create_access_token, get_current_user,
@@ -27,7 +29,6 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     username: str
     password: str
-    tfa_method: str = "totp"  # totp | email | none
 
 
 class LoginRequest(BaseModel):
@@ -48,7 +49,21 @@ class TokenResponse(BaseModel):
     tfa_method: Optional[str] = None
 
 
-# ── Register ──────────────────────────────────────────────────────────────────
+# ── Register ──────────────────────────────────
+def _enlace(accion: str, token: str) -> str:
+    return f"{settings.APP_URL.rstrip('/')}?action={accion}&token={token}"
+
+
+async def _enviar_verificacion(user: User):
+    enlace = _enlace("verify", user.verification_token)
+    await send_email(
+        user.email,
+        "Verifica tu cuenta en BookTracker",
+        f"Haz click en este enlace para activar tu cuenta: {enlace}",
+        f'<p>Bienvenido a BookTracker.</p><p>Para activar tu cuenta, haz clic aquí:</p><a href="{enlace}">{enlace}</a>',
+    )
+
+
 @router.post("/register", status_code=201)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_global_db)):
     # Check existing
@@ -64,31 +79,50 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_global_d
         email=req.email,
         username=req.username,
         hashed_password=get_password_hash(req.password),
-        is_verified=True,
+        is_verified=False,
+        verification_token=secrets.token_hex(32),
     )
-
-    if req.tfa_method == "totp":
-        user.totp_secret = pyotp.random_base32()
-        user.totp_enabled = True
-    elif req.tfa_method == "email":
-        user.email_otp_enabled = True
-
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    response = {"id": user.id, "email": user.email, "username": user.username}
+    await _enviar_verificacion(user)
+    return {"message": "Usuario creado. Revisa tu email para activar la cuenta."}
 
-    if req.tfa_method == "totp":
-        totp = pyotp.TOTP(user.totp_secret)
-        uri = totp.provisioning_uri(user.email, issuer_name="BookTracker")
-        qr = qrcode.make(uri)
-        buf = io.BytesIO()
-        qr.save(buf, format="PNG")
-        response["totp_qr"] = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
-        response["totp_secret"] = user.totp_secret
 
-    return response
+class VerifyRequest(BaseModel):
+    token: str
+
+
+@router.post("/verify")
+async def verify_email(req: VerifyRequest, db: AsyncSession = Depends(get_global_db)):
+    if not req.token:
+        raise HTTPException(400, "Token requerido")
+    result = await db.execute(select(User).where(User.verification_token == req.token))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(400, "Token inválido o expirado")
+    user.is_verified = True
+    await db.commit()
+    return {"success": True}
+
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+
+@router.post("/resend-verification")
+async def resend_verification(req: ResendVerificationRequest, db: AsyncSession = Depends(get_global_db)):
+    result = await db.execute(select(User).where(User.email == req.email))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(400, "Usuario no encontrado")
+    if user.is_verified:
+        raise HTTPException(400, "El usuario ya está verificado")
+    user.verification_token = secrets.token_hex(32)
+    await db.commit()
+    await _enviar_verificacion(user)
+    return {"success": True}
 
 
 # ── Login Step 1 ──────────────────────────────────────────────────────────────
@@ -102,6 +136,9 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_global_db)):
 
     if not user.is_active:
         raise HTTPException(403, "Account disabled")
+
+    if not user.is_verified:
+        raise HTTPException(403, "Cuenta no verificada. Revisa tu email.")
 
     # If 2FA enabled, return temp token
     if (user.totp_enabled or user.email_otp_enabled):
@@ -305,67 +342,55 @@ async def disable_2fa(
     return {"message": "2FA desactivado"}
 
 
-# ── Recuperar contraseña ───────────────────────────────────────
+# ── Recuperar contraseña ─────────────────────────────
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
 
 @router.post("/forgot-password")
 async def forgot_password(
     req: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_global_db),
 ):
-    """Envía OTP por email para resetear contraseña."""
+    """Envía por correo un enlace (válido 1 hora) para restablecer la contraseña. Responde siempre igual: no revela si la cuenta existe."""
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if user:
-        otp = generate_otp()
-        user.email_otp = otp
-        user.email_otp_expires = datetime.utcnow() + timedelta(minutes=15)
+        user.reset_token = secrets.token_hex(32)
+        user.reset_expires = datetime.utcnow() + timedelta(hours=1)
         await db.commit()
-        # Si no hay SMTP configurado, devolver el código directamente
-        from app.core.config import settings as _settings
-        if not _settings.SMTP_HOST:
-            return {
-                "message": "Sin servidor de email configurado. Usa este código:",
-                "code": otp,
-                "dev_mode": True
-            }
-        # Intentar enviar email
-        try:
-            await send_otp_email(req.email, otp)
-        except Exception as e:
-            print(f"[OTP] Email error: {e}")
-            return {
-                "message": "Error al enviar email. Usa este código:",
-                "code": otp,
-                "dev_mode": True
-            }
-    return {"message": "Si el email existe, recibirás un código de recuperación"}
+        enlace = _enlace("reset", user.reset_token)
+        await send_email(
+            user.email,
+            "Recuperar contraseña de BookTracker",
+            f"Haz click en este enlace para restablecer tu contraseña (válido 1 hora): {enlace}",
+            f'<p>Has solicitado restablecer tu contraseña de BookTracker.</p><p>Haz clic aquí (válido 1 hora):</p><a href="{enlace}">{enlace}</a>'
+            f'<p>Si no has sido tú, ignora este correo.</p>',
+        )
+    return {"success": True}
 
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    code: str
+    token: str
     new_password: str
+
 
 @router.post("/reset-password")
 async def reset_password(
     req: ResetPasswordRequest,
     db: AsyncSession = Depends(get_global_db),
 ):
-    """Resetea la contraseña con el código OTP recibido por email."""
-    result = await db.execute(select(User).where(User.email == req.email))
+    """Restablece la contraseña con el token recibido por correo."""
+    if not req.token:
+        raise HTTPException(400, "Enlace inválido o expirado")
+    result = await db.execute(select(User).where(User.reset_token == req.token))
     user = result.scalar_one_or_none()
-    if not user or not user.email_otp:
-        raise HTTPException(400, "Código inválido o expirado")
-    if user.email_otp != req.code:
-        raise HTTPException(400, "Código incorrecto")
-    if datetime.utcnow() > user.email_otp_expires:
-        raise HTTPException(400, "El código ha expirado. Solicita uno nuevo.")
+    if not user or not user.reset_expires or user.reset_expires < datetime.utcnow():
+        raise HTTPException(400, "Enlace inválido o expirado")
     if len(req.new_password) < 8:
         raise HTTPException(400, "La contraseña debe tener al menos 8 caracteres")
     user.hashed_password = get_password_hash(req.new_password)
-    user.email_otp = None
-    user.email_otp_expires = None
+    user.reset_token = None
+    user.reset_expires = None
     await db.commit()
     return {"message": "Contraseña actualizada correctamente"}

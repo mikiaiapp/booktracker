@@ -21,6 +21,11 @@ class User(Base):
     pending_otp = Column(String, nullable=True)
     pending_otp_expires = Column(DateTime, nullable=True)
 
+    # Verificación del correo y recuperación de contraseña (enlaces con token aleatorio)
+    verification_token = Column(String, nullable=True)
+    reset_token = Column(String, nullable=True)
+    reset_expires = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, server_default=func.now())
     last_login = Column(DateTime, nullable=True)
     avatar_color = Column(String, default="#6366f1")

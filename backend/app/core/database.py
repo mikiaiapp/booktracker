@@ -54,7 +54,10 @@ async def init_global_db():
             ("is_verified", "BOOLEAN DEFAULT 1"),
             ("is_active", "BOOLEAN DEFAULT 1"),
             ("tts_voice", "TEXT DEFAULT 'alloy'"),
-            ("tts_speed", "TEXT DEFAULT '1.0'")
+            ("tts_speed", "TEXT DEFAULT '1.0'"),
+            ("verification_token", "TEXT"),
+            ("reset_token", "TEXT"),
+            ("reset_expires", "DATETIME")
         ]
         for col_name, col_type in cols:
             try: 
@@ -69,6 +72,9 @@ async def init_global_db():
                     await conn.execute(text("UPDATE users SET tts_voice = 'alloy' WHERE tts_voice IS NULL"))
                 if col_name == "tts_speed":
                     await conn.execute(text("UPDATE users SET tts_speed = '1.0' WHERE tts_speed IS NULL"))
+                if col_name == "verification_token":
+                    # Primera vez que existe la verificación del correo: todos los usuarios que ya había quedan verificados (no se bloquea a nadie)
+                    await conn.execute(text("UPDATE users SET is_verified = 1"))
             except: 
                 pass
 
