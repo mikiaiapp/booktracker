@@ -94,8 +94,6 @@
 }
 
 
-
-
 .sidebar-footer {
   position: relative;
   padding: 1rem 0.75rem 0;
@@ -157,16 +155,6 @@
   text-overflow: ellipsis;
 }
 
-.logout-btn {
-  background: none;
-  border: none;
-  color: var(--mist);
-  padding: 0.4rem;
-  border-radius: var(--radius);
-  transition: color var(--transition);
-}
-
-.logout-btn:hover { color: var(--rust); }
 
 .main-content {
   margin-left: 240px;

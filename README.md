@@ -28,7 +28,7 @@ BookTracker no es solo un organizador, es una herramienta de análisis literario
 ## 🔑 Configuración de las "Llaves" de IA
 Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso:
 1.  Entra en la aplicación y **regístrate**.
-2.  Haz clic en tu nombre/avatar **abajo a la izquierda** → **Ajustes de IA**.
+2.  Haz clic en tu nombre/avatar **abajo a la izquierda** → **Claves de IA**.
 3.  Introduce una clave de **Google Gemini** (recomendado por su gran ventana de contexto) o **Groq**.
     Cada usuario usa **sus propias claves** (menú de usuario → *Claves de IA*): se guardan cifradas y nunca se devuelven completas. Solo en un libro compartido, el audio puede generarse con la clave de OpenAI del propietario del libro si quien lo escucha no tiene la suya; nunca se usan las claves del servidor ni las de otros usuarios.
 4.  ¡Listo! Ya puedes subir tu primer libro.
