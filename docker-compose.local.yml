@@ -19,7 +19,7 @@ services:
       - AUDIO_DIR=/data/audio
       - COVERS_DIR=/data/covers
       - REDIS_URL=redis://redis-local:6379/0
-      - SECRET_KEY=cambiame-en-produccion-123
+      - SECRET_KEY=${SECRET_KEY:?define SECRET_KEY: crea la variable de entorno (ver el README)}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
@@ -48,7 +48,7 @@ services:
       - AUDIO_DIR=/data/audio
       - COVERS_DIR=/data/covers
       - REDIS_URL=redis://redis-local:6379/0
-      - SECRET_KEY=cambiame-en-produccion-123
+      - SECRET_KEY=${SECRET_KEY:?define SECRET_KEY: crea la variable de entorno (ver el README)}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
