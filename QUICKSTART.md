@@ -24,16 +24,13 @@ mkdir -p /volume1/docker/booktracker/data/{uploads,covers,audio,databases,redis}
    Compose path: docker-compose.yml
    ```
 
-4. **Environment variables** (obligatorias):
+4. **Variable de entorno** (obligatoria):
    ```
    SECRET_KEY=tu_clave_secreta_minimo_32_caracteres_aleatorios
-   GEMINI_API_KEY=AIza...
-   GOOGLE_API_KEY=AIza...
-   AI_MODEL=gemini-2.0-flash
    ```
 
-   > 💡 Obtén tu API key gratuita en [aistudio.google.com](https://aistudio.google.com)
-   > ⚠️ **Importante**: Crear la clave en AI Studio con "Create API key in new project" (sin billing)
+   > 💡 Las claves de IA (Gemini, Groq, OpenAI…) **no se configuran aquí**: cada usuario las introduce en la app (menú de usuario → *Claves de IA*).
+   > Una clave de Gemini gratuita se obtiene en [aistudio.google.com](https://aistudio.google.com) con "Create API key in new project" (sin billing).
 
 5. **Deploy the stack** → Esperar 3-5 minutos
 
@@ -66,18 +63,6 @@ git push origin main
 ---
 
 ## Variables de entorno opcionales
-
-### Para podcast (audio TTS)
-```
-OPENAI_API_KEY=sk-...
-TTS_PROVIDER=openai
-```
-
-### Para usar Claude en lugar de Gemini
-```
-ANTHROPIC_API_KEY=sk-ant-...
-AI_MODEL=claude-sonnet-4
-```
 
 ### Para 2FA por email
 ```

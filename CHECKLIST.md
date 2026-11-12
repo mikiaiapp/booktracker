@@ -21,10 +21,7 @@ df -h /volume1
 ## 🔑 Variables de entorno
 
 - [ ] `SECRET_KEY` generada (mín. 32 caracteres aleatorios)
-- [ ] `GEMINI_API_KEY` obtenida de aistudio.google.com
-- [ ] `GOOGLE_API_KEY` = mismo valor que GEMINI_API_KEY
-- [ ] `AI_MODEL` = gemini-2.0-flash
-- [ ] ⚠️ Clave de Gemini creada SIN billing activado
+- [ ] Las claves de IA no son variables de entorno: cada usuario las pone en la app (*Claves de IA*)
 
 ```bash
 # Generar SECRET_KEY aleatorio
@@ -126,7 +123,7 @@ docker logs booktracker-backend --tail 50
 ```bash
 docker logs booktracker-worker --tail 50
 docker logs booktracker-redis
-# Verificar GEMINI_API_KEY
+# Comprobar que el usuario ha puesto su clave de IA en la app (Claves de IA)
 ```
 
 ### "Quota exceeded"
