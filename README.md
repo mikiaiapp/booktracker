@@ -33,6 +33,8 @@ Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso:
     Cada usuario usa **sus propias claves** (menú de usuario → *Claves de IA*): se guardan cifradas y nunca se devuelven completas. Solo en un libro compartido, el audio puede generarse con la clave de OpenAI del propietario del libro si quien lo escucha no tiene la suya; nunca se usan las claves del servidor ni las de otros usuarios.
 4.  ¡Listo! Ya puedes subir tu primer libro.
 
+> **En el móvil** el menú de usuario es el icono de la cabecera, y puedes ampliar con la pinza y deslizar hacia abajo desde arriba para actualizar.
+
 ---
 
 ## ☁️ Bloque 2: Instalación en NAS / Servidor (Vía Portainer)
