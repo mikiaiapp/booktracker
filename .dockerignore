@@ -53,3 +53,6 @@ yarn-error.log*
 *.log
 *.tmp
 *.bak
+
+# Demos del README
+docs/

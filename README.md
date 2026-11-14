@@ -2,6 +2,14 @@
 
 > Tu biblioteca personal inteligente. Organiza tus libros, genera resúmenes con IA, analiza personajes, crea podcasts y **charla directamente con tus lecturas**.
 
+<p align="center">
+  <picture>
+    <source media="(min-width: 900px)" srcset="docs/demo/booktracker_pc.gif" />
+    <img src="docs/demo/booktracker_m.gif" width="300" alt="Demostración animada de BookTracker con La novia gitana: ficha, capítulos, personajes, resumen, mapa mental, podcast, diálogo y referencias" />
+  </picture>
+  <br /><sub>Demostración con datos de ejemplo («La novia gitana»): paseo por todas las fases del desplegable del libro.</sub>
+</p>
+
 ---
 
 ## 📚 Documentación Oficial
