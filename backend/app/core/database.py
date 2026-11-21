@@ -33,6 +33,7 @@ async def init_global_db():
     # Importar User para registrarlo en metadata
     from app.models.user import User
     from app.models.friendship import Friendship
+    from app.models.passkey import Passkey  # claves de acceso (create_all crea la tabla si no existe)
     
     async with _global_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

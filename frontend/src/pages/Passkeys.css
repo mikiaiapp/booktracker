@@ -1,0 +1,17 @@
+/* Claves de acceso (Face ID / huella): botón de acceso, interruptores y lista */
+.pk-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: .5rem; padding: .8rem 1rem; margin-bottom: 1rem;
+  border: none; border-radius: 10px; font-weight: 600; cursor: pointer; background: #4f46e5; color: #fff; }
+.pk-btn:disabled, .pk-btn.pk-off { opacity: .4; cursor: not-allowed; filter: grayscale(1); }
+.pk-status { text-align: center; font-size: .8rem; color: #8a8f9c; min-height: 1.1em; margin: -.5rem 0 1rem; }
+.pk-switch-row { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .7rem .8rem; margin: .8rem 0;
+  background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2); border-radius: 10px; font-size: .9rem; cursor: pointer; }
+.pk-switch-row small { opacity: .7; }
+input.pk-switch { appearance: none; -webkit-appearance: none; flex: 0 0 auto; width: 46px; height: 26px; padding: 0; margin: 0; border-radius: 13px;
+  border: none; background: #8a8f9c; position: relative; transition: background .15s; cursor: pointer; }
+input.pk-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+input.pk-switch:checked { background: #10b981; }
+input.pk-switch:checked::after { transform: translateX(20px); }
+.pk-item { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .55rem .7rem; margin-top: .4rem;
+  background: rgba(127,127,127,.08); border: 1px solid rgba(127,127,127,.2); border-radius: 10px; font-size: .88rem; }
+.pk-item small { opacity: .7; }
+.pk-item button { background: none; border: none; cursor: pointer; font-size: 1.1rem; }

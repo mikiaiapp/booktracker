@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useAuthStore } from '../store/authStore'
 import { Key, Shield, ShieldOff, Eye, EyeOff, ArrowLeft, CheckCircle, LogOut, ChevronRight } from 'lucide-react'
 import { api } from '../utils/api'
+import PasskeysCard from '../components/PasskeysCard'
 import './ProfilePage.css'
 
 export default function ProfilePage() {
@@ -215,6 +216,14 @@ export default function ProfilePage() {
                 )}
               </div>
             )}
+          </div>
+
+          <div className="premium-card">
+            <div className="section-header" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+              <Key size={18} color="var(--gold)" />
+              <h3 style={{ margin: 0 }}>Face ID / huella (claves de acceso)</h3>
+            </div>
+            <PasskeysCard />
           </div>
         </div>
       </div>

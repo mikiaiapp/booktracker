@@ -37,6 +37,14 @@ export const useAuthStore = create((set, get) => ({
     return data
   },
 
+  // Sesión con un token ya obtenido (acceso con clave de acceso: Face ID / huella)
+  loginWithToken: async (token) => {
+    localStorage.setItem('bt_token', token)
+    set({ token })
+    const me = await authAPI.me()
+    set({ user: me.data })
+  },
+
   logout: () => {
     localStorage.removeItem('bt_token')
     set({ user: null, token: null })

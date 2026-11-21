@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { BookOpen, Mail, Lock, Shield } from 'lucide-react'
+import { BookOpen, Mail, Lock, Shield, KeyRound } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { authAPI } from '../utils/api'
+import {
+  passkeysSupported, deviceHasPasskey, deviceName, prepareLogin, prepareRegister, loginWithPasskey, registerPasskey,
+} from '../utils/passkeys'
 import './AuthPages.css'
+import './Passkeys.css'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -28,6 +32,15 @@ export default function LoginPage() {
   const [resetPw, setResetPw] = useState('')
   const [resetPw2, setResetPw2] = useState('')
   const [resetLoading, setResetLoading] = useState(false)
+
+  // Claves de acceso (Face ID / huella)
+  const [pkEstado, setPkEstado] = useState('')
+  const [pkBusy, setPkBusy] = useState(false)
+  const [pkRecordar, setPkRecordar] = useState(true)   // «Entrar con Face ID la próxima vez» (pantalla del código)
+  const [pkOferta, setPkOferta] = useState(false)      // pantalla de un toque para activar Face ID
+  const pkPrep = useRef(null)
+  const pkRegPrep = useRef(null)
+  const loginWithToken = useAuthStore(s => s.loginWithToken)
 
   const login = useAuthStore(s => s.login)
   const navigate = useNavigate()
@@ -74,6 +87,52 @@ export default function LoginPage() {
     }
   }
 
+  // El reto se pide de antemano para lanzar Face ID DENTRO del toque (Safari exige un gesto del usuario)
+  const pkPreparar = async () => {
+    if (!passkeysSupported() || !deviceHasPasskey()) return
+    try { pkPrep.current = { ...(await prepareLogin()), t: Date.now() } } catch { pkPrep.current = null }
+  }
+  // Sin ningún await antes de loginWithPasskey para conservar el toque
+  const pkEntrar = () => {
+    const prep = pkPrep.current
+    if (!prep || Date.now() - prep.t > 4 * 60 * 1000) { setPkEstado('Preparando Face ID… vuelve a pulsar.'); pkPreparar().then(() => setPkEstado('')); return }
+    pkPrep.current = null
+    setPkBusy(true); setPkEstado('')
+    loginWithPasskey(prep)
+      .then(async (data) => { await loginWithToken(data.access_token); navigate('/') })
+      .catch((err) => {
+        if (err.noReconocida) setPkEstado('La clave de Face ID de este dispositivo ya no es válida. Entra con contraseña y vuelve a activarla.')
+        else if (err.cancelado) setPkEstado('Face ID no se completó. Pulsa el botón para repetirlo.')
+        else setPkEstado('No se pudo usar Face ID: ' + err.message)
+        pkPreparar()
+      })
+      .finally(() => setPkBusy(false))
+  }
+  useEffect(() => {
+    if (searchParams.get('action')) return
+    if (!passkeysSupported()) return
+    if (!deviceHasPasskey()) { setPkEstado('Face ID no está activado en este dispositivo: entra con contraseña y código y actívalo.'); return }
+    // Con Face ID activado en el dispositivo: se prepara el reto y se pide solo al abrir (iOS puede preguntar antes «¿Usar llave de acceso?»)
+    pkPreparar().then(() => { if (pkPrep.current) pkEntrar() })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Pantalla de un toque para activar Face ID (si Safari no deja crear la clave sin un gesto del usuario)
+  useEffect(() => {
+    if (!pkOferta) return
+    pkRegPrep.current = null
+    prepareRegister().then(o => { pkRegPrep.current = o }).catch(() => { pkRegPrep.current = null })
+  }, [pkOferta])
+  const pkActivar = () => {
+    const prep = pkRegPrep.current
+    if (!prep) { toast('Un momento… vuelve a pulsar.'); prepareRegister().then(o => { pkRegPrep.current = o }).catch(() => {}); return }
+    pkRegPrep.current = null
+    setPkBusy(true)
+    registerPasskey(deviceName(), prep)
+      .then(() => navigate('/'))
+      .catch((err) => { setPkBusy(false); if (!err.cancelado) toast.error(err.message) })
+  }
+
   const handleResend = async () => {
     setResending(true)
     try {
@@ -92,9 +151,16 @@ export default function LoginPage() {
     try {
       const verify = useAuthStore.getState().verify2fa
       await verify(twoFAStep.temp_token, code)
-      navigate('/')
     } catch {
       toast.error('Código incorrecto')
+      setLoading(false)
+      return
+    }
+    try {
+      if (pkRecordar && passkeysSupported() && !deviceHasPasskey()) {
+        try { await registerPasskey(deviceName()) } catch { setPkOferta(true); return } // Safari exige un toque: pantalla con botón
+      }
+      navigate('/')
     } finally {
       setLoading(false)
     }
@@ -154,7 +220,16 @@ export default function LoginPage() {
           </div>
 
           <AnimatePresence mode="wait">
-            {resetToken ? (
+            {pkOferta ? (
+              <motion.div key="pk-oferta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <h2>Activar Face ID / huella</h2>
+                <p className="auth-sub">Pulsa el botón y confirma con Face ID: la próxima vez entrarás directamente, sin usuario, contraseña ni código.</p>
+                <button type="button" className="pk-btn" disabled={pkBusy} onClick={pkActivar}>
+                  <KeyRound size={18} /> {pkBusy ? 'Esperando al dispositivo…' : 'Activar Face ID / huella'}
+                </button>
+                <button type="button" className="btn-ghost" disabled={pkBusy} onClick={() => navigate('/')}>Ahora no</button>
+              </motion.div>
+            ) : resetToken ? (
               <motion.form
                 key="reset"
                 onSubmit={handleReset}
@@ -196,6 +271,16 @@ export default function LoginPage() {
               >
                 <h2>Bienvenido de nuevo</h2>
                 <p className="auth-sub">Tu biblioteca personal te espera</p>
+
+                {passkeysSupported() && (
+                  <>
+                    <button type="button" className={`pk-btn${deviceHasPasskey() ? '' : ' pk-off'}`}
+                      disabled={pkBusy || !deviceHasPasskey()} onClick={pkEntrar}>
+                      <KeyRound size={18} /> Entrar con Face ID / huella
+                    </button>
+                    {pkEstado && <p className="pk-status">{pkEstado}</p>}
+                  </>
+                )}
 
                 <div className="field">
                   <label>Email</label>
@@ -270,6 +355,13 @@ export default function LoginPage() {
                     inputMode="numeric" maxLength={6}
                   />
                 </div>
+
+                {passkeysSupported() && !deviceHasPasskey() && (
+                  <label className="pk-switch-row">
+                    <span>Entrar con Face ID / huella la próxima vez</span>
+                    <input type="checkbox" className="pk-switch" checked={pkRecordar} onChange={e => setPkRecordar(e.target.checked)} />
+                  </label>
+                )}
 
                 <button type="submit" className="btn-primary" disabled={loading || code.length < 6}>
                   {loading ? <span className="spinner" /> : 'Verificar'}

@@ -66,6 +66,7 @@ Para que BookTracker pueda "leer" y "pensar", necesita una llave de acceso:
 **Cómo funcionan las cuentas**
 *   **Registro con verificación del correo:** al crear la cuenta se envía un enlace de activación; hasta que se pulsa, no se puede entrar. Si no llega, se puede reenviar desde la pantalla de acceso.
 *   **Doble factor con app autenticadora (TOTP)** (Google Authenticator, Authy, 1Password…): se activa desde el perfil, una vez dentro.
+*   **Claves de acceso (Face ID / huella):** además de la contraseña y el código del autenticador, cada usuario puede **entrar con Face ID, huella o el PIN de su dispositivo, sin usuario, contraseña ni código** (WebAuthn; la verificación del dispositivo cuenta como los dos factores). Se activa una vez: en la pantalla del código del autenticador hay un interruptor *«Entrar con Face ID / huella la próxima vez»* (activado por defecto), y también con el interruptor *«Face ID / huella en este dispositivo»* del perfil. El dispositivo se registra solo con su nombre (p. ej. «iPhone · Safari»). En el acceso hay un botón *«Entrar con Face ID / huella»*: **en color** si el dispositivo ya lo tiene activado (y entonces se pide solo al abrir; iOS puede pedir antes confirmar «Usar llave de acceso») y **atenuado y sin función** si no. Requiere **https** (o `localhost`); el dominio sale de `APP_URL` y, si hace falta, se fija con `WEBAUTHN_RP_ID` y `WEBAUTHN_ORIGIN`. Si cambias de dominio, las claves ya creadas dejan de valer (la contraseña y el 2FA siguen funcionando). La tabla `passkeys` se crea sola al arrancar.
 *   **Recuperar la contraseña** por correo: se envía un enlace válido durante 1 hora.
 
 Para que todo esto funcione, **la aplicación necesita poder enviar correo**. Sin configurarlo, los mensajes no se envían (se escriben en el registro del contenedor) y los usuarios nuevos no podrán verificar su cuenta. Hay **dos formas** de configurarlo; elige una.
@@ -74,6 +75,7 @@ Para que todo esto funcione, **la aplicación necesita poder enviar correo**. Si
 |---|---|---|
 | `SECRET_KEY` | **Sí** | Clave con la que se firman las sesiones. Larga y aleatoria (64 caracteres o más, por ejemplo `openssl rand -hex 48`). **Sin ella la aplicación no arranca.** Si la cambias, todos tendrán que volver a iniciar sesión. También cifra las claves de IA de los usuarios en la base de datos (AES-256-GCM): si la cambias, las sesiones se cierran y cada usuario tendrá que volver a introducir sus claves. |
 | `APP_URL` | Recomendada | Dirección pública de la app con protocolo, por ejemplo `https://libros.tudominio.com`. Se usa en los enlaces de los correos. |
+| `WEBAUTHN_RP_ID`, `WEBAUTHN_ORIGIN` | Opcionales | Dominio y origen de las claves de acceso (Face ID / huella). Por defecto salen de `APP_URL`. |
 
 **Opción A · No tengo un gestor de correo propio → usa un servidor SMTP.** Es la más sencilla: pon los datos de tu proveedor (Gmail, el correo de tu dominio, Brevo, etc.).
 

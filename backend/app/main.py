@@ -5,7 +5,7 @@ import os
 
 from app.core.config import settings
 from app.core.database import init_global_db
-from app.api import auth, books, analysis, users, chat, social
+from app.api import auth, books, analysis, users, chat, social, passkeys
 
 
 @asynccontextmanager
@@ -55,6 +55,7 @@ async def health():
     return {"status": "ok"}
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(passkeys.router, prefix="/api/auth/passkeys", tags=["passkeys"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
 app.include_router(books.router, prefix="/api/books", tags=["books"])
 app.include_router(analysis.router, prefix="/api/analysis", tags=["analysis"])

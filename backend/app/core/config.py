@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # URL pública de la aplicación (para los enlaces de los correos de verificación y recuperación)
     APP_URL: str = "http://localhost:3000"
 
+    # Claves de acceso (passkeys / WebAuthn): por defecto el dominio y el origen salen de APP_URL (solo https o localhost)
+    WEBAUTHN_RP_ID: Optional[str] = None
+    WEBAUTHN_ORIGIN: Optional[str] = None
+
     # Correo: servicio central (CENTRAL_EMAIL_*) o SMTP directo (SMTP_*); si no hay ninguno, los correos se escriben en el registro
     CENTRAL_EMAIL_URL: Optional[str] = None
     CENTRAL_EMAIL_KEY: Optional[str] = None
